@@ -14,11 +14,13 @@ import win32gui
 from PIL import ImageGrab
 from playsound import playsound
 
+# ADDED MULTIACCOUNT SUPPORT
 
 def Avg(lst):
     return sum(lst) / len(lst)
 
 
+# noinspection PyShadowingNames
 def enum_cb(hwnd, results):
     winlist.append((hwnd, win32gui.GetWindowText(hwnd)))
 
@@ -46,6 +48,7 @@ def click(x, y):
     win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, x, y, 0, 0)
 
 
+# noinspection PyShadowingNames,PyShadowingNames
 def relate_list(l_org, l1, l2=[], relate=operator.le):
     if not l_org:
         return False
@@ -61,6 +64,7 @@ def relate_list(l_org, l1, l2=[], relate=operator.le):
     return any(truth_list)
 
 
+# noinspection PyShadowingNames,PyShadowingNames
 def color_average(image, compare_list):
     average = []
     r, g, b = [], [], []
@@ -79,6 +83,7 @@ def color_average(image, compare_list):
     return average
 
 
+# noinspection PyShadowingNames,PyShadowingNames
 def getScreenShot(window_id, area=(0, 0, 0, 0)):
     area = list(area)
     scaled_area = [screen_width / 2560, screen_height / 1440]
@@ -93,17 +98,18 @@ def getScreenShot(window_id, area=(0, 0, 0, 0)):
     return image
 
 
+# noinspection PyShadowingNames
 def getOldSharecodes(num=-1):
     try:
-        last_game = open("last_game.txt", "r")
+        last_game = open("last_game_"+accounts[current_account]["steam_id"]+".txt", "r")
         games = last_game.readlines()
         last_game.close()
     except FileNotFoundError:
-        last_game = open("last_game.txt", "w")
-        last_game.write(config.get("csgostats.gg", "Match Token") + "\n")
-        games = [config.get("csgostats.gg", "Match Token")]
+        last_game = open("last_game_"+accounts[current_account]["steam_id"]+".txt", "w")
+        last_game.write(accounts[current_account]["match_token"] + "\n")
+        games = [accounts[current_account]["match_token"]]
         last_game.close()
-    last_game = open("last_game.txt", "w")
+    last_game = open("last_game_"+accounts[current_account]["steam_id"]+".txt", "w")
     games = games[-200:]
     for i, val in enumerate(games):
         games[i] = "CSGO" + val.strip("\n").split("CSGO")[1]
@@ -115,9 +121,9 @@ def getOldSharecodes(num=-1):
 def getNewCSGOMatches(game_id):
     sharecodes = []
     next_code = game_id
-    last_game = open("last_game.txt", "a")
+    last_game = open("last_game_"+accounts[current_account]["steam_id"]+".txt", "a")
     while next_code != "n/a":
-        steam_url = "https://api.steampowered.com/ICSGOPlayers_730/GetNextMatchSharingCode/v1?key=" + steam_api_key + "&steamid=" + steam_id + "&steamidkey=" + game_code + "&knowncode=" + game_id
+        steam_url = "https://api.steampowered.com/ICSGOPlayers_730/GetNextMatchSharingCode/v1?key=" + steam_api_key + "&steamid=" + accounts[current_account]["steam_id"] + "&steamidkey=" + accounts[current_account]["auth_code"] + "&knowncode=" + game_id
         try:
             next_code = (requests.get(steam_url).json()["result"]["nextcode"])
         except KeyError:
@@ -135,6 +141,7 @@ def getNewCSGOMatches(game_id):
         return [game_id]
 
 
+# noinspection PyShadowingNames
 def UpdateCSGOstats(sharecodes, num_completed=1):
     completed_games, analyze_games = [], []
     for val in sharecodes:
@@ -143,7 +150,8 @@ def UpdateCSGOstats(sharecodes, num_completed=1):
             completed_games.append(response.json())
         else:
             analyze_games.append(response.json())
-            
+        # TEST GAME:
+        # analyze_games = [{'status': 'complete', 'data': {'msg': 'Complete - <a href="/match/7584322">View</a>', 'index': '1', 'sharecode': 'CSGO-7NiMO-RPjvj-MZNWP-9cRdx-vzYUN', 'queue_id': 8081108, 'demo_id': 7584322, 'url': 'https://csgostats.gg/match/7584322'}, 'error': 0}]
     output = [completed_games[num_completed * -1:], analyze_games]
     for i in output:
         for json_dict in i:
@@ -160,23 +168,35 @@ def UpdateCSGOstats(sharecodes, num_completed=1):
 
 def getHotKeys():
     get_keys = [int(config.get("HotKeys", "Activate Script"), 16), int(config.get("HotKeys", "Activate Push Notification"), 16), int(config.get("HotKeys", "Get Info on newest Match"), 16),
-                int(config.get("HotKeys", "Get Info on multiple Matches"), 16), int(config.get("HotKeys", "Live Tab Key"), 16),
+                int(config.get("HotKeys", "Get Info on multiple Matches"), 16), int(config.get("HotKeys", "Live Tab Key"), 16), int(config.get("HotKeys", "Switch accounts for csgostats.gg"), 16),
                 int(config.get("HotKeys", "End Script"), 16)]
     return get_keys
 
 
 config = configparser.ConfigParser()
 config.read("config.ini")
-
 steam_api_key = config.get("csgostats.gg", "API Key")
-steam_id = config.get("csgostats.gg", "Steam ID")
-game_code = config.get("csgostats.gg", "Game Code")
-
 screenshot_interval = config.getint("Screenshot", "Interval")
-
 keys = getHotKeys()
-
 device = 0
+
+
+accounts, current_account = [], 0
+steam_ids = ","
+for i in config.sections():
+    if i.startswith("Account"):
+        # display_name = config.get(i, "Display Name")
+        steam_id = config.get(i, "Steam ID")
+        auth_code = config.get(i, "Authentication Code")
+        match_token = config.get(i, "Match Token")
+        steam_ids = steam_id + "," + steam_ids
+        accounts.append({"steam_id": steam_id, "auth_code": auth_code, "match_token": match_token})
+
+steam_ids = steam_ids[:-1]
+profiles = requests.get("http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=" + steam_api_key + "&steamids=" + steam_ids).json()["response"]["players"]
+for i, val in enumerate(profiles):
+    accounts[i]["name"] = val["personaname"]
+
 
 screen_width, screen_height = win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1)
 toplist, winlist = [], []
@@ -189,6 +209,7 @@ note = ""
 
 start_time = time()
 write("READY")
+write("current account is: %s" % accounts[current_account]["name"], add_time=False)
 print("\n")
 
 while True:
@@ -229,10 +250,16 @@ while True:
         UpdateCSGOstats(getOldSharecodes(num=last_x_matches * -1), num_completed=completed_matches)
 
     if win32api.GetAsyncKeyState(keys[4]) & 1:  # F13 Key (OPEN WEB BROWSER ON LIVE GAME TAB)
-        webbrowser.open_new_tab("https://csgostats.gg/player/" + steam_id + "#/live")
+        webbrowser.open_new_tab("https://csgostats.gg/player/" + accounts[current_account]["steam_id"] + "#/live")
         write("new tab opened", add_time=False)
 
-    if win32api.GetAsyncKeyState(keys[5]) & 1:  # POS1/HOME Key
+    if win32api.GetAsyncKeyState(keys[5]) & 1:  # F15 (SWITCH ACCOUNTS)
+        current_account += 1
+        if current_account > len(accounts)-1:
+            current_account = 0
+        write("current account is: %s" % accounts[current_account]["name"], add_time=False)
+
+    if win32api.GetAsyncKeyState(keys[6]) & 1:  # POS1/HOME Key
         write("Exiting Script")
         break
 
