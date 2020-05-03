@@ -3,7 +3,7 @@ import operator
 import os
 import webbrowser
 from datetime import datetime, timedelta
-from time import time, sleep
+import time
 
 import pushbullet
 import pyperclip
@@ -26,13 +26,13 @@ def enum_cb(hwnd, results):
 
 
 # noinspection PyShadowingNames
-def write(message, add_time: bool = True, push: int = 0, push_now: bool = False, output: bool = True):
+def write(message, add_time: bool = True, push: int = 0, push_now: bool = False, output: bool = True, ending: str = '\n'):
     if add_time:
         m = datetime.now().strftime('%H:%M:%S') + ': ' + str(message)
     else:
         m = message
     if output:
-        print(m)
+        print(m, end=ending)
 
     if push >= 3:
         global note
@@ -174,21 +174,22 @@ def UpdateCSGOstats(sharecodes: list, num_completed: int = 1):
         else:
             not_completed_games.append(response.json())
 
+    
     queued_games = [game['data']['queue_pos'] for game in not_completed_games if game['status'] != 'error']
     global retrying_games
     retrying_games = []
 
     if queued_games:
         if queued_games[0] < cfg['max_queue_position']:
-            global error_check_time
+            global time_table
             retrying_games = [game['data']['sharecode'] for game in not_completed_games]
-            error_check_time = time()
+            time_table['error_check_time'] = time.time()
         for i, val in enumerate(queued_games):
             write('#%s: in Queue #%s.' % (i + 1, val), add_time=False)
 
     if len(not_completed_games) - len(queued_games) > 0:
         write('An error occurred in %s game[s].' % (len(not_completed_games) - len(queued_games)), add_time=False)
-        retrying_games.append([game['data']['sharecode'] for game in not_completed_games])
+        retrying_games.append([game['data']['sharecode'] for game in not_completed_games if game['status'] == 'error'])
 
     if completed_games:
         for i in completed_games[num_completed * - 1:]:
@@ -214,14 +215,17 @@ def Image_to_Text(image: Image, size: tuple, white_threshold: list, arg: str = '
                 pixel_map.append((255, 255, 255))
     temp_image = Image.new('RGB', (size[0], size[1]))
     temp_image.putdata(pixel_map)
-    # temp_image.save('inv.png')
-    # image.save('org.png')
     try:
         image_text = pytesseract.image_to_string(temp_image, timeout=0.3, config=arg)
     except RuntimeError as timeout_error:
         pass
     if image_text:
-        return ' '.join(image_text.replace(': ', ':').split())
+        image_text = ' '.join(image_text.replace(': ', ':').split())
+        global truth_table
+        if truth_table['debugging']:
+            image.save(str(cfg['debug_path']) + '\\' + datetime.now().strftime('%H-%M-%S') + '_' + image_text.replace(':', '-') + '.png', format='PNG')
+            temp_image.save(str(cfg['debug_path']) + '\\' + 'temp_' + datetime.now().strftime('%H-%M-%S') + '_' + image_text.replace(':', '-') + '.png', format='PNG')
+        return image_text
     else:
         return False
 
@@ -232,7 +236,7 @@ def getCfgData():
                    'info_newest_match': int(config.get('HotKeys', 'Get Info on newest Match'), 16), 'info_multiple_matches': int(config.get('HotKeys', 'Get Info on multiple Matches'), 16),
                    'open_live_tab': int(config.get('HotKeys', 'Live Tab Key'), 16), 'switch_accounts': int(config.get('HotKeys', 'Switch accounts for csgostats.gg'), 16), 'stop_warmup_ocr': int(config.get('HotKeys', 'Stop Warmup OCR'), 16),
                    'end_script': int(config.get('HotKeys', 'End Script'), 16),
-                   'screenshot_interval': config.getint('Screenshot', 'Interval'), 'steam_api_key': config.get('csgostats.gg', 'API Key'), 'last_x_matches': config.getint('csgostats.gg', 'Number of Requests'),
+                   'screenshot_interval': config.getint('Screenshot', 'Interval'), 'debug_path': config.get('Screenshot', 'Debug Path'), 'steam_api_key': config.get('csgostats.gg', 'API Key'), 'last_x_matches': config.getint('csgostats.gg', 'Number of Requests'),
                    'completed_matches': config.getint('csgostats.gg', 'Completed Matches'), 'max_queue_position': config.getint('csgostats.gg', 'Auto-Retrying for queue position below'),
                    'auto_retry_interval': config.getint('csgostats.gg', 'Auto-Retrying-Interval'), 'pushbullet_device_name': config.get('Pushbullet', 'Device Name'), 'pushbullet_api_key': config.get('Pushbullet', 'API Key'),
                    'tesseract_path': config.get('Warmup', 'Tesseract Path'), 'warmup_test_interval': config.getint('Warmup', 'Test Interval'), 'warmup_push_interval': config.get('Warmup', 'Push Interval'),
@@ -260,34 +264,36 @@ toplist, winlist = [], []
 hwnd = 0
 
 # BOOLEAN INITIALIZATION
-test_for_live_game, test_for_success, push_urgency, test_for_warmup, testing = False, False, False, False, False
+truth_table = {'test_for_live_game': False, 'test_for_success': False, 'test_for_warmup': False, 'first_ocr': True, 'testing': False, 'debugging': False}
 
 # csgostats.gg VAR
 retrying_games = []
 
 # WARMUP DETECTION SETUP
 pytesseract.pytesseract.tesseract_cmd = cfg['tesseract_path']
-push_times, no_text_found, push_counter = [], [], 0
+push_times, no_text_found, push_counter = [], 0, 0
 for i in cfg['warmup_push_interval'].split(','):
     push_times.append(int(i))
 push_times.sort(reverse=True)
+join_warmup_time = push_times[0] + 1
 
 # PUSHBULLET VAR
 note = ''
+push_urgency = 0
 
 # INITIALIZATION OF TIME VARS
-screenshot_time, error_check_time, warmup_test_timer, warmup_push_timer = time(), time(), time(), time()
+time_table = {'screenshot_time': time.time(), 'error_check_time': time.time(), 'warmup_test_timer': time.time()}
 
 write('READY')
 write('Current account is: %s\n' % accounts[current_account]['name'], add_time=False)
 
 while True:
     if win32api.GetAsyncKeyState(cfg['activate_script']) & 1:  # F9 (ACTIVATE / DEACTIVATE SCRIPT)
-        test_for_live_game = not test_for_live_game
-        write('TESTING: %s' % test_for_live_game)
-        if test_for_live_game:
+        truth_table['test_for_live_game'] = not truth_table['test_for_live_game']
+        write('TESTING: %s' % truth_table['test_for_live_game'])
+        if truth_table['test_for_live_game']:
             playsound('sounds/activated_2.mp3')
-            time_searching = time()
+            time_searching = time.time()
         else:
             playsound('sounds/deactivated.mp3')
 
@@ -310,7 +316,6 @@ while True:
 
     if win32api.GetAsyncKeyState(cfg['info_multiple_matches']) & 1:  # F6 Key (GET INFO ON LAST X MATCHES)
         write('Getting Info from last %s matches' % cfg['last_x_matches'])
-        # write('Outputting %s completed match[es]' % completed_matches, add_time=False)
         getNewCSGOMatches(getOldSharecodes()[0])
         UpdateCSGOstats(getOldSharecodes(num=cfg['last_x_matches'] * -1), num_completed=cfg['completed_matches'])
 
@@ -318,7 +323,7 @@ while True:
         win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
         webbrowser.open_new_tab('https://csgostats.gg/player/' + accounts[current_account]['steam_id'] + '#/live')
         write('new tab opened', add_time=False)
-        sleep(0.5)
+        time.sleep(0.5)
         win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
 
     if win32api.GetAsyncKeyState(cfg['switch_accounts']) & 1:  # F15 (SWITCH ACCOUNTS)
@@ -328,18 +333,18 @@ while True:
         write('current account is: %s' % accounts[current_account]['name'], add_time=False)
 
     if win32api.GetAsyncKeyState(cfg['stop_warmup_ocr']) & 1:  # ESC (STOP WARMUP OCR)
-        write('STOPPING WARMUP TIME FINDER!')
-        test_for_warmup = False
-        no_text_found = []
-        warmup_push_timer, warmup_test_timer = time(), time()
+        write('\nSTOPPING WARMUP TIME FINDER!', add_time=False)
+        truth_table['test_for_warmup'] = False
+        no_text_found = 0
+        time_table['warmup_test_timer'] = time.time()
 
     if win32api.GetAsyncKeyState(cfg['end_script']) & 1:  # POS1 (END SCRIPT)
         write('Exiting Script')
         break
 
     if retrying_games:
-        if time() - error_check_time > cfg['auto_retry_interval']:
-            error_check_time = time()
+        if time.time() - time_table['error_check_time'] > cfg['auto_retry_interval']:
+            time_table['error_check_time'] = time.time()
             UpdateCSGOstats(retrying_games, num_completed=len(retrying_games))
 
     winlist = []
@@ -352,25 +357,24 @@ while True:
     hwnd = csgo[0][0]
 
     # TESTING HERE
-    if win32api.GetAsyncKeyState(0x74) & 1:  # UNBOUND, TEST CODE
-        print('\n')
-        write('Executing TestCode')
-        print('\n')
-        # testing = not testing
-        push_counter = 0
-        test_for_warmup = True
-        warmup_test_timer, warmup_push_timer = time(), time()
+    if win32api.GetAsyncKeyState(0x6F) & 1:  # UNBOUND, TEST CODE
+        write('\nExecuting Debugging\n')
+        # truth_table['testing'] = not truth_table['testing']
+        truth_table['debugging'] = not truth_table['debugging']
+        # truth_table['test_for_warmup'] = not truth_table['test_for_warmup']
+        # push_counter = 0
+        # time_table['warmup_test_timer'], time_table['screenshot_time'] = time.time(), time.time()
 
-    if testing:
-        # screenshot_time = time()
+    if truth_table['testing']:
+        # time_table['screenshot_time'] = time.time()
         pass
-        # print('Took: %s ' % str(timedelta(milliseconds=int(time()*1000 - screenshot_time*1000))))
+        # print('Took: %s ' % str(timedelta(milliseconds=int(time.time(*1000 - time_table['screenshot_time']*1000))))
     # TESTING ENDS HERE
 
-    if test_for_live_game:
-        if time() - screenshot_time < cfg['screenshot_interval']:
+    if truth_table['test_for_live_game']:
+        if time.time() - time_table['screenshot_time'] < cfg['screenshot_interval']:
             continue
-        screenshot_time = time()
+        time_table['screenshot_time'] = time.time()
         img = getScreenShot(hwnd, (1265, 760, 1295, 785))
         if not img:
             continue
@@ -379,8 +383,8 @@ while True:
         if relate_list(accept_avg, [1, 2, 1], l2=[1, 1, 2]):
             write('Trying to Accept', push=push_urgency + 1)
 
-            test_for_success = True
-            test_for_live_game = False
+            truth_table['test_for_success'] = True
+            truth_table['test_for_live_game'] = False
             accept_avg = []
 
             for _ in range(5):
@@ -388,10 +392,10 @@ while True:
 
             write('Trying to catch a loading map')
             playsound('sounds/accept_found.mp3')
-            screenshot_time = time()
+            time_table['screenshot_time'] = time.time()
 
-    if test_for_success:
-        if time() - screenshot_time < 40:
+    if truth_table['test_for_success']:
+        if time.time() - time_table['screenshot_time'] < 40:
             img = getScreenShot(hwnd, (2435, 65, 2555, 100))
             not_searching_avg = color_average(img, [6, 10, 10])
             searching_avg = color_average(img, [6, 163, 97, 4, 63, 35])
@@ -404,58 +408,83 @@ while True:
             success = relate_list(success_avg, [1, 8, 7])
 
             if success:
-                write('Took %s since pressing accept.' % str(timedelta(seconds=int(time() - screenshot_time))), add_time=False, push=push_urgency + 1)
-                write('Took %s since trying to find a game.' % str(timedelta(seconds=int(time() - time_searching))), add_time=False, push=push_urgency + 1)
+                write('Took %s since pressing accept.' % str(timedelta(seconds=int(time.time() - time_table['screenshot_time']))), add_time=False, push=push_urgency + 1)
+                write('Took %s since trying to find a game.' % str(timedelta(seconds=int(time.time() - time_searching))), add_time=False, push=push_urgency + 1)
                 write('Game should have started', push=push_urgency + 2, push_now=True)
-                test_for_success = False
-                test_for_warmup = True
+                truth_table['test_for_success'] = False
+                truth_table['test_for_warmup'] = True
                 playsound('sounds/done_testing.mp3')
-                warmup_test_timer, warmup_push_timer = time()+5, time()+5
+                time_table['warmup_test_timer'] = time.time()+5
 
             if any([searching, not_searching]):
-                write('Took: %s ' % str(timedelta(seconds=int(time() - screenshot_time))), add_time=False, push=push_urgency + 1)
+                write('Took: %s ' % str(timedelta(seconds=int(time.time() - time_table['screenshot_time']))), add_time=False, push=push_urgency + 1)
                 write('Game doesnt seem to have started. Continuing to search for accept Button!', push=push_urgency + 1, push_now=True)
                 playsound('sounds/back_to_testing.mp3')
-                test_for_success = False
-                test_for_live_game = True
+                truth_table['test_for_success'] = False
+                truth_table['test_for_live_game'] = True
 
         else:
             write('40 Seconds after accept, did not find loading map nor searching queue')
-            test_for_success = False
+            truth_table['test_for_success'] = False
             print(success_avg)
             print(searching_avg)
             print(not_searching_avg)
             playsound('sounds/fail.mp3')
             img.save(os.path.expanduser('~') + '\\Unknown Error.png')
 
-    if test_for_warmup:
-        if time() - warmup_test_timer >= cfg['warmup_test_interval']:
-            img = getScreenShot(hwnd, (1036, 425, 1525, 456))  # 'WAITING FOR PLAYERS X:XX'
-            img_text = Image_to_Text(img, img.size, [225, 225, 225], arg='--psm 6')
-            warmup_test_timer = time()
-            if img_text:
-                time_left = img_text.split()[-1].split(':')
-                write(img_text, add_time=False)
-                try:
-                    time_left = int(time_left[0]) * 60 + int(time_left[1])
-                except ValueError:
-                    time_left = push_times[0] + 1
-                if time_left <= push_times[push_counter]:
-                    push_counter += 1
-                    write(img_text, add_time=True, push=push_urgency + 1, output=False, push_now=True)
-            else:
-                no_text_found.append(True)
+    if truth_table['test_for_warmup']:
+        for i in range(112, 136):
+            win32api.GetAsyncKeyState(i) & 1
+        while True:
+            keys = []
+            for i in range(112, 136):
+                keys.append(win32api.GetAsyncKeyState(i) & 1)
+            if any(keys):
+                print('')
+                write('Break from warmup-loop')
+                truth_table['test_for_warmup'] = False
+                break
+            if time.time() - time_table['warmup_test_timer'] >= cfg['warmup_test_interval']:
+                img = getScreenShot(hwnd, (1036, 425, 1525, 456))  # 'WAITING FOR PLAYERS X:XX'
+                img_text = Image_to_Text(img, img.size, [225, 225, 225], arg='--psm 6')
+                time_table['warmup_test_timer'] = time.time()
+                if img_text:
+                    time_left = img_text.split()[-1].split(':')
+                    # write(img_text, add_time=False)
+                    try:
+                        time_left = int(time_left[0]) * 60 + int(time_left[1])
+                        if truth_table['first_ocr']:
+                            join_warmup_time = time_left
+                            truth_table['first_ocr'] = False
+                    except ValueError:
+                        time_left = push_times[0] + 1
 
-        if push_counter >= len(push_times):
-            write('Warmup should be over in less then %s seconds!' % push_times[-1], push=push_urgency + 1, push_now=True)
-            push_counter = 0
-            no_text_found = []
-            test_for_warmup = False
+                    write('\rTime since start: %s - Time Difference: %s - Time left: %s' % (timedelta(seconds=int(time.time() - time_table['screenshot_time'])), time.strftime('%H:%M:%S', time.gmtime(join_warmup_time-time_left)), img_text), add_time=False, ending='')
+                    # write('Time since start: %s, %s' % (timedelta(seconds=int(time.time( - time_table['screenshot_time'])), img_text), add_time=False)
+                    if no_text_found > 0:
+                        no_text_found -= 1
 
-        if len(no_text_found) >= cfg['warmup_no_text_limit']:
-            push_counter = 0
-            no_text_found = []
-            test_for_warmup = False
-            write('Did not find any warmup text.', push=push_urgency + 1, push_now=True)
+                    if time_left <= push_times[push_counter]:
+                        push_counter += 1
+                        write('Time since start: %s\nTime Difference: %s\nTime left: %s' % (timedelta(seconds=int(time.time() - time_table['screenshot_time'])), time.strftime('%H:%M:%S', time.gmtime(join_warmup_time-time_left)), img_text), add_time=True, push=push_urgency + 1, output=False, push_now=True)
+
+                else:
+                    no_text_found += 1
+
+            if push_counter >= len(push_times):
+                push_counter = 0
+                no_text_found = 0
+                truth_table['test_for_warmup'] = False
+                truth_table['first_ocr'] = True
+                write('\nWarmup should be over in less then %s seconds!' % push_times[-1], add_time=False, push=push_urgency + 2, push_now=True)
+                break
+
+            if no_text_found >= cfg['warmup_no_text_limit']:
+                push_counter = 0
+                no_text_found = 0
+                truth_table['test_for_warmup'] = False
+                truth_table['first_ocr'] = True
+                write('\nDid not find any warmup text.', add_time=False, push=push_urgency + 2, push_now=True)
+                break
 
 exit('ENDED BY USER')
