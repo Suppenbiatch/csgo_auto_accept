@@ -142,28 +142,37 @@ def getNewCSGOMatches(game_id):
 
 # noinspection PyShadowingNames
 def UpdateCSGOstats(sharecodes, num_completed=1):
-    completed_games, analyze_games = [], []
+    completed_games, not_completed_games, = [], []
     for val in sharecodes:
         response = requests.post("https://csgostats.gg/match/upload/ajax", data={'sharecode': val, 'index': '1'})
         if response.json()["status"] == "complete":
             completed_games.append(response.json())
         else:
-            analyze_games.append(response.json())
-        # TEST GAME:
-        # analyze_games = [{'status': 'complete', 'data': {'msg': 'Complete - <a href="/match/7584322">View</a>', 'index': '1', 'sharecode': 'CSGO-7NiMO-RPjvj-MZNWP-9cRdx-vzYUN', 'queue_id': 8081108, 'demo_id': 7584322, 'url': 'https://csgostats.gg/match/7584322'}, 'error': 0}]
-    output = [completed_games[num_completed * -1:], analyze_games]
+            not_completed_games.append(response.json())
+
+    # TEST GAME:
+    # 
+
+    queued_games = [game for game in not_completed_games if game["status"] != "retrying"]
+    retrying_games = [game["data"]["sharecode"] for game in not_completed_games if game["status"] == "retrying"]
+
+    output = [completed_games[num_completed * -1:], queued_games]
     for i in output:
         for json_dict in i:
             sharecode = json_dict["data"]["sharecode"]
             game_url = json_dict["data"]["url"]
             info = json_dict["data"]["msg"].split("<")[0].replace('-', '').rstrip(" ")
+            " ".join(info.split())
             write('Sharecode: %s' % sharecode, add_time=False, push=push_urgency)
             write("URL: %s" % game_url, add_time=False, push=push_urgency)
             write("Status: %s." % info, add_time=False, push=push_urgency)
     write(None, add_time=False, push=push_urgency, push_now=True)
+
     if completed_games:
         pyperclip.copy(completed_games[-1]["data"]["url"])
-    return game_url
+
+    if retrying_games:
+        write("%s game[s] will be rechecked after 45 seconds" % len(retrying_games))
 
 
 def getHotKeys():
@@ -185,7 +194,6 @@ accounts, current_account = [], 0
 steam_ids = ","
 for i in config.sections():
     if i.startswith("Account"):
-        # display_name = config.get(i, "Display Name")
         steam_id = config.get(i, "Steam ID")
         auth_code = config.get(i, "Authentication Code")
         match_token = config.get(i, "Match Token")
@@ -205,11 +213,11 @@ toplist, winlist = [], []
 hwnd = 0
 
 test_for_live_game, test_for_success, push_urgency, testing = False, False, False, False
-# accept_avg = []
+retrying_games = []
 
 note = ""
 
-start_time = time()
+screenshot_time, error_check_time = time(), time()
 write("READY")
 write("current account is: %s" % accounts[current_account]["name"], add_time=False)
 print("\n")
@@ -241,7 +249,7 @@ while True:
 
     if win32api.GetAsyncKeyState(keys[2]) & 1:  # F7 Key (UPLOAD NEWEST MATCH)
         write("Uploading / Getting status on newest match")
-        pyperclip.copy(UpdateCSGOstats(getNewCSGOMatches(getOldSharecodes()[0])))
+        UpdateCSGOstats(getNewCSGOMatches(getOldSharecodes()[0]))
 
     if win32api.GetAsyncKeyState(keys[3]) & 1:  # F6 Key (GET INFO ON LAST X MATCHES)
         last_x_matches = config.getint("csgostats.gg", "Number of Requests")
@@ -269,6 +277,15 @@ while True:
     winlist = []
     win32gui.EnumWindows(enum_cb, toplist)
     csgo = [(hwnd, title) for hwnd, title in winlist if 'counter-strike: global offensive' in title.lower()]
+
+    if retrying_games:
+        if time() - error_check_time > 45:
+            error_check_time = time()
+            UpdateCSGOstats(retrying_games, num_completed=len(retrying_games))
+
+
+
+    # ONLY CONTINUING IF CSGO IS RUNNING
     if not csgo:
         continue
     hwnd = csgo[0][0]
@@ -281,7 +298,7 @@ while True:
         testing = not testing
 
     if testing:
-        # start_time = time()
+        # screenshot_time = time()
         img = getScreenShot(hwnd, (2435, 65, 2555, 100))
         not_searching_avg = color_average(img, [6, 10, 10])
         searching_avg = color_average(img, [6, 163, 97, 4, 63, 35])
@@ -290,13 +307,13 @@ while True:
         img = getScreenShot(hwnd, (467, 1409, 1300, 1417))
         success_avg = color_average(img, [21, 123, 169])
         success = relate_list(success_avg, [1, 8, 7])
-        # print("Took: %s " % str(timedelta(milliseconds=int(time()*1000 - start_time*1000))))
+        # print("Took: %s " % str(timedelta(milliseconds=int(time()*1000 - screenshot_time*1000))))
     # TESTING ENDS HERE
 
     if test_for_live_game:
-        if time() - start_time < screenshot_interval:
+        if time() - screenshot_time < screenshot_interval:
             continue
-        start_time = time()
+        screenshot_time = time()
         img = getScreenShot(hwnd, (1265, 760, 1295, 785))
         if not img:
             continue
@@ -316,10 +333,10 @@ while True:
 
             write("Trying to catch a loading map")
             playsound('sounds/accept_found.mp3')
-            start_time = time()
+            screenshot_time = time()
 
     if test_for_success:
-        if time() - start_time < 40:
+        if time() - screenshot_time < 40:
             img = getScreenShot(hwnd, (2435, 65, 2555, 100))
             not_searching_avg = color_average(img, [6, 10, 10])
             searching_avg = color_average(img, [6, 163, 97, 4, 63, 35])
@@ -332,14 +349,14 @@ while True:
             success = relate_list(success_avg, [1, 8, 7])
 
             if success:
-                write("Took %s since pressing accept." % str(timedelta(seconds=int(time() - start_time))), add_time=False, push=push_urgency + 1)
+                write("Took %s since pressing accept." % str(timedelta(seconds=int(time() - screenshot_time))), add_time=False, push=push_urgency + 1)
                 write("Took %s since trying to find a game." % str(timedelta(seconds=int(time() - time_searching))), add_time=False, push=push_urgency + 1)
                 write("Game should have started", push=push_urgency + 2, push_now=True)
                 test_for_success = False
                 playsound('sounds/done_testing.mp3')
 
             if any([searching, not_searching]):
-                write("Took: %s " % str(timedelta(seconds=int(time() - start_time))), add_time=False, push=push_urgency + 1)
+                write("Took: %s " % str(timedelta(seconds=int(time() - screenshot_time))), add_time=False, push=push_urgency + 1)
                 write("Game doesnt seem to have started. Continuing to search for accept Button!", push=push_urgency + 1, push_now=True)
                 playsound('sounds/back_to_testing.mp3')
                 test_for_success = False
