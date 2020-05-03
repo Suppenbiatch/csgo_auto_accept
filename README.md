@@ -12,11 +12,11 @@ After that you'll need to make changes to the config_clean.ini.
 To use csgostats.gg you'll need to add one of your "Match Token" which will be "CSGO-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX" without '"'
 The Authentication Code is used to make a request to the Steam API which will return the next sharecode. Authentication Code will be something like "XXXX-XXXX-XXXX"
 Both can be found at https://help.steampowered.com/en/wizard/HelpWithGameIssue/?appid=730&issueid=128
-- under
-	- Access to Your Match History
-	- Your most recently completed match token:
+- Under "Access to Your Match History"
+	- "Create Authentication Code" or
+	- "Authentication Code:"	
 - And
-	- Authentication Code:
+	- "Your most recently completed match token:"
 
 - "Account 2" can be used to add more then one account
 - As many accounts as needed can be added ("Account 3" and so on)
