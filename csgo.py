@@ -3,7 +3,7 @@ import operator
 import os
 import webbrowser
 from datetime import datetime, timedelta
-from time import time
+from time import time, sleep
 
 import pushbullet
 import pyperclip
@@ -85,6 +85,7 @@ def color_average(image, compare_list):
 # noinspection PyShadowingNames,PyShadowingNames
 def getScreenShot(window_id, area=(0, 0, 0, 0)):
     area = list(area)
+    win32gui.ShowWindow(window_id, win32con.SW_MAXIMIZE)
     scaled_area = [screen_width / 2560, screen_height / 1440]
     scaled_area = 2 * scaled_area
     for i, _ in enumerate(area[-2:], start=len(area) - 2):
@@ -92,7 +93,6 @@ def getScreenShot(window_id, area=(0, 0, 0, 0)):
     for i, val in enumerate(area, start=0):
         scaled_area[i] = scaled_area[i] * val
     scaled_area = list(map(int, scaled_area))
-    win32gui.ShowWindow(window_id, win32con.SW_MAXIMIZE)
     image = ImageGrab.grab(scaled_area)
     return image
 
@@ -150,11 +150,8 @@ def UpdateCSGOstats(sharecodes, num_completed=1):
         else:
             not_completed_games.append(response.json())
 
-    # TEST GAME:
-    # 
-
-    queued_games = [game for game in not_completed_games if game["status"] != "retrying"]
-    retrying_games = [game["data"]["sharecode"] for game in not_completed_games if game["status"] == "retrying"]
+    queued_games = [game for game in not_completed_games if game["status"] != "error"]
+    retrying_games = [game["data"]["sharecode"] for game in not_completed_games if game["status"] == "error"]
 
     output = [completed_games[num_completed * -1:], queued_games]
     for i in output:
@@ -172,6 +169,8 @@ def UpdateCSGOstats(sharecodes, num_completed=1):
         pyperclip.copy(completed_games[-1]["data"]["url"])
 
     if retrying_games:
+        global error_check_time
+        error_check_time = time()
         write("%s game[s] will be rechecked after 45 seconds" % len(retrying_games))
 
 
@@ -262,12 +261,13 @@ while True:
     if win32api.GetAsyncKeyState(keys[4]) & 1:  # F13 Key (OPEN WEB BROWSER ON LIVE GAME TAB)
         webbrowser.open_new_tab("https://csgostats.gg/player/" + accounts[current_account]["steam_id"] + "#/live")
         write("new tab opened", add_time=False)
+        sleep(0.2)
+        win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
 
     if win32api.GetAsyncKeyState(keys[5]) & 1:  # F15 (SWITCH ACCOUNTS)
         current_account += 1
         if current_account > len(accounts)-1:
             current_account = 0
-        print(current_account)
         write("current account is: %s" % accounts[current_account]["name"], add_time=False)
 
     if win32api.GetAsyncKeyState(keys[6]) & 1:  # POS1/HOME Key
