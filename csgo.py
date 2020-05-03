@@ -558,6 +558,7 @@ while True:
         if matchmaking_update[-1] == '1' and not truth_table['test_for_server']:
             truth_table['test_for_server'] = True
             write('TESTING: %s' % truth_table['test_for_server'], overwrite='1')
+            time_table['time_searching'] = time.time()
             mute_csgo(1)
             playsound('sounds/activated_2.mp3')
         elif matchmaking_update[-1] == '0' and truth_table['test_for_server']:
@@ -605,20 +606,18 @@ while True:
             playsound('sounds/done_testing.mp3')
             time_table['warmup_test_timer'] = time.time() + 5
             time_table['freezetime_time'] = time.time() + 5
-            continue
+
         if str_in_list(['Other players failed to connect', 'Failed to ready up'], matchmaking_msg):
             write('\tTook: %s ' % str(timedelta(seconds=int(time.time() - time_table['screenshot_time']))), add_time=False, push=push_urgency + 1)
             write('Game doesnt seem to have started. Continuing to search for a Server!', push=push_urgency + 1, push_now=True)
             playsound('sounds/back_to_testing.mp3')
             mute_csgo(1)
             truth_table['test_for_server'] = True
-            continue
 
     if truth_table['test_for_freezetime']:
         if time.time() - time_table['freezetime_time'] > 2:
             time_table['freezetime_time'] = time.time()
             game_state = {'map_phase': gsi_server.get_info('map', 'phase'), 'round_phase': gsi_server.get_info('round', 'phase')}
-
             if truth_table['first_freezetime']:
                 if game_state['map_phase'] == 'live' and game_state['round_phase'] == 'freezetime':
                     truth_table['first_freezetime'] = False
@@ -650,7 +649,10 @@ while True:
         for i in range(cfg['stop_warmup_ocr'][0], cfg['stop_warmup_ocr'][1]):
             win32api.GetAsyncKeyState(i) & 1
         truth_table['still_in_warmup'] = True
+
         while True:
+            if not push_urgency:
+                time_table['freezetime_time'] = time.time() + 11
             keys = [(win32api.GetAsyncKeyState(i) & 1) for i in range(cfg['stop_warmup_ocr'][0], cfg['stop_warmup_ocr'][1])]
             if any(keys) or not push_urgency:
                 write('Break from warmup-loop')
@@ -659,7 +661,7 @@ while True:
                 truth_table['test_for_warmup'] = False
                 truth_table['first_ocr'] = True
                 truth_table['first_push'] = True
-                time_table['freezetime_time'] = time.time() + 5
+                time_table['freezetime_time'] += 2
                 break
 
             if time.time() - time_table['warmup_test_timer'] >= cfg['warmup_test_interval']:

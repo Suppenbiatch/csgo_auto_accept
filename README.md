@@ -1,12 +1,12 @@
 # csgo_auto_accept
 An Auto-Accept-Script for Counter-Strike Global Offensive
 
-To run one need to clone the repo and have Python 3.X installed.
+To run one needs to clone the repo and have Python 3.X installed.
 Once downloaded run pip install -r requirements.txt in a command-line in the repo folder
 
 After that you'll need to make changes to the config_clean.ini.
+- Change its name to config.ini
 - The "Account 1" section
-	- Change its name to config.ini
 	- Add your Steam ID 64 in "Steam ID"
 
 To use csgostats.gg you'll need to add one of your "Match Token" which will be "CSGO-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX" without '"'
