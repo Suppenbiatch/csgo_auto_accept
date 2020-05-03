@@ -60,13 +60,13 @@ def write(message, add_time: bool = True, push: int = 0, push_now: bool = False,
         overwrite_log.close()
         print(message, end=ending)
 
-        if push >= 3:
-            global note
-            if message:
-                note = note + str(message) + '\n'
-            if push_now:
-                device.push_note('CSGO AUTO ACCEPT', note)
-                note = ''
+    if push >= 3:
+        global note
+        if message:
+            note = note + str(messagestrip('\n\r')) + '\n'
+        if push_now:
+            device.push_note('CSGO AUTO ACCEPT', note)
+            note = ''
 
 
 # noinspection PyShadowingNames
@@ -209,13 +209,17 @@ def UpdateCSGOstats(sharecodes: list, num_completed: int = 1):
     completed_games, not_completed_games, = [], []
     for val in sharecodes:
         response = requests.post('https://csgostats.gg/match/upload/ajax', data={'sharecode': val, 'index': '1'})
+                              
         if response.json()['status'] == 'complete':
             completed_games.append(response.json())
         else:
             not_completed_games.append(response.json())
 
+                                                                                      
     queued_games = [game['data']['queue_pos'] for game in not_completed_games if game['status'] != 'error']
+
     global retrying_games, queue_difference, time_table
+
     current_queue_difference = Avg([last_game[1] - game['data']['queue_pos'] for game in not_completed_games for last_game in retrying_games if last_game[0] == game['data']['sharecode']])
     if current_queue_difference:
         queue_difference.append(current_queue_difference / ((time.time() - time_table['error_check_time']) / 60))
@@ -228,12 +232,18 @@ def UpdateCSGOstats(sharecodes: list, num_completed: int = 1):
             retrying_games = [(str(game['data']['sharecode']), int(game['data']['queue_pos'])) for game in not_completed_games if game['status'] != 'error']
         temp_string = ''
         for i, val in enumerate(queued_games):
-            temp_string += '#' + str(i + 1) + ': in Queue #' + str(val) + '. - '
-        temp_string += str(round(Avg(queue_difference), 1)) + ' matches/min'
+            temp_string += '#' + str(i + 1) + ': in Queue #' + str(val) + ' - '
+        if queue_difference:
+            matches_per_min = round(Avg(queue_difference), 1)
+            temp_string += str(matches_per_min) + ' matches/min - #1 done in ' + str(timedelta(seconds=int((queued_games[0] / matches_per_min)*60)))
+        else:
+            temp_string = temp_string.rstrip(' - ')
         write(temp_string, add_time=False, overwrite='4')
 
     if len(not_completed_games) - len(queued_games) > 0:
         write('An error occurred in %s game[s].' % (len(not_completed_games) - len(queued_games)), add_time=False)
+                                  
+                                       
         retrying_games.append([(str(game['data']['sharecode']), 0) for game in not_completed_games if game['status'] == 'error'])
 
     if completed_games:
@@ -243,7 +253,7 @@ def UpdateCSGOstats(sharecodes: list, num_completed: int = 1):
             info = ' '.join(i['data']['msg'].replace('-', '').replace('<br />', '. ').split('<')[0].rstrip(' ').split())
             write('Sharecode: %s' % sharecode, add_time=False, push=push_urgency)
             write('URL: %s' % game_url, add_time=False, push=push_urgency)
-            write('Status: %s.' % info, add_time=False, push=push_urgency)
+            write('Status: %s.' % info, add_time=True, push=push_urgency)
             pyperclip.copy(game_url)
         write(None, add_time=False, push=push_urgency, push_now=True, output=False)
 
@@ -473,6 +483,7 @@ while True:
                 truth_table['test_for_warmup'] = True
                 playsound('sounds/done_testing.mp3')
                 time_table['warmup_test_timer'] = time.time() + 5
+                continue
 
             if any([searching, not_searching]):
                 write('Took: %s ' % str(timedelta(seconds=int(time.time() - time_table['screenshot_time']))), add_time=False, push=push_urgency + 1)
@@ -480,6 +491,7 @@ while True:
                 playsound('sounds/back_to_testing.mp3')
                 truth_table['test_for_success'] = False
                 truth_table['test_for_live_game'] = True
+                continue
 
         else:
             write('40 Seconds after accept, did not find loading map nor searching queue')
@@ -491,8 +503,10 @@ while True:
             img.save(os.path.expanduser('~') + '\\Unknown Error.png')
 
     if truth_table['test_for_warmup']:
+
         for i in range(112, 113):  # 136
             win32api.GetAsyncKeyState(i) & 1
+        truth_table['test_for_live_game'] = False
         while True:
             keys = []
             for i in range(112, 113):
@@ -519,7 +533,7 @@ while True:
                             truth_table['first_ocr'] = False
 
                     except ValueError:
-                        time_left = push_times[0] + 1
+                        continue
 
                     time_left_data = timedelta(seconds=int(time.time() - time_table['screenshot_time'])), time.strftime('%H:%M:%S', time.gmtime(abs((join_warmup_time - time_left) - (time.time() - time_table['screenshot_time'])))), img_text
                     write('Time since start: %s - Time Difference: %s - Time left: %s' % (time_left_data[0], time_left_data[1], time_left_data[2]), add_time=False, overwrite='1')
@@ -528,7 +542,7 @@ while True:
 
                     if time_left <= push_times[push_counter]:
                         push_counter += 1
-                        write('Time since start: %s\nTime Difference: %s\nTime left: %s' % (time_left_data[0], time_left_data[1], time_left_data[2]), push=push_urgency + 1, output=False, push_now=True)
+                        write('Time since start: %s\nTime Difference: %s\nTime left: %s' % (time_left_data[0], time_left_data[1], time_left_data[2]), push=push_urgency + 1, push_now=True, output=False)
 
                     if truth_table['first_push']:
                         if abs((join_warmup_time - time_left) - (time.time() - time_table['screenshot_time'])) >= 5:
