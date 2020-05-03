@@ -34,12 +34,11 @@ def write(message, add_time: bool = True, push: int = 0, push_now: bool = False,
         message = str(message)
         if add_time:
             message = datetime.now().strftime('%H:%M:%S') + ': ' + message
-        overwrite_log = open(appdata_path + '\\overwrite_log.txt', 'rb+')
-        splits = b''.join(overwrite_log.readlines()).split(b'**')
+        global last_printed_line
+        splits = last_printed_line.split(b'**')
         last_key = splits[0]
         last_string = splits[1].strip(b'\n\r')
         last_end = splits[-1]
-
         if overwrite != '0':
             ending = console_window['suffix']
             if last_key == overwrite.encode():
@@ -54,16 +53,13 @@ def write(message, add_time: bool = True, push: int = 0, push_now: bool = False,
             if last_end != b'\n':
                 message = '\n' + message
 
-        overwrite_log.seek(0)
-        overwrite_log.truncate()
-        overwrite_log.write((overwrite + '**' + message + '**' + ending).encode())
-        overwrite_log.close()
+        last_printed_line = (overwrite + '**' + message + '**' + ending).encode()
         print(message, end=ending)
 
     if push >= 3:
         global note
         if message:
-            note = note + str(messagestrip('\n\r')) + '\n'
+            note = note + str(message.strip('\n\r')) + '\n'
         if push_now:
             device.push_note('CSGO AUTO ACCEPT', note)
             note = ''
@@ -142,8 +138,8 @@ def getAccountsFromCfg():
 
 
 # noinspection PyShadowingNames
-def getOldSharecodes(num: int = -1):
-    if num >= 0:
+def getOldSharecodes(last_x: int = -1, from_x: str = ''):
+    if last_x >= 0:
         return []
     try:
         last_game = open(appdata_path+'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'r')
@@ -160,7 +156,12 @@ def getOldSharecodes(num: int = -1):
         games[i] = 'CSGO' + val.strip('\n').split('CSGO')[1]
         last_game.write(games[i] + '\n')
     last_game.close()
-    return games[num:]
+    if from_x:
+        try:
+            return games[(len(games) - games.index(from_x)) * -1:]
+        except ValueError:
+            return []
+    return games[last_x:]
 
 
 # noinspection PyShadowingNames
@@ -175,79 +176,87 @@ def getNewCSGOSharecodes(game_id: str):
             next_code = (requests.get(steam_url).json()['result']['nextcode'])
         except KeyError:
             write('WRONG Match Token, Authentication Code or Steam ID ')
-            return [game_id]
+            return [{'sharecode': game_id, 'queue_pos': None}]
 
         if next_code:
             if next_code != 'n/a':
                 sharecodes.append(next_code)
                 game_id = next_code
                 last_game.write(next_code + '\n')
-    if sharecodes:
-        return sharecodes
-    else:
-        return [game_id]
-
-
-def getAllQueuedGames():
-    num = -1
-    getNewCSGOSharecodes(getOldSharecodes()[0])
-    sharecode = getOldSharecodes()
-    while True:
-        response = requests.post('https://csgostats.gg/match/upload/ajax', data={'sharecode': sharecode, 'index': '1'})
-        if response.json()['status'] != 'complete':
-            num -= 1
-            try:
-                sharecode = getOldSharecodes(num)[0]
-            except IndexError:
-                return num+1
-        else:
-            return num+1
+    last_game.close()
+    test = [{'sharecode': code, 'queue_pos': None} for code in sharecodes]
+    return test
 
 
 # noinspection PyShadowingNames
-def UpdateCSGOstats(sharecodes: list, num_completed: int = 1):
-    completed_games, not_completed_games, = [], []
-    for val in sharecodes:
-        response = requests.post('https://csgostats.gg/match/upload/ajax', data={'sharecode': val, 'index': '1'})
-                              
-        if response.json()['status'] == 'complete':
-            completed_games.append(response.json())
+def UpdateCSGOstats(repeater=None, get_all_games=False):
+    all_games, completed_games, not_completed_games, = [], [], []
+
+    if repeater is None:
+        repeater = []
+    if repeater:
+        if get_all_games:
+            sharecodes = [getOldSharecodes(from_x=code['sharecode']) for code in repeater]
+            sharecodes = max(sharecodes, key=len)
         else:
-            not_completed_games.append(response.json())
+            sharecodes = [code['sharecode'] for code in repeater]
+        all_games = [requests.post('https://csgostats.gg/match/upload/ajax', data={'sharecode': sharecode, 'index': '1'}).json() for sharecode in sharecodes]
+    else:
+        num = -1
+        sharecode = getOldSharecodes(num)[0]
+        while True:
+            response = requests.post('https://csgostats.gg/match/upload/ajax', data={'sharecode': sharecode, 'index': '1'})
+            all_games.append(response.json())
+            if response.json()['status'] != 'complete':
+                num -= 1
+                try:
+                    sharecode = getOldSharecodes(num)[0]
+                except IndexError:
+                    break
+            else:
+                break
+        temp_games = [{'sharecode': game['data']['sharecode']} for game in all_games if game['status'] != 'complete']
+        if temp_games and len(all_games) > 1:
+            all_games = all_games[:-1]
 
-                                                                                      
-    queued_games = [game['data']['queue_pos'] for game in not_completed_games if game['status'] != 'error']
+    for game in all_games:
+        if game['status'] == 'complete':
+            completed_games.append(game)
+        else:
+            not_completed_games.append(game)
 
-    global retrying_games, queue_difference, time_table
+    queued_games = [{'sharecode': game['data']['sharecode'], 'queue_pos': game['data']['queue_pos']} for game in not_completed_games if game['status'] != 'error']
+    corrupt_games = [{'sharecode': game['data']['sharecode'], 'queue_pos': game['data']['queue_pos']} for game in not_completed_games if game['status'] == 'error']
 
-    current_queue_difference = Avg([last_game[1] - game['data']['queue_pos'] for game in not_completed_games for last_game in retrying_games if last_game[0] == game['data']['sharecode']])
-    if current_queue_difference:
-        queue_difference.append(current_queue_difference / ((time.time() - time_table['error_check_time']) / 60))
-        queue_difference = queue_difference[-10:]
-    time_table['error_check_time'] = time.time()
-    retrying_games = []
-
+    global queue_difference, time_table
     if queued_games:
-        if queued_games[0] < cfg['max_queue_position']:
-            retrying_games = [(str(game['data']['sharecode']), int(game['data']['queue_pos'])) for game in not_completed_games if game['status'] != 'error']
         temp_string = ''
         for i, val in enumerate(queued_games):
-            temp_string += '#' + str(i + 1) + ': in Queue #' + str(val) + ' - '
-        if queue_difference:
+            temp_string += '#' + str(i + 1) + ': in Queue #' + str(val['queue_pos']) + ' - '
+
+        if repeater:
+            current_queue_difference = Avg([last_game['queue_pos'] - game['queue_pos'] for game in queued_games for last_game in repeater if last_game['sharecode'] == game['sharecode'] and last_game['queue_pos'] is not None])
+            if current_queue_difference:
+                queue_difference.append(current_queue_difference / ((time.time() - time_table['time_since_retry']) / 60))
+                queue_difference = queue_difference[-10:]
             matches_per_min = round(Avg(queue_difference), 1)
-            temp_string += str(matches_per_min) + ' matches/min - #1 done in ' + str(timedelta(seconds=int((queued_games[0] / matches_per_min)*60)))
-        else:
-            temp_string = temp_string.rstrip(' - ')
+            if isinstance(matches_per_min, float):
+                time_till_done = str(timedelta(seconds=int((queued_games[0]['queue_pos'] / matches_per_min) * 60)))
+            else:
+                time_till_done = '∞:∞:∞'
+            temp_string += str(matches_per_min) + ' matches/min - #1 done in ' + time_till_done
+        temp_string = temp_string.rstrip(' - ')
         write(temp_string, add_time=False, overwrite='4')
 
-    if len(not_completed_games) - len(queued_games) > 0:
-        write('An error occurred in %s game[s].' % (len(not_completed_games) - len(queued_games)), add_time=False)
-                                  
-                                       
-        retrying_games.append([(str(game['data']['sharecode']), 0) for game in not_completed_games if game['status'] == 'error'])
+    time_table['time_since_retry'] = time.time()
+    repeater = [game for game in queued_games if game['queue_pos'] < cfg['max_queue_position']]
+    repeater.extend([game for game in corrupt_games])
+
+    if corrupt_games:
+        write('An error occurred in %s game[s].' % len(corrupt_games), overwrite='5')
 
     if completed_games:
-        for i in completed_games[num_completed * - 1:]:
+        for i in completed_games:
             sharecode = i['data']['sharecode']
             game_url = i['data']['url']
             info = ' '.join(i['data']['msg'].replace('-', '').replace('<br />', '. ').split('<')[0].rstrip(' ').split())
@@ -256,6 +265,7 @@ def UpdateCSGOstats(sharecodes: list, num_completed: int = 1):
             write('Status: %s.' % info, add_time=True, push=push_urgency)
             pyperclip.copy(game_url)
         write(None, add_time=False, push=push_urgency, push_now=True, output=False)
+    return repeater
 
 
 # noinspection PyShadowingNames,PyUnusedLocal
@@ -288,7 +298,7 @@ def Image_to_Text(image: Image, size: tuple, white_threshold: tuple, arg: str = 
 def getCfgData():
     try:
         get_cfg = {'activate_script': int(config.get('HotKeys', 'Activate Script'), 16), 'activate_push_notification': int(config.get('HotKeys', 'Activate Push Notification'), 16),
-                   'info_newest_match': int(config.get('HotKeys', 'Get Info on newest Match'), 16), 'info_multiple_matches': int(config.get('HotKeys', 'Get Info on multiple Matches'), 16),
+                   'info_newest_match': int(config.get('HotKeys', 'Get Info on newest Match'), 16),
                    'open_live_tab': int(config.get('HotKeys', 'Live Tab Key'), 16), 'switch_accounts': int(config.get('HotKeys', 'Switch accounts for csgostats.gg'), 16),
                    'end_script': int(config.get('HotKeys', 'End Script'), 16),
                    'screenshot_interval': config.getint('Screenshot', 'Interval'), 'debug_path': config.get('Screenshot', 'Debug Path'), 'steam_api_key': config.get('csgostats.gg', 'API Key'),
@@ -298,7 +308,7 @@ def getCfgData():
                    'tesseract_path': config.get('Warmup', 'Tesseract Path'), 'warmup_test_interval': config.getint('Warmup', 'Test Interval'), 'warmup_push_interval': config.get('Warmup', 'Push Interval'),
                    'warmup_no_text_limit': config.getint('Warmup', 'No Text Limit')}
         return get_cfg
-        # 'imgur_id': config.get('Imgur', 'Client ID'), 'imgur_secret': config.get('Imgur', 'Client Secret'), 'stop_warmup_ocr': int(config.get('HotKeys', 'Stop Warmup OCR'), 16),
+        # 'imgur_id': config.get('Imgur', 'Client ID'), 'imgur_secret': config.get('Imgur', 'Client Secret'), 'stop_warmup_ocr': int(config.get('HotKeys', 'Stop Warmup OCR'), 16), 'info_multiple_matches': int(config.get('HotKeys', 'Get Info on multiple Matches'), 16),
     except (configparser.NoOptionError, configparser.NoSectionError, ValueError):
         write('ERROR IN CONFIG')
         exit('CHECK FOR NEW CONFIG')
@@ -310,15 +320,12 @@ try:
     os.mkdir(appdata_path)
 except FileExistsError:
     pass
-overwrite_log = open(appdata_path+'\\overwrite_log.txt', 'wb')
-overwrite_log.write('0**\n'.encode())
-overwrite_log.close()
+last_printed_line = b'0**\n'
 console_window = {}
 if not sys.stdout.isatty():
     console_window = {'prefix': '\r', 'suffix': '', 'isatty': False}
 else:
     console_window = {'prefix': '', 'suffix': '\r', 'isatty': True}
-
 
 # CONFIG HANDLING
 config = configparser.ConfigParser()
@@ -334,12 +341,13 @@ getAccountsFromCfg()
 screen_width, screen_height = win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1)
 toplist, winlist = [], []
 hwnd = 0
+
 # BOOLEAN, TIME INITIALIZATION
 truth_table = {'test_for_live_game': False, 'test_for_success': False, 'test_for_warmup': False, 'first_ocr': True, 'testing': False, 'debugging': False, 'first_push': True}
-time_table = {'screenshot_time': time.time(), 'error_check_time': time.time(), 'warmup_test_timer': time.time(), 'time_searching': time.time()}
+time_table = {'screenshot_time': time.time(), 'time_since_retry': time.time(), 'warmup_test_timer': time.time(), 'time_searching': time.time()}
 
 # csgostats.gg VAR
-retrying_games, queue_difference = [], []
+retryer = []
 
 # WARMUP DETECTION SETUP
 pytesseract.pytesseract.tesseract_cmd = cfg['tesseract_path']
@@ -372,7 +380,7 @@ while True:
                 device = pushbullet.PushBullet(cfg['pushbullet_api_key']).get_device(cfg['pushbullet_device_name'])
             except (pushbullet.errors.PushbulletError, pushbullet.errors.InvalidKeyError):
                 write('Pushbullet is wrongly configured.\nWrong API Key or DeviceName in config.ini')
-        else:
+        if device:
             push_urgency += 1
             if push_urgency > 3:
                 push_urgency = 0
@@ -382,17 +390,10 @@ while True:
     if win32api.GetAsyncKeyState(cfg['info_newest_match']) & 1:  # F7 Key (UPLOAD NEWEST MATCH)
         write('Uploading / Getting status on newest match')
         queue_difference = []
-        sharecodes = [i[0] for i in retrying_games] + getOldSharecodes(getAllQueuedGames())
-        sharecodes = sorted(set(sharecodes), key=lambda x: sharecodes.index(x))
-        if not sharecodes:
-            sharecodes = getOldSharecodes()
-        UpdateCSGOstats(sharecodes, num_completed=len(sharecodes))
-
-    if win32api.GetAsyncKeyState(cfg['info_multiple_matches']) & 1:  # F6 Key (GET INFO ON LAST X MATCHES)
-        write('Getting Info from last %s matches' % cfg['last_x_matches'])
-        queue_difference = []
-        getNewCSGOSharecodes(getOldSharecodes()[0])
-        UpdateCSGOstats(getOldSharecodes(num=cfg['last_x_matches'] * -1), num_completed=cfg['completed_matches'])
+        new_sharecodes = getNewCSGOSharecodes(getOldSharecodes(-1)[0])
+        for new_code in new_sharecodes:
+            retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
+        retryer = UpdateCSGOstats(retryer, get_all_games=True)
 
     if win32api.GetAsyncKeyState(cfg['open_live_tab']) & 1:  # F13 Key (OPEN WEB BROWSER ON LIVE GAME TAB)
         win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
@@ -411,10 +412,9 @@ while True:
         write('Exiting Script')
         break
 
-    if retrying_games:
-        if time.time() - time_table['error_check_time'] > cfg['auto_retry_interval']:
-            temp_list = [i[0] for i in retrying_games]
-            UpdateCSGOstats(temp_list, num_completed=len(temp_list))
+    if retryer:
+        if time.time() - time_table['time_since_retry'] > cfg['auto_retry_interval']:
+            retryer = UpdateCSGOstats(retryer)
 
     winlist = []
     win32gui.EnumWindows(enum_cb, toplist)
@@ -496,10 +496,14 @@ while True:
         else:
             write('40 Seconds after accept, did not find loading map nor searching queue')
             truth_table['test_for_success'] = False
+            # noinspection PyUnboundLocalVariable
             print(success_avg)
+            # noinspection PyUnboundLocalVariable
             print(searching_avg)
+            # noinspection PyUnboundLocalVariable
             print(not_searching_avg)
             playsound('sounds/fail.mp3')
+            # noinspection PyUnboundLocalVariable
             img.save(os.path.expanduser('~') + '\\Unknown Error.png')
 
     if truth_table['test_for_warmup']:
@@ -532,7 +536,7 @@ while True:
                             time_table['screenshot_time'] = time.time()
                             truth_table['first_ocr'] = False
 
-                    except ValueError:
+                    except (ValueError, IndexError):
                         continue
 
                     time_left_data = timedelta(seconds=int(time.time() - time_table['screenshot_time'])), time.strftime('%H:%M:%S', time.gmtime(abs((join_warmup_time - time_left) - (time.time() - time_table['screenshot_time'])))), img_text
@@ -547,7 +551,7 @@ while True:
                     if truth_table['first_push']:
                         if abs((join_warmup_time - time_left) - (time.time() - time_table['screenshot_time'])) >= 5:
                             truth_table['first_push'] = False
-                            write('Match should start in ' + str(time_left) + 'seconds, All players have connected', push=push_urgency + 2, push_now=True)
+                            write('Match should start in ' + str(time_left) + ' seconds, All players have connected', push=push_urgency + 2, push_now=True)
 
                 else:
                     no_text_found += 1
@@ -569,5 +573,7 @@ while True:
                 truth_table['first_push'] = True
                 write('Did not find any warmup text.', push=push_urgency + 2, push_now=True)
                 break
-
+if console_window['isatty']:
+    if last_printed_line.split(b'**')[-1] != b'\n':
+        print('')
 exit('ENDED BY USER')
