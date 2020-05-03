@@ -30,6 +30,11 @@ def enum_cb(hwnd, results):
     winlist.append((hwnd, win32gui.GetWindowText(hwnd)))
 
 
+def mute_csgo(lvl: int):
+    os.system(mute_csgo_path + str(lvl))
+
+
+
 # noinspection PyShadowingNames
 def write(message, add_time: bool = True, push: int = 0, push_now: bool = False, output: bool = True, overwrite: str = '0'):
     if output:
@@ -117,6 +122,7 @@ def getScreenShot(window_id: int, area: tuple = (0, 0, 0, 0)):
     for i, val in enumerate(area, start=0):
         scaled_area[i] = scaled_area[i] * val
     scaled_area = list(map(int, scaled_area))
+    # time.sleep(0.001)
     image = ImageGrab.grab(scaled_area)
     return image
 
@@ -259,7 +265,7 @@ def UpdateCSGOstats(repeater=None, get_all_games=False):
             not_completed_games.append(game)
 
     queued_games = [{'sharecode': game['data']['sharecode'], 'queue_pos': game['data']['queue_pos']} for game in not_completed_games if game['status'] != 'error']
-    corrupt_games = [{'sharecode': game['data']['sharecode'], 'queue_pos': game['data']['queue_pos']} for game in not_completed_games if game['status'] == 'error']
+    corrupt_games = [{'sharecode': game['data']['sharecode'], 'queue_pos': None} for game in not_completed_games if game['status'] == 'error']
 
     global queue_difference, time_table
     if queued_games:
@@ -315,7 +321,8 @@ def Image_to_Text(image: Image, size: tuple, white_threshold: tuple, arg: str = 
     temp_image.putdata(pixel_map)
     try:
         image_text = pytesseract.image_to_string(temp_image, timeout=0.3, config=arg)
-    except RuntimeError as timeout_error:
+    except RuntimeError:
+        # as timeout_error:
         pass
     if image_text:
         image_text = ' '.join(image_text.replace(': ', ':').split())
@@ -325,7 +332,7 @@ def Image_to_Text(image: Image, size: tuple, white_threshold: tuple, arg: str = 
             temp_image.save(str(cfg['debug_path']) + '\\' + datetime.now().strftime('%H-%M-%S') + '_' + image_text.replace(':', '-') + '_temp.png', format='PNG')
         return image_text
     else:
-        return False
+        return ''
 
 
 def getCfgData():
@@ -334,7 +341,7 @@ def getCfgData():
                    'info_newest_match': int(config.get('HotKeys', 'Get Info on newest Match'), 16),
                    'open_live_tab': int(config.get('HotKeys', 'Live Tab Key'), 16), 'switch_accounts': int(config.get('HotKeys', 'Switch accounts for csgostats.gg'), 16),
                    'end_script': int(config.get('HotKeys', 'End Script'), 16), 'stop_warmup_ocr': config.get('HotKeys', 'Stop Warmup OCR'),
-                   'screenshot_interval': config.getint('Screenshot', 'Interval'), 'timeout_time': config.getint('Screenshot', 'Timeout Time'), 'debug_path': config.get('Screenshot', 'Debug Path'), 'steam_api_key': config.get('csgostats.gg', 'API Key'),
+                   'screenshot_interval': float(config.get('Screenshot', 'Interval')), 'timeout_time': config.getint('Screenshot', 'Timeout Time'), 'debug_path': config.get('Screenshot', 'Debug Path'), 'steam_api_key': config.get('csgostats.gg', 'API Key'),
                    'max_queue_position': config.getint('csgostats.gg', 'Auto-Retrying for queue position below'),
                    'auto_retry_interval': config.getint('csgostats.gg', 'Auto-Retrying-Interval'), 'pushbullet_device_name': config.get('Pushbullet', 'Device Name'), 'pushbullet_api_key': config.get('Pushbullet', 'API Key'),
                    'tesseract_path': config.get('Warmup', 'Tesseract Path'), 'warmup_test_interval': config.getint('Warmup', 'Test Interval'), 'warmup_push_interval': config.get('Warmup', 'Push Interval'),
@@ -379,6 +386,7 @@ with open(csgo_path + 'console_log.log', 'w') as log:
     log.write('')
 with open(cfg['debug_path'] + '\\console.log', 'w') as debug_log:
     debug_log.write('')
+
 # INITIALIZATION FOR getScreenShot
 screen_width, screen_height = win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1)
 hwnd = 0
@@ -394,9 +402,8 @@ retryer = []
 
 # WARMUP DETECTION SETUP
 pytesseract.pytesseract.tesseract_cmd = cfg['tesseract_path']
-push_times, no_text_found, push_counter = [], 0, 0
-for i in cfg['warmup_push_interval'].split(','):
-    push_times.append(int(i))
+no_text_found, push_counter = 0, 0
+push_times = [int(i) for i in cfg['warmup_push_interval'].split(',')]
 push_times.sort(reverse=True)
 join_warmup_time = push_times[0] + 1
 
@@ -404,10 +411,12 @@ join_warmup_time = push_times[0] + 1
 note = ''
 push_urgency = 0
 
-print(re.sub(inverted_warmup_time, "", 'WARMUP'))
+# MUTE CSGO PATH
+mute_csgo_path = '"' + os.getcwd() + '\\sounds\\nircmdc.exe" muteappvolume csgo.exe '
 
 write('READY')
 write('Current account is: %s\n' % accounts[current_account]['name'], add_time=False)
+
 
 while True:
     if win32api.GetAsyncKeyState(cfg['activate_script']) & 1:  # F9 (ACTIVATE / DEACTIVATE SCRIPT)
@@ -416,8 +425,10 @@ while True:
         if truth_table['test_for_server']:
             playsound('sounds/activated_2.mp3')
             time_table['time_searching'] = time.time()
+            mute_csgo(1)
         else:
             playsound('sounds/deactivated.mp3')
+            mute_csgo(0)
 
     if win32api.GetAsyncKeyState(cfg['activate_push_notification']) & 1:  # F8 (ACTIVATE / DEACTIVATE PUSH NOTIFICATION)
         if not device:
@@ -461,7 +472,6 @@ while True:
     if retryer:
         if time.time() - time_table['time_since_retry'] > cfg['auto_retry_interval']:
             retryer = UpdateCSGOstats(retryer)
-
     winlist = []
     win32gui.EnumWindows(enum_cb, toplist)
     csgo = [(hwnd, title) for hwnd, title in winlist if 'counter-strike: global offensive' in title.lower()]
@@ -471,7 +481,8 @@ while True:
 
     # TESTING HERE
     if win32api.GetAsyncKeyState(0x6F) & 1:  # UNBOUND, TEST CODE
-        truth_table['debugging'] = not truth_table['debugging']
+        # truth_table['debugging'] = not truth_table['debugging']
+        truth_table['test_for_warmup'] = not truth_table['test_for_warmup']
         write('DEBUGGING: %s\n' % truth_table['debugging'])
 
     if truth_table['testing']:
@@ -485,20 +496,21 @@ while True:
             time_table['searching_cc'] = time.time()
             continue
         with open(csgo_path + 'console_log.log', 'rb+') as log:
-            game_start = [line.decode('utf-8', 'ignore').encode("utf-8").rstrip(b'\n\r').decode() for line in log.readlines()]
-            with open(cfg['debug_path'] + '\\console.log', 'a') as debug_log:
-                for i in game_start:
-                    debug_log.write(i + '\n')
+            log_lines = log.readlines()
+            game_start = [line.decode('utf-8', 'ignore').encode("utf-8").rstrip(b'\n\r').decode() for line in log_lines]
             log.seek(0)
             log.truncate()
+        with open(cfg['debug_path'] + '\\console.log', 'ab') as debug_log:
+            [debug_log.write(i) for i in log_lines]
         start = time.time_ns()
         server_ready = any([bool(re.match(match_server_ready, i)) for i in game_start])
         if server_ready:
             test_for_accept_counter = 0
+            write('Server found, starting to look for accept button')
             truth_table['test_for_accept_button'] = True
             # truth_table['test_for_server'] = False
             playsound('sounds/server_found.mp3')
-            write('Server found, starting to look for accept button')
+            win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
     else:
         if time.time() - time_table['not_searching_cc'] > 20:
             time_table['not_searching_cc'] = time.time()
@@ -513,6 +525,7 @@ while True:
         if not img:
             continue
         accept_avg = color_average(img, [(76, 176, 80), (89, 203, 94)])
+        mute_csgo(0)
         if relate_list(accept_avg, [(2, 2, 2), (2, 2, 2)]):
             write('Trying to Accept', push=push_urgency + 1)
 
@@ -529,9 +542,10 @@ while True:
             playsound('sounds/accept_found.mp3')
             time_table['screenshot_time'] = time.time()
         test_for_accept_counter += 1
-        if test_for_accept_counter > cfg['timeout_attempts']:
-            write('NO ACCEPT BUTTON FOUND AFTER 10 seconds')
-            write('Continuing to HELP')
+        if test_for_accept_counter > cfg['timeout_time']:
+            write('NO ACCEPT BUTTON FOUND AFTER %s seconds.' % str(cfg['timeout_time']*cfg['screenshot_interval']))
+            write('Continuing to look for ready server.')
+            mute_csgo(1)
             truth_table['test_for_accept_button'] = False
 
     if truth_table['test_for_success']:
@@ -559,7 +573,7 @@ while True:
 
             if any([searching, not_searching]):
                 write('\tTook: %s ' % str(timedelta(seconds=int(time.time() - time_table['screenshot_time']))), add_time=False, push=push_urgency + 1)
-                write('Game doesnt seem to have started. Continuing to search for accept Button!', push=push_urgency + 1, push_now=True)
+                write('Game doesnt seem to have started. Continuing to search for a Server!', push=push_urgency + 1, push_now=True)
                 playsound('sounds/back_to_testing.mp3')
                 truth_table['test_for_success'] = False
                 truth_table['test_for_server'] = True
@@ -576,7 +590,7 @@ while True:
             print(not_searching_avg)
             playsound('sounds/fail.mp3')
             # noinspection PyUnboundLocalVariable
-            img.save(os.path.expanduser('~') + '\\Unknown Error.png')
+            img.save(cfg['debug_path'] + '\\Unknown Error.png')
 
     if truth_table['test_for_warmup']:
 
@@ -598,7 +612,7 @@ while True:
                 time_table['warmup_test_timer'] = time.time()
                 time_left = re.sub(inverted_warmup_time, "", img_text)
                 if time_left:
-                    time_left = img_text.split()[-1].split(':')
+                    time_left = time_left.split()[-1].split(':')
                     # write(img_text, add_time=False)
                     try:
                         time_left = int(time_left[0]) * 60 + int(time_left[1])
