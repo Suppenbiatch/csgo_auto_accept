@@ -1,4 +1,6 @@
+pyperclip
+requests
 pywin32
 Pillow
 playsound
-pushbullet
+pushbullet.py
