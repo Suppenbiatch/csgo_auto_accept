@@ -16,7 +16,7 @@ Both can be found at https://help.steampowered.com/en/wizard/HelpWithGameIssue/?
 	- Access to Your Match History
 	- Your most recently completed match token:
 - And
-	-Authentication Code:
+	- Authentication Code:
 
 - "Account 2" can be used to add more then one account
 - As many accounts as needed can be added ("Account 3" and so on)
