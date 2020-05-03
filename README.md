@@ -12,14 +12,14 @@ After that you'll need to make changes to the config_clean.ini.
 To use csgostats.gg you'll need to add one of your "Match Token" which will be "CSGO-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX" without '"'
 The Authentication Code is used to make a request to the Steam API which will return the next sharecode. Authentication Code will be something like "XXXX-XXXX-XXXX"
 Both can be found at https://help.steampowered.com/en/wizard/HelpWithGameIssue/?appid=730&issueid=128
-under
-- Access to Your Match History
-- Your most recently completed match token:
-And
-- Authentication Code:
+-under
+	-Access to Your Match History
+	-Your most recently completed match token:
+-And
+	-Authentication Code:
 
 - "Account 2" can be used to add more then one account
-- As many accounts as needed can be added
+- As many accounts as needed can be added ("Account 3" and so on)
 
 - The csgostats.gg section:
 	- A Steam API Key must be added here
@@ -43,14 +43,14 @@ And
 	- Debug Path currently stores a mirrored console.log
 	
 - The Warmup section:
-	-Tessract can be found https://github.com/UB-Mannheim/tesseract/wiki
-	-Direct download link here: https://digi.bib.uni-mannheim.de/tesseract/tesseract-ocr-w64-setup-v5.0.0-alpha.20200328.exe
-	-Tesseract Path is the full path to the executable without '"'
-	-Test Interval is the interval in seconds that the script tries to read the text on the screenshot
-	-Push Interval is the time in seconds that needs to be left for the Script to push a message
-	-No Text Limit is the number of retries the Script has before it dosent will no longer retry
+	- Tessract can be found https://github.com/UB-Mannheim/tesseract/wiki
+	- Direct download link here: https://digi.bib.uni-mannheim.de/tesseract/tesseract-ocr-w64-setup-v5.0.0-alpha.20200328.exe
+	- Tesseract Path is the full path to the executable without '"'
+	- Test Interval is the interval in seconds that the script tries to read the text on the screenshot
+	- Push Interval is the time in seconds that needs to be left for the Script to push a message
+	- No Text Limit is the number of retries the Script has before it dosent will no longer retry
 	
-	-Warmup Detection will only be activated if Pushing is not 0.
-	-Pushing 1: Pushing when accpet has been pressed and when Warmup is over
-	-Pushing 2: Pushing all gamerelated messages, and at every Push Interval
-	-Pushing 3: Pushing all gamerelated messages, as well as csgostats.gg completed matches
+	- Warmup Detection will only be activated if Pushing is not 0.
+		- Pushing 1: Pushing when accpet has been pressed and when Warmup is over
+		- Pushing 2: Pushing all gamerelated messages, and at every Push Interval
+		- Pushing 3: Pushing all gamerelated messages, as well as csgostats.gg completed matches
