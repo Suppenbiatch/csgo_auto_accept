@@ -37,7 +37,6 @@ Both can be found at https://help.steampowered.com/en/wizard/HelpWithGameIssue/?
 	
 - The Screenshot section:
 	- Interval is the Interval a screenshot is taken in seconds
-	- Timeout Time isnt used currently
 	- Log Color is the color the damage log is shown in the top right of csgo (Standart here is lime green)
 	- FreezeTime Auto On is whether or not the sound should be played or not when the game is minimized and a freezetime is starting
 	- Debug Path currently stores a mirrored console.log
