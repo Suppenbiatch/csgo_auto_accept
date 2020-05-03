@@ -1,0 +1,5 @@
+# Default ignored files
+/venv/
+/.idea/
+/__pycache__/
+basics.py
