@@ -31,7 +31,7 @@ def write(message, add_time=True, push=0, push_now=False):
             m = message
         print(m)
 
-    if push >= 2:
+    if push >= 3:
         global note
         if message:
             note = note + m + "\n"
@@ -136,15 +136,17 @@ def getNewCSGOMatches(game_id):
 
 def UpdateCSGOstats(sharecodes):
     if any(sharecodes):
-        for i in sharecodes:
-            write('Added Sharecode: %s' % i, push=push_urgency)
-            response = requests.post("https://csgostats.gg/match/upload/ajax", data={'sharecode': i, 'index': '1'})
+        game_urls = []
+        for i, val in enumerate(sharecodes):
+            write('Sharecode: %s' % val, push=push_urgency)
+            response = requests.post("https://csgostats.gg/match/upload/ajax", data={'sharecode': val, 'index': '1'})
             info = response.json()["data"]["msg"].split("<")[0].replace('-', '').rstrip(" ")
-            game_url = response.json()["data"]["url"]
-            write("URL: %s" % game_url, add_time=False, push=push_urgency)
-            write("Game %s." % info, add_time=False, push=push_urgency)
+            game_urls.append(response.json()["data"]["url"])
+            write("URL: %s" % game_urls[i], add_time=False, push=push_urgency)
+            write("Status: %s." % info, add_time=False, push=push_urgency)
             # print(response.json())
         write(None, add_time=False, push=push_urgency, push_now=True)
+        return game_urls
 
 
 def getHotKeys():
@@ -156,6 +158,7 @@ def getHotKeys():
     getKeys.append(int(config.get("HotKeys", "Get Info on multiple Matches"), 16))
     getKeys.append(int(config.get("HotKeys", "Live Tab Key"), 16))
     getKeys.append(int(config.get("HotKeys", "End Script"), 16))
+    getKeys.append(int(config.get("Screenshot", "Interval"), 16))
     return getKeys
 
 
@@ -202,22 +205,23 @@ while True:
                 write("Pushbullet is wrongly configured.\nWrong API Key or DeviceName in config.ini")
         if device:
             push_urgency += 1
-            if push_urgency > 2:
+            if push_urgency > 3:
                 push_urgency = 0
-            push_info = ["not active", "little information", "all information"]
+            push_info = ["not active", "only if accepted", "all game status related information", "all information (game Status/csgostats.gg information)"]
             write("Pushing: %s" % push_info[push_urgency])
 
     if win32api.GetAsyncKeyState(keys[2]) & 1:  # F7 Key (UPLOAD NEWEST MATCH)
         newest_match = getNewCSGOMatches(getOldSharecodes()[0])
         if newest_match:
-            pyperclip.copy(newest_match[0])
-            UpdateCSGOstats(newest_match)
+            pyperclip.copy(UpdateCSGOstats(newest_match)[-1])
+            # UpdateCSGOstats(newest_match)
 
     if win32api.GetAsyncKeyState(keys[3]) & 1:  # F6 Key (GET INFO ON NEWEST MATCH)
-        UpdateCSGOstats(getOldSharecodes())
+        pyperclip.copy(UpdateCSGOstats(getOldSharecodes())[-1])
 
     if win32api.GetAsyncKeyState(keys[4]) & 1:  # F5 Key (GET INFO ON LAST X MATCHES)
         last_x_matches = config.getint("csgostats.gg", "Get Info from")
+        write("Getting Info from last %s matches" % last_x_matches)
         UpdateCSGOstats(getOldSharecodes(num=last_x_matches * -1))
 
     if win32api.GetAsyncKeyState(keys[5]) & 1:  # F13 Key (OPEN WEB BROWSER ON LIVE GAME TAB)
@@ -253,7 +257,7 @@ while True:
     # TESTING ENDS HERE
 
     if test_for_live_game:
-        if time() - start_time < 4:
+        if time() - start_time < keys[-1]:
             continue
         start_time = time()
         img = getScreenShot(hwnd, (1265, 760, 1295, 785))
@@ -262,7 +266,7 @@ while True:
         accept_avg = color_average(img, [76, 176, 80, 90, 203, 95])
 
         if relate_list(accept_avg, [1, 2, 1], l2=[1, 1, 2]):
-            write("Trying to Accept", push=push_urgency)
+            write("Trying to Accept", push=push_urgency+1)
 
             test_for_success = True
             test_for_live_game = False
@@ -291,21 +295,21 @@ while True:
             success = relate_list(success_avg, [1, 8, 7])
 
             if success:
-                write("Took %s since pressing accept." % str(timedelta(seconds=int(time() - start_time))), add_time=False, push=push_urgency)
-                write("Took %s since trying to find a game." % str(timedelta(seconds=int(time() - time_searching))), add_time=False, push=push_urgency)
-                write("Game should have started", push=push_urgency + 1, push_now=True)
+                write("Took %s since pressing accept." % str(timedelta(seconds=int(time() - start_time))), add_time=False, push=push_urgency+1)
+                write("Took %s since trying to find a game." % str(timedelta(seconds=int(time() - time_searching))), add_time=False, push=push_urgency+1)
+                write("Game should have started", push=push_urgency + 2, push_now=True)
                 test_for_success = False
                 playsound('sounds/done_testing.mp3')
 
             if any([searching, not_searching]):
-                write("Took: %s " % str(timedelta(seconds=int(time() - start_time))), add_time=False, push=push_urgency)
-                write("Game doesnt seem to have started. Continuing to search for accept Button!", push=push_urgency, push_now=True)
+                write("Took: %s " % str(timedelta(seconds=int(time() - start_time))), add_time=False, push=push_urgency+1)
+                write("Game doesnt seem to have started. Continuing to search for accept Button!", push=push_urgency+1, push_now=True)
                 playsound('sounds/back_to_testing.mp3')
                 test_for_success = False
                 test_for_live_game = True
 
         else:
-            write("Unknown Error")
+            write("40 Seconds after accept, did not find loading map nor searching queue")
             test_for_success = False
             print(success_avg)
             print(searching_avg)
