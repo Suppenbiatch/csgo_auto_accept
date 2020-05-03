@@ -380,6 +380,7 @@ accounts, current_account = [], 0
 getAccountsFromCfg()
 csgo_path = getCsgoPath(accounts[current_account]['steam_id_3'])
 match_server_ready = re.compile('^Server reservation check .* ready-up!$')
+match_reservation = 'Matchmaking reservation confirmed: '
 match_warmup_time = re.compile('\d+?:\d+')
 inverted_warmup_time = re.compile('[^\d:]')
 with open(csgo_path + 'console_log.log', 'w') as log:
@@ -499,16 +500,17 @@ while True:
     if truth_table['test_for_server']:
         if time.time() - time_table['searching_cc'] > 0.2:
             time_table['searching_cc'] = time.time()
+        else:
             continue
         with open(csgo_path + 'console_log.log', 'rb+') as log:
             log_lines = log.readlines()
-            game_start = [line.decode('utf-8', 'ignore').encode("utf-8").rstrip(b'\n\r').decode() for line in log_lines]
+            console_line = [line.decode('utf-8', 'ignore').encode("utf-8").rstrip(b'\n\r').decode() for line in log_lines]
             log.seek(0)
             log.truncate()
         with open(cfg['debug_path'] + '\\console.log', 'ab') as debug_log:
             [debug_log.write(i) for i in log_lines]
-        start = time.time_ns()
-        server_ready = any([bool(re.match(match_server_ready, i)) for i in game_start])
+        # server_ready = any([bool(re.match(match_server_ready, i)) for i in console_line])
+        server_ready = any(match_reservation in i for i in console_line)
         if server_ready:
             test_for_accept_counter = 0
             write('Server found, starting to look for accept button')
@@ -548,9 +550,10 @@ while True:
             time_table['screenshot_time'] = time.time()
         test_for_accept_counter += 1
         if test_for_accept_counter > cfg['timeout_time']:
-            write('NO ACCEPT BUTTON FOUND AFTER %s seconds.' % str(cfg['timeout_time']*cfg['screenshot_interval']))
+            write('NO ACCEPT BUTTON FOUND AFTER %s seconds.' % str(int(cfg['timeout_time']*cfg['screenshot_interval'])))
             write('Continuing to look for ready server.')
             mute_csgo(1)
+            playsound('sounds/back_to_testing.mp3')
             truth_table['test_for_accept_button'] = False
 
     if truth_table['test_for_success']:
