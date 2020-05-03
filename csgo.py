@@ -26,8 +26,8 @@ def enum_cb(hwnd, results):
     winlist.append((hwnd, win32gui.GetWindowText(hwnd)))
 
 
-# noinspection PyShadowingNames ; ADDED OVERWRITE FUNCTION
-def write(message, add_time: bool = True, push: int = 0, push_now: bool = False, output: bool = True, overwrite: bool = False):
+# noinspection PyShadowingNames
+def write(message, add_time: bool = True, push: int = 0, push_now: bool = False, output: bool = True, overwrite: tuple = (False, '0')):
     if output:
         message = str(message)
         if add_time:
@@ -35,22 +35,22 @@ def write(message, add_time: bool = True, push: int = 0, push_now: bool = False,
         log_file = open(log_path + '\\log.txt', 'rb')
         lines = log_file.readlines()
         log_file.close()
-        last_line = (lines[-1].split(b'\r'))
-        if last_line[-1] != b'\n':
-            if overwrite:
+        last_key = lines[0].split(b'\\')[0]
+        last_line = lines[-1].split(b'\r')[-1]
+        if overwrite[0]:
+            ending = ''
+            if last_key == overwrite[1].encode():
                 message = '\r' + message
-                ending = ''
             else:
-                message = '\n' + message
-                ending = '\n'
+                if last_line != b'\n':
+                    message = '\n' + message
         else:
-            if overwrite:
-                ending = ''
-            else:
-                ending = '\n'
+            ending = '\n'
+            if last_line != b'\n':
+                message = '\n' + message
 
         log_file = open(log_path + '\\log.txt', 'w')
-        log_file.write(message + ending)
+        log_file.write(overwrite[1] + '\\' + message + ending)
         log_file.close()
         print(message, end=ending)
 
@@ -209,7 +209,7 @@ def UpdateCSGOstats(sharecodes: list, num_completed: int = 1):
         for i, val in enumerate(queued_games):
             temp_string += '#' + str(i + 1) + ': in Queue #' + str(val) + '. - '
         temp_string = temp_string.rstrip(' - ')
-        write(temp_string, add_time=False, overwrite=True)
+        write(temp_string, add_time=False, overwrite=(True, '5'))
 
     if len(not_completed_games) - len(queued_games) > 0:
         write('An error occurred in %s game[s].' % (len(not_completed_games) - len(queued_games)), add_time=False)
@@ -258,7 +258,7 @@ def getCfgData():
     try:
         get_cfg = {'activate_script': int(config.get('HotKeys', 'Activate Script'), 16), 'activate_push_notification': int(config.get('HotKeys', 'Activate Push Notification'), 16),
                    'info_newest_match': int(config.get('HotKeys', 'Get Info on newest Match'), 16), 'info_multiple_matches': int(config.get('HotKeys', 'Get Info on multiple Matches'), 16),
-                   'open_live_tab': int(config.get('HotKeys', 'Live Tab Key'), 16), 'switch_accounts': int(config.get('HotKeys', 'Switch accounts for csgostats.gg'), 16), 'stop_warmup_ocr': int(config.get('HotKeys', 'Stop Warmup OCR'), 16),
+                   'open_live_tab': int(config.get('HotKeys', 'Live Tab Key'), 16), 'switch_accounts': int(config.get('HotKeys', 'Switch accounts for csgostats.gg'), 16),
                    'end_script': int(config.get('HotKeys', 'End Script'), 16),
                    'screenshot_interval': config.getint('Screenshot', 'Interval'), 'debug_path': config.get('Screenshot', 'Debug Path'), 'steam_api_key': config.get('csgostats.gg', 'API Key'),
                    'last_x_matches': config.getint('csgostats.gg', 'Number of Requests'),
@@ -267,7 +267,7 @@ def getCfgData():
                    'tesseract_path': config.get('Warmup', 'Tesseract Path'), 'warmup_test_interval': config.getint('Warmup', 'Test Interval'), 'warmup_push_interval': config.get('Warmup', 'Push Interval'),
                    'warmup_no_text_limit': config.getint('Warmup', 'No Text Limit')}
         return get_cfg
-        # 'imgur_id': config.get('Imgur', 'Client ID'), 'imgur_secret': config.get('Imgur', 'Client Secret'),
+        # 'imgur_id': config.get('Imgur', 'Client ID'), 'imgur_secret': config.get('Imgur', 'Client Secret'), 'stop_warmup_ocr': int(config.get('HotKeys', 'Stop Warmup OCR'), 16),
     except (configparser.NoOptionError, configparser.NoSectionError, ValueError):
         write('ERROR IN CONFIG')
         exit('CHECK FOR NEW CONFIG')
@@ -280,7 +280,7 @@ try:
 except FileExistsError:
     pass
 log_file = open(log_path+'\\log.txt', 'w')
-log_file.write('\n')
+log_file.write('0\\\n')
 log_file.close()
 
 # CONFIG HANDLING
@@ -323,7 +323,7 @@ write('Current account is: %s\n' % accounts[current_account]['name'], add_time=F
 while True:
     if win32api.GetAsyncKeyState(cfg['activate_script']) & 1:  # F9 (ACTIVATE / DEACTIVATE SCRIPT)
         truth_table['test_for_live_game'] = not truth_table['test_for_live_game']
-        write('TESTING: %s' % truth_table['test_for_live_game'])
+        write('TESTING: %s' % truth_table['test_for_live_game'], overwrite=(True, '1'))
         if truth_table['test_for_live_game']:
             playsound('sounds/activated_2.mp3')
             time_table['time_searching'] = time.time()
@@ -341,7 +341,7 @@ while True:
             if push_urgency > 3:
                 push_urgency = 0
             push_info = ['not active', 'only if accepted', 'all game status related information', 'all information (game status/csgostats.gg information)']
-            write('Pushing: %s' % push_info[push_urgency])
+            write('Pushing: %s' % push_info[push_urgency], overwrite=(True, '2'))
 
     if win32api.GetAsyncKeyState(cfg['info_newest_match']) & 1:  # F7 Key (UPLOAD NEWEST MATCH)
         write('Uploading / Getting status on newest match')
@@ -364,13 +364,7 @@ while True:
         current_account += 1
         if current_account > len(accounts) - 1:
             current_account = 0
-        write('current account is: %s' % accounts[current_account]['name'], add_time=False)
-
-    if win32api.GetAsyncKeyState(cfg['stop_warmup_ocr']) & 1:  # ESC (STOP WARMUP OCR)
-        write('STOPPING WARMUP TIME FINDER!', add_time=False)
-        truth_table['test_for_warmup'] = False
-        no_text_found = 0
-        time_table['warmup_test_timer'] = time.time()
+        write('current account is: %s' % accounts[current_account]['name'], add_time=False, overwrite=(True, '4'))
 
     if win32api.GetAsyncKeyState(cfg['end_script']) & 1:  # POS1 (END SCRIPT)
         write('Exiting Script')
@@ -498,7 +492,7 @@ while True:
                         time_left = push_times[0] + 1
 
                     time_left_data = timedelta(seconds=int(time.time() - time_table['screenshot_time'])), time.strftime('%H:%M:%S', time.gmtime(abs((join_warmup_time - time_left) - (time.time() - time_table['screenshot_time'])))), img_text
-                    write('Time since start: %s - Time Difference: %s - Time left: %s' % (time_left_data[0], time_left_data[1], time_left_data[2]), add_time=False, overwrite=True)
+                    write('Time since start: %s - Time Difference: %s - Time left: %s' % (time_left_data[0], time_left_data[1], time_left_data[2]), add_time=False, overwrite=True, key='1')
                     if no_text_found > 0:
                         no_text_found -= 1
 
