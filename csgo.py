@@ -350,9 +350,9 @@ def getCfgData():
                    'max_queue_position': config.getint('csgostats.gg', 'Auto-Retrying for queue position below'), 'log_color': config.get('Screenshot', 'Log Color').lower(),
                    'auto_retry_interval': config.getint('csgostats.gg', 'Auto-Retrying-Interval'), 'pushbullet_device_name': config.get('Pushbullet', 'Device Name'), 'pushbullet_api_key': config.get('Pushbullet', 'API Key'),
                    'tesseract_path': config.get('Warmup', 'Tesseract Path'), 'warmup_test_interval': config.getint('Warmup', 'Test Interval'), 'warmup_push_interval': config.get('Warmup', 'Push Interval'),
-                   'warmup_no_text_limit': config.getint('Warmup', 'No Text Limit'), 'freezetime_auto_on': config.getboolean('Screenshot', 'FreezeTime Auto On')}
+                   'warmup_no_text_limit': config.getint('Warmup', 'No Text Limit'), 'freezetime_auto_on': config.getboolean('Screenshot', 'FreezeTime Signaler Auto-On')}
         return get_cfg
-        # 'imgur_id': config.get('Imgur', 'Client ID'), 'imgur_secret': config.get('Imgur', 'Client Secret'), 'stop_warmup_ocr': int(config.get('HotKeys', 'Stop Warmup OCR'), 16), 'info_multiple_matches': int(config.get('HotKeys', 'Get Info on multiple Matches'), 16),
+        # 'imgur_id': config.get('Imgur', 'Client ID'), 'imgur_secret': config.get('Imgur', 'Client Secret'), 'info_multiple_matches': int(config.get('HotKeys', 'Get Info on multiple Matches'), 16),
     except (configparser.NoOptionError, configparser.NoSectionError, ValueError):
         write('ERROR IN CONFIG')
         exit('CHECK FOR NEW CONFIG')
@@ -385,9 +385,7 @@ accounts, current_account = [], 0
 getAccountsFromCfg()
 csgo_path, steam_path = getCsgoPath()
 CheckUserDataAutoExec(accounts[current_account]['steam_id_3'], csgo_path, steam_path)
-match_server_ready = re.compile('^Server reservation check .* ready-up!$')
 match_reservation = 'Matchmaking reservation confirmed: '
-inverted_warmup_time = re.compile('[^\d:]')
 with open(csgo_path + 'console_log.log', 'w') as log:
     log.write('')
 with open(cfg['debug_path'] + '\\console.log', 'w') as debug_log:
@@ -517,9 +515,8 @@ while True:
         write(truth_table['test_for_success'], add_time=False)
         # truth_table['testing'] = not truth_table['testing']
 
-
     if truth_table['testing']:
-        #time_table['screenshot_time'] = time.time()
+        # time_table['screenshot_time'] = time.time()
         pass
         # print('Took: %s ' % str(timedelta(milliseconds=int(time.time()*1000 - time_table['screenshot_time']*1000))))
     # TESTING ENDS HERE
@@ -536,7 +533,6 @@ while True:
             log.truncate()
         with open(cfg['debug_path'] + '\\console.log', 'ab') as debug_log:
             [debug_log.write(i) for i in log_lines]
-        # server_ready = any([bool(re.match(match_server_ready, i)) for i in console_line])
         server_ready = any(match_reservation in i for i in console_line)
         if server_ready:
             test_for_accept_counter = 0
@@ -672,25 +668,20 @@ while True:
                 truth_table['test_for_warmup'] = False
                 truth_table['first_ocr'] = True
                 truth_table['first_push'] = True
+                time_table['freezetime_time'] = time.time() + 5
                 break
 
             if time.time() - time_table['warmup_test_timer'] >= cfg['warmup_test_interval']:
                 time_table['warmup_test_timer'] = time.time()
                 img = getScreenShot(hwnd, (1036, 425, 1525, 456))  # 'WAITING FOR PLAYERS X:XX'
                 img_text = Image_to_Text(img, img.size, (225, 225, 225), arg='--psm 6')
-                time_left = re.findall(re.compile('\d+?:\d+'), img_text)[0]
-                if time_left:
-                    time_left = time_left.split()[-1].split(':')
-                    # write(img_text, add_time=False)
-                    try:
-                        time_left = int(time_left[0]) * 60 + int(time_left[1])
-                        if truth_table['first_ocr']:
-                            join_warmup_time = time_left
-                            time_table['screenshot_time'] = time.time()
-                            truth_table['first_ocr'] = False
-                    except (ValueError, IndexError):
-                        continue
-
+                try:
+                    time_left = list(map(int, re.findall(re.compile('\d+?:\d+'), img_text)[0].split(':')))
+                    time_left = time_left[0] * 60 + time_left[1]
+                    if truth_table['first_ocr']:
+                        join_warmup_time = time_left
+                        time_table['screenshot_time'] = time.time()
+                        truth_table['first_ocr'] = False
                     time_left_data = timedelta(seconds=int(time.time() - time_table['screenshot_time'])), time.strftime('%H:%M:%S', time.gmtime(abs((join_warmup_time - time_left) - (time.time() - time_table['screenshot_time'])))), img_text
                     write('Time since start: %s - Time Difference: %s - Time left: %s' % (time_left_data[0], time_left_data[1], time_left_data[2]), add_time=False, overwrite='1')
                     if no_text_found > 0:
@@ -703,9 +694,9 @@ while True:
                     if truth_table['first_push']:
                         if abs((join_warmup_time - time_left) - (time.time() - time_table['screenshot_time'])) >= 5:
                             truth_table['first_push'] = False
-                            write('Match should start in ' + str(time_left) + ' seconds, All players have connected', push=push_urgency + 2, push_now=True)
+                            write('Match should start in ' + str(time_left) + ' seconds, All players have connected.', push=push_urgency + 2, push_now=True)
 
-                else:
+                except IndexError:
                     no_text_found += 1
 
                 if gsi_server.get_info('map', 'phase') != 'warmup':
@@ -727,6 +718,7 @@ while True:
                 truth_table['first_ocr'] = True
                 truth_table['first_push'] = True
                 write('Did not find any warmup text.', push=push_urgency + 2, push_now=True)
+                time_table['freezetime_time'] = time.time() + 2
                 break
 
 
