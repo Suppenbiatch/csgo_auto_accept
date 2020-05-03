@@ -174,7 +174,6 @@ def UpdateCSGOstats(sharecodes: list, num_completed: int = 1):
         else:
             not_completed_games.append(response.json())
 
-    
     queued_games = [game['data']['queue_pos'] for game in not_completed_games if game['status'] != 'error']
     global retrying_games
     retrying_games = []
@@ -224,7 +223,7 @@ def Image_to_Text(image: Image, size: tuple, white_threshold: list, arg: str = '
         global truth_table
         if truth_table['debugging']:
             image.save(str(cfg['debug_path']) + '\\' + datetime.now().strftime('%H-%M-%S') + '_' + image_text.replace(':', '-') + '.png', format='PNG')
-            temp_image.save(str(cfg['debug_path']) + '\\' + 'temp_' + datetime.now().strftime('%H-%M-%S') + '_' + image_text.replace(':', '-') + '.png', format='PNG')
+            temp_image.save(str(cfg['debug_path']) + '\\' + datetime.now().strftime('%H-%M-%S') + '_' + image_text.replace(':', '-') + '_temp_.png', format='PNG')
         return image_text
     else:
         return False
@@ -333,7 +332,7 @@ while True:
         write('current account is: %s' % accounts[current_account]['name'], add_time=False)
 
     if win32api.GetAsyncKeyState(cfg['stop_warmup_ocr']) & 1:  # ESC (STOP WARMUP OCR)
-        write('\nSTOPPING WARMUP TIME FINDER!', add_time=False)
+        write('STOPPING WARMUP TIME FINDER!', add_time=False)
         truth_table['test_for_warmup'] = False
         no_text_found = 0
         time_table['warmup_test_timer'] = time.time()
@@ -358,12 +357,10 @@ while True:
 
     # TESTING HERE
     if win32api.GetAsyncKeyState(0x6F) & 1:  # UNBOUND, TEST CODE
-        write('\nExecuting Debugging\n')
+        # write('Executing Debugging\n')
         # truth_table['testing'] = not truth_table['testing']
         truth_table['debugging'] = not truth_table['debugging']
-        # truth_table['test_for_warmup'] = not truth_table['test_for_warmup']
-        # push_counter = 0
-        # time_table['warmup_test_timer'], time_table['screenshot_time'] = time.time(), time.time()
+        write('DEBUGGING: %s\n' % truth_table['debugging'])
 
     if truth_table['testing']:
         # time_table['screenshot_time'] = time.time()
@@ -443,7 +440,9 @@ while True:
                 print('')
                 write('Break from warmup-loop')
                 truth_table['test_for_warmup'] = False
+                truth_table['first_ocr'] = True
                 break
+
             if time.time() - time_table['warmup_test_timer'] >= cfg['warmup_test_interval']:
                 img = getScreenShot(hwnd, (1036, 425, 1525, 456))  # 'WAITING FOR PLAYERS X:XX'
                 img_text = Image_to_Text(img, img.size, [225, 225, 225], arg='--psm 6')
@@ -455,7 +454,9 @@ while True:
                         time_left = int(time_left[0]) * 60 + int(time_left[1])
                         if truth_table['first_ocr']:
                             join_warmup_time = time_left
+                            time_table['screenshot_time'] = time.time()
                             truth_table['first_ocr'] = False
+
                     except ValueError:
                         time_left = push_times[0] + 1
 
