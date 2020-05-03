@@ -18,6 +18,8 @@ from playsound import playsound
 
 
 def Avg(lst: list):
+    if not lst:
+        return 0
     return sum(lst) / len(lst)
 
 
@@ -33,19 +35,28 @@ def write(message, add_time: bool = True, push: int = 0, push_now: bool = False,
         if add_time:
             message = datetime.now().strftime('%H:%M:%S') + ': ' + message
         overwrite_log = open(appdata_path + '\\overwrite_log.txt', 'rb+')
-        lines = overwrite_log.readlines()
-        last_key = lines[0].split(b'**')[0]
-        last_line = lines[-1].split(b'**')[-1]
+        # lines = overwrite_log.readlines()
+        # line = b''.join(lines)
+        splits = b''.join(overwrite_log.readlines()).split(b'**')
+        last_key = splits[0]
+        last_end = splits[-1]
+        last_string = splits[1].strip(b'\n\r')
+
         if overwrite != '0':
-            ending = console_window[0]
+            ending = console_window['sufix']
             if last_key == overwrite.encode():
-                message = console_window[1] + message
+                if console_window['isatty']:
+                    overwrite_last_line = ''
+                    for _ in last_string.decode():
+                        overwrite_last_line += ' '
+                    print(overwrite_last_line, end='\r')
+                message = console_window['prefix'] + message
             else:
-                if last_line != b'\n':
+                if last_end != b'\n':
                     message = '\n' + message
         else:
             ending = '\n'
-            if last_line != b'\n':
+            if last_end != b'\n':
                 message = '\n' + message
 
         overwrite_log.seek(0)
@@ -53,14 +64,6 @@ def write(message, add_time: bool = True, push: int = 0, push_now: bool = False,
         overwrite_log.write((overwrite + '**' + message + '**' + ending).encode())
         overwrite_log.close()
         print(message, end=ending)
-
-    if push >= 3:
-        global note
-        if message:
-            note = note + str(message) + '\n'
-        if push_now:
-            device.push_note('CSGO AUTO ACCEPT', note)
-            note = ''
 
 
 # noinspection PyShadowingNames
@@ -80,6 +83,7 @@ def relate_list(l_org, compare_list, relate: operator = operator.le):
         for i, val in enumerate(list_part):
             partial_truth.append(relate(l_org[i], val))
         truth_list.append(all(partial_truth))
+        l_org = l_org[len(list_part):]
     return any(truth_list)
 
 
@@ -93,11 +97,11 @@ def color_average(image: Image, compare_list: list):
         g.append(i[1])
         b.append(i[2])
 
-    rgb = [Avg(r), Avg(g), Avg(b)] * int(len(compare_list) / 3)
-    for i, val in enumerate(compare_list, start=0):
-        average.append(val - rgb[i])
+    rgb = [Avg(r), Avg(g), Avg(b)] * len(compare_list)
+    for part in compare_list:
+        for i, val in enumerate(part):
+            average.append(val - rgb[i])
     average = list(map(abs, average))
-
     return average
 
 
@@ -157,7 +161,7 @@ def getOldSharecodes(num: int = -1):
 
 
 # noinspection PyShadowingNames
-def getNewCSGOMatches(game_id: str):
+def getNewCSGOSharecodes(game_id: str):
     sharecodes = []
     next_code = game_id
     last_game = open(appdata_path+'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'a')
@@ -181,6 +185,22 @@ def getNewCSGOMatches(game_id: str):
         return [game_id]
 
 
+def getAllQueuedGames():
+    num = -1
+    getNewCSGOSharecodes(getOldSharecodes()[0])
+    sharecode = getOldSharecodes()
+    while True:
+        response = requests.post('https://csgostats.gg/match/upload/ajax', data={'sharecode': sharecode, 'index': '1'})
+        if response.json()['status'] != 'complete':
+            num -= 1
+            try:
+                sharecode = getOldSharecodes(num)[0]
+            except IndexError:
+                return num+1
+        else:
+            return num+1
+
+
 # noinspection PyShadowingNames
 def UpdateCSGOstats(sharecodes: list, num_completed: int = 1):
     completed_games, not_completed_games, = [], []
@@ -191,26 +211,27 @@ def UpdateCSGOstats(sharecodes: list, num_completed: int = 1):
         else:
             not_completed_games.append(response.json())
 
-    # TEST GAME:
-
     queued_games = [game['data']['queue_pos'] for game in not_completed_games if game['status'] != 'error']
-    global retrying_games
+    global retrying_games, queue_difference, time_table
+    current_queue_difference = Avg([last_game[1] - game['data']['queue_pos'] for game in not_completed_games for last_game in retrying_games if last_game[0] == game['data']['sharecode']])
+    if current_queue_difference:
+        queue_difference.append(current_queue_difference / ((time.time() - time_table['error_check_time']) / 60))
+        queue_difference = queue_difference[-10:]
+    time_table['error_check_time'] = time.time()
     retrying_games = []
 
     if queued_games:
         if queued_games[0] < cfg['max_queue_position']:
-            global time_table
-            retrying_games = [game['data']['sharecode'] for game in not_completed_games]
-            time_table['error_check_time'] = time.time()
+            retrying_games = [(str(game['data']['sharecode']), int(game['data']['queue_pos'])) for game in not_completed_games if game['status'] != 'error']
         temp_string = ''
         for i, val in enumerate(queued_games):
             temp_string += '#' + str(i + 1) + ': in Queue #' + str(val) + '. - '
-        temp_string = temp_string.rstrip(' - ')
+        temp_string += str(round(Avg(queue_difference), 1)) + ' matches/min'
         write(temp_string, add_time=False, overwrite='4')
 
     if len(not_completed_games) - len(queued_games) > 0:
         write('An error occurred in %s game[s].' % (len(not_completed_games) - len(queued_games)), add_time=False)
-        retrying_games.append([game['data']['sharecode'] for game in not_completed_games if game['status'] == 'error'])
+        retrying_games.append([(str(game['data']['sharecode']), 0) for game in not_completed_games if game['status'] == 'error'])
 
     if completed_games:
         for i in completed_games[num_completed * - 1:]:
@@ -279,12 +300,11 @@ except FileExistsError:
 overwrite_log = open(appdata_path+'\\overwrite_log.txt', 'wb')
 overwrite_log.write('0**\n'.encode())
 overwrite_log.close()
-console_window = ()
+console_window = {}
 if not sys.stdout.isatty():
-    console_window = ('', '\r')
+    console_window = {'prefix': '\r', 'sufix': '', 'isatty': False}
 else:
-    console_window = ('\r', '')
-
+    console_window = {'prefix': '', 'sufix': '\r', 'isatty': True}
 
 
 # CONFIG HANDLING
@@ -301,13 +321,12 @@ getAccountsFromCfg()
 screen_width, screen_height = win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1)
 toplist, winlist = [], []
 hwnd = 0
-
 # BOOLEAN, TIME INITIALIZATION
 truth_table = {'test_for_live_game': False, 'test_for_success': False, 'test_for_warmup': False, 'first_ocr': True, 'testing': False, 'debugging': False, 'first_push': True}
 time_table = {'screenshot_time': time.time(), 'error_check_time': time.time(), 'warmup_test_timer': time.time(), 'time_searching': time.time()}
 
 # csgostats.gg VAR
-retrying_games = []
+retrying_games, queue_difference = [], []
 
 # WARMUP DETECTION SETUP
 pytesseract.pytesseract.tesseract_cmd = cfg['tesseract_path']
@@ -349,15 +368,15 @@ while True:
 
     if win32api.GetAsyncKeyState(cfg['info_newest_match']) & 1:  # F7 Key (UPLOAD NEWEST MATCH)
         write('Uploading / Getting status on newest match')
-        sharecodes = retrying_games
-        for code in getNewCSGOMatches(getOldSharecodes()[0]):
-            if code not in [i for i in sharecodes]:
-                sharecodes.append(code)
+        queue_difference = []
+        sharecodes = [i[0] for i in retrying_games] + getOldSharecodes(getAllQueuedGames())
+        sharecodes = sorted(set(sharecodes), key=lambda x: sharecodes.index(x))
         UpdateCSGOstats(sharecodes, num_completed=len(sharecodes))
 
     if win32api.GetAsyncKeyState(cfg['info_multiple_matches']) & 1:  # F6 Key (GET INFO ON LAST X MATCHES)
         write('Getting Info from last %s matches' % cfg['last_x_matches'])
-        getNewCSGOMatches(getOldSharecodes()[0])
+        queue_difference = []
+        getNewCSGOSharecodes(getOldSharecodes()[0])
         UpdateCSGOstats(getOldSharecodes(num=cfg['last_x_matches'] * -1), num_completed=cfg['completed_matches'])
 
     if win32api.GetAsyncKeyState(cfg['open_live_tab']) & 1:  # F13 Key (OPEN WEB BROWSER ON LIVE GAME TAB)
@@ -379,8 +398,8 @@ while True:
 
     if retrying_games:
         if time.time() - time_table['error_check_time'] > cfg['auto_retry_interval']:
-            time_table['error_check_time'] = time.time()
-            UpdateCSGOstats(retrying_games, num_completed=len(retrying_games))
+            temp_list = [i[0] for i in retrying_games]
+            UpdateCSGOstats(temp_list, num_completed=len(temp_list))
 
     winlist = []
     win32gui.EnumWindows(enum_cb, toplist)
@@ -412,9 +431,8 @@ while True:
         img = getScreenShot(hwnd, (1265, 760, 1295, 785))
         if not img:
             continue
-        accept_avg = color_average(img, [76, 176, 80, 89, 203, 94])
-        write(accept_avg, add_time=False)
-        if relate_list(accept_avg, [(1, 2, 1), (1, 1, 2)]):
+        accept_avg = color_average(img, [(76, 176, 80), (89, 203, 94)])
+        if relate_list(accept_avg, [(2, 2, 2), (2, 2, 2)]):
             write('Trying to Accept', push=push_urgency + 1)
 
             truth_table['test_for_success'] = True
@@ -423,6 +441,7 @@ while True:
 
             for _ in range(5):
                 click(int(screen_width / 2), int(screen_height / 1.78))
+                pass
 
             write('Trying to catch a loading map')
             playsound('sounds/accept_found.mp3')
@@ -431,14 +450,14 @@ while True:
     if truth_table['test_for_success']:
         if time.time() - time_table['screenshot_time'] < 40:
             img = getScreenShot(hwnd, (2435, 65, 2555, 100))
-            not_searching_avg = color_average(img, [6, 10, 10])
-            searching_avg = color_average(img, [6, 163, 97, 4, 63, 35])
+            not_searching_avg = color_average(img, [(6, 10, 10)])
+            searching_avg = color_average(img, [(6, 163, 97), (4, 63, 35)])
 
             not_searching = relate_list(not_searching_avg, [(2, 5, 5)])
             searching = relate_list(searching_avg, [(2.7, 55, 35), (1, 50, 35)])
 
             img = getScreenShot(hwnd, (467, 1409, 1300, 1417))
-            success_avg = color_average(img, [21, 123, 169])
+            success_avg = color_average(img, [(21, 123, 169)])
             success = relate_list(success_avg, [(1, 8, 7)])
 
             if success:
