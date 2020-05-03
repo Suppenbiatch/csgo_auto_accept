@@ -1,5 +1,5 @@
 from time import sleep, time
-
+from playsound import playsound
 import win32api
 import win32con
 import win32gui
@@ -21,20 +21,38 @@ def click(x, y):
 
 
 coordinate = x1, y1, x2, y2 = 1265, 760, 1295, 785
+test_for_color = [15, 30, 15]
 screen_width, screen_height = win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1)
 toplist, winlist = [], []
-test_for_live_game, accept = False, False
 hwnd = 0
+test_for_live_game, accept, debugging = False, False, False
 start_time = time()
+print("Ready")
 
 while True:
-    if win32api.GetAsyncKeyState(0x78) & 1:
+    if win32api.GetAsyncKeyState(0x78) & 1: #F9
         test_for_live_game = not test_for_live_game
         print("TESTING: ", test_for_live_game)
+        if test_for_live_game:
+            playsound('active.mp3')
+        else:
+            playsound('deactivated.mp3')
 
-    if win32api.GetAsyncKeyState(0x2D) & 1:
-        break
+    if win32api.GetAsyncKeyState(0x77) & 1: #F8 (DEBUGGING)
+        try:
+            print("Avg: ", color_average)
+        except NameError:
+            continue
+        img_difference.show()
+        img_difference.save("dif.png")
+
+    if win32api.GetAsyncKeyState(0x76) & 1: #F7 (DEBUGGING)
+        debugging = not debugging
+        print("debugging: ", debugging)
+
+    if win32api.GetAsyncKeyState(0x24) & 1: #POS1/HOME Key
         print("Exiting Script")
+        break
 
     if test_for_live_game:
         winlist = []
@@ -61,7 +79,6 @@ while True:
 
         # img_difference.show()
         # img_difference.save("dif.png")
-        # img.save("img.png")
 
         pix, color_average = [], []
         r, g, b = [], [], []
@@ -77,11 +94,20 @@ while True:
         color_average.append(Avg(r))
         color_average.append(Avg(g))
         color_average.append(Avg(b))
-        for i in color_average:
-            accept = True
-            if i >= 3:
+        accept = True
+        for i, color in enumerate(color_average, start=0):
+            if color >= test_for_color[i]:
                 accept = False
+        if debugging:
+            print("Avg: ", color_average)
+            img.save("img.png")
+            img_difference.save("img_dif.png")
+
     if accept:
+        img_difference.save("dif_acc.png")
+        img.save("img_acc.png")
+        print("Trying to Accept")
+        print(color_average)
         # test_for_live_game = False
         for _ in range(5):
             click(int(screen_width / 2), int(screen_height / 1.78))
