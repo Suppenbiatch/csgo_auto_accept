@@ -37,7 +37,7 @@ def mute_csgo(lvl: int):
 
 
 # noinspection PyShadowingNames
-def write(message, add_time: bool = True, push: int = 0, push_now: bool = False, output: bool = True, overwrite: str = '0'):  # last_overwrite_key_used: 8
+def write(message, add_time: bool = True, push: int = 0, push_now: bool = False, output: bool = True, overwrite: str = '0'):  # last overwrite key used: 8
     if output:
         message = str(message)
         if add_time:
@@ -215,13 +215,15 @@ def getNewCSGOSharecodes(game_id: str):
     next_code = game_id
     last_game = open(appdata_path+'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'a')
     while next_code != 'n/a':
-        steam_url = 'https://api.steampowered.com/ICSGOPlayers_730/GetNextMatchSharingCode/v1?key=' + cfg['steam_api_key'] + '&steamid=' + accounts[current_account]['steam_id'] + '&steamidkey=' + accounts[current_account][
-            'auth_code'] + '&knowncode=' + game_id
+        steam_url = 'https://api.steampowered.com/ICSGOPlayers_730/GetNextMatchSharingCode/v1?key=' + cfg['steam_api_key'] + '&steamid=' + accounts[current_account]['steam_id'] + '&steamidkey=' + accounts[current_account]['auth_code'] + '&knowncode=' + game_id
         try:
-            next_code = (requests.get(steam_url).json()['result']['nextcode'])
-        except KeyError:
-            write('WRONG Match Token, Authentication Code or Steam ID ')
-            return [{'sharecode': game_id, 'queue_pos': None}]
+            next_code = (requests.get(steam_url, timeout=2).json()['result']['nextcode'])
+        except (KeyError, requests.exceptions.ConnectionError, requests.exceptions.Timeout) as err:
+            write('WRONG Match Token, Authentication Code or Steam ID\n Following Error: %s' % err)
+            if sharecodes:
+                return sharecodes
+            else:
+                return [{'sharecode': game_id, 'queue_pos': None}]
 
         if next_code:
             if next_code != 'n/a':
@@ -327,7 +329,6 @@ def Image_to_Text(image: Image, size: tuple, white_threshold: tuple, arg: str = 
     try:
         image_text = pytesseract.image_to_string(temp_image, timeout=0.3, config=arg)
     except RuntimeError:
-        # as timeout_error:
         pass
     if image_text:
         image_text = ' '.join(image_text.replace(': ', ':').split())
@@ -447,7 +448,7 @@ while True:
             try:
                 device = pushbullet.PushBullet(cfg['pushbullet_api_key']).get_device(cfg['pushbullet_device_name'])
             except (pushbullet.errors.PushbulletError, pushbullet.errors.InvalidKeyError):
-                write('Pushbullet is wrongly configured.\nWrong API Key or DeviceName in config.ini')
+                write('Pushbullet is wrongly configured.\nWrong API Key or DeviceName in config.ini\n Restart Script if changes to config.ini were made.')
         if device:
             push_urgency += 1
             if push_urgency > 3:
@@ -503,9 +504,10 @@ while True:
     hwnd = csgo[0][0]
 
     if not truth_table['gsi_server_running']:
+        write('CS:GO GSI Server starting..', add_time=False, overwrite='8')
         gsi_server.start_server()
         truth_table['gsi_server_running'] = True
-        write('CS:GO GSI Server running..', add_time=False)
+        write('CS:GO GSI Server running..', add_time=False, overwrite='8')
 
     # TESTING HERE
     if win32api.GetAsyncKeyState(0x6F) & 1:  # UNBOUND, TEST CODE
@@ -533,14 +535,22 @@ while True:
             log.truncate()
         with open(cfg['debug_path'] + '\\console.log', 'ab') as debug_log:
             [debug_log.write(i) for i in log_lines]
-        server_ready = any(match_reservation in i for i in console_line)
+        server_ready = any('Matchmaking reservation confirmed: ' in i for i in console_line)
+        matchmaking_msg = [i.replace('Matchmaking message: ', '') for i in console_line if 'Matchmaking message:' in i]
         if server_ready:
             test_for_accept_counter = 0
             write('Server found, starting to look for accept button')
             truth_table['test_for_accept_button'] = True
-            # truth_table['test_for_server'] = False
             playsound('sounds/server_found.mp3')
             win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
+            mute_csgo(0)
+        if matchmaking_msg:
+            [write(i, add_time=False) for i in matchmaking_msg]
+            write(truth_table['test_for_accept_button'], add_time=False)
+            truth_table['test_for_server'] = False if any('Match confirmed' in i for i in matchmaking_msg) else True
+            write(truth_table['test_for_server'], add_time=False)
+            test_for_accept_counter = 0
+
     else:
         if time.time() - time_table['not_searching_cc'] > 20:
             time_table['not_searching_cc'] = time.time()
@@ -559,13 +569,10 @@ while True:
         if not img:
             continue
         accept_avg = color_average(img, [(76, 176, 80), (89, 203, 94)])
-        mute_csgo(0)
         if relate_list(accept_avg, [(2, 2, 2), (2, 2, 2)]):
             write('Trying to Accept', push=push_urgency + 1)
-
             truth_table['test_for_success'] = True
             truth_table['test_for_accept_button'] = False
-            truth_table['test_for_server'] = False
             accept_avg = []
 
             for _ in range(5):
@@ -576,13 +583,14 @@ while True:
             playsound('sounds/accept_found.mp3')
             time_table['screenshot_time'] = time.time()
         test_for_accept_counter += 1
+        '''
         if test_for_accept_counter > cfg['timeout_time']:
             write('NO ACCEPT BUTTON FOUND AFTER %s seconds.' % str(int(cfg['timeout_time']*cfg['screenshot_interval'])))
             write('Continuing to look for ready server.')
             mute_csgo(1)
             playsound('sounds/back_to_testing.mp3')
             truth_table['test_for_accept_button'] = False
-
+        '''
     if truth_table['test_for_success']:
         if time.time() - time_table['screenshot_time'] < 40:
             img = getScreenShot(hwnd, (2435, 65, 2555, 100))
@@ -600,8 +608,8 @@ while True:
                 write('\tTook %s since pressing accept.' % str(timedelta(seconds=int(time.time() - time_table['screenshot_time']))), add_time=False, push=push_urgency + 1)
                 write('\tTook %s since trying to find a game.' % str(timedelta(seconds=int(time.time() - time_table['time_searching']))), add_time=False, push=push_urgency + 1)
                 write('Game should have started', push=push_urgency + 2, push_now=True)
-                truth_table['test_for_success'] = False
                 truth_table['test_for_warmup'] = True
+                truth_table['test_for_success'] = False
                 truth_table['test_for_freezetime'] = False
                 playsound('sounds/done_testing.mp3')
                 time_table['warmup_test_timer'] = time.time() + 5
@@ -653,7 +661,7 @@ while True:
                 if cfg['freezetime_auto_on']:
                     truth_table['test_for_freezetime'] = True
                 if win32gui.GetWindowPlacement(hwnd)[1] == 2:
-                    playsound('sounds/ready_up.mp3')
+                    playsound('sounds/ready_up_warmup.mp3')
 
     if truth_table['test_for_warmup']:
         for i in range(cfg['stop_warmup_ocr'][0], cfg['stop_warmup_ocr'][1]):
