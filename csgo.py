@@ -7,15 +7,16 @@ from time import time, sleep
 
 import pushbullet
 import pyperclip
+import pytesseract
 import requests
 import win32api
 import win32con
 import win32gui
-from PIL import ImageGrab
+from PIL import ImageGrab, Image
 from playsound import playsound
 
 
-def Avg(lst):
+def Avg(lst: list):
     return sum(lst) / len(lst)
 
 
@@ -25,12 +26,12 @@ def enum_cb(hwnd, results):
 
 
 # noinspection PyShadowingNames
-def write(message, add_time=True, push=0, push_now=False):
-    if message:
-        if add_time:
-            m = datetime.now().strftime('%H:%M:%S') + ': ' + str(message)
-        else:
-            m = message
+def write(message, add_time: bool = True, push: int = 0, push_now: bool = False, output: bool = True):
+    if add_time:
+        m = datetime.now().strftime('%H:%M:%S') + ': ' + str(message)
+    else:
+        m = message
+    if output:
         print(m)
 
     if push >= 3:
@@ -43,14 +44,14 @@ def write(message, add_time=True, push=0, push_now=False):
 
 
 # noinspection PyShadowingNames
-def click(x, y):
+def click(x: int, y: int):
     win32api.SetCursorPos((x, y))
     win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, x, y, 0, 0)
     win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, x, y, 0, 0)
 
 
 # noinspection PyShadowingNames
-def relate_list(l_org, l1, l2=None, relate=operator.le):
+def relate_list(l_org, l1, l2=None, relate: operator = operator.le):
     if not l_org:
         return False
     truth_list, l3 = [], []
@@ -66,7 +67,7 @@ def relate_list(l_org, l1, l2=None, relate=operator.le):
 
 
 # noinspection PyShadowingNames
-def color_average(image, compare_list):
+def color_average(image: Image, compare_list: list):
     average = []
     r, g, b = [], [], []
     data = image.getdata()
@@ -76,7 +77,6 @@ def color_average(image, compare_list):
         b.append(i[2])
 
     rgb = [Avg(r), Avg(g), Avg(b)] * int(len(compare_list) / 3)
-
     for i, val in enumerate(compare_list, start=0):
         average.append(val - rgb[i])
     average = list(map(abs, average))
@@ -85,7 +85,7 @@ def color_average(image, compare_list):
 
 
 # noinspection PyShadowingNames
-def getScreenShot(window_id, area=(0, 0, 0, 0)):
+def getScreenShot(window_id: int, area: tuple = (0, 0, 0, 0)):
     area = list(area)
     win32gui.ShowWindow(window_id, win32con.SW_MAXIMIZE)
     scaled_area = [screen_width / 2560, screen_height / 1440]
@@ -120,7 +120,7 @@ def getAccountsFromCfg():
 
 
 # noinspection PyShadowingNames
-def getOldSharecodes(num=-1):
+def getOldSharecodes(num: int = -1):
     try:
         last_game = open('last_game_' + accounts[current_account]['steam_id'] + '.txt', 'r')
         games = last_game.readlines()
@@ -139,7 +139,8 @@ def getOldSharecodes(num=-1):
     return games[num:]
 
 
-def getNewCSGOMatches(game_id):
+# noinspection PyShadowingNames
+def getNewCSGOMatches(game_id: str):
     sharecodes = []
     next_code = game_id
     last_game = open('last_game_' + accounts[current_account]['steam_id'] + '.txt', 'a')
@@ -164,7 +165,7 @@ def getNewCSGOMatches(game_id):
 
 
 # noinspection PyShadowingNames
-def UpdateCSGOstats(sharecodes, num_completed=1):
+def UpdateCSGOstats(sharecodes: list, num_completed: int = 1):
     completed_games, not_completed_games, = [], []
     for val in sharecodes:
         response = requests.post('https://csgostats.gg/match/upload/ajax', data={'sharecode': val, 'index': '1'})
@@ -172,7 +173,7 @@ def UpdateCSGOstats(sharecodes, num_completed=1):
             completed_games.append(response.json())
         else:
             not_completed_games.append(response.json())
-  
+
     queued_games = [game['data']['queue_pos'] for game in not_completed_games if game['status'] != 'error']
     global retrying_games
     retrying_games = []
@@ -182,13 +183,12 @@ def UpdateCSGOstats(sharecodes, num_completed=1):
             global error_check_time
             retrying_games = [game['data']['sharecode'] for game in not_completed_games]
             error_check_time = time()
-            # write('%s game[s] will be rechecked after %s seconds' % (len(retrying_games), cfg['auto_retry_interval']), add_time=False)
         for i, val in enumerate(queued_games):
             write('#%s: in Queue #%s.' % (i + 1, val), add_time=False)
-        write(' ', add_time=False)
 
     if len(not_completed_games) - len(queued_games) > 0:
         write('An error occurred in %s game[s].' % (len(not_completed_games) - len(queued_games)), add_time=False)
+        retrying_games.append([game['data']['sharecode'] for game in not_completed_games])
 
     if completed_games:
         for i in completed_games[num_completed * - 1:]:
@@ -199,19 +199,46 @@ def UpdateCSGOstats(sharecodes, num_completed=1):
             write('URL: %s' % game_url, add_time=False, push=push_urgency)
             write('Status: %s.' % info, add_time=False, push=push_urgency)
             pyperclip.copy(game_url)
-        write(None, add_time=False, push=push_urgency, push_now=True)
+        write(None, add_time=False, push=push_urgency, push_now=True, output=False)
+
+
+# noinspection PyShadowingNames
+def Image_to_Text(image: Image, size: tuple, white_threshold: list, arg: str = ''):
+    image_data = image.getdata()
+    pixel_map, image_text = [], ''
+    for y in range(size[1]):
+        for x in range(size[0]):
+            if relate_list(image_data[y * size[0] + x], white_threshold, relate=operator.ge):
+                pixel_map.append((0, 0, 0))
+            else:
+                pixel_map.append((255, 255, 255))
+    temp_image = Image.new('RGB', (size[0], size[1]))
+    temp_image.putdata(pixel_map)
+    # temp_image.save('inv.png')
+    # image.save('org.png')
+    try:
+        image_text = pytesseract.image_to_string(temp_image, timeout=0.3, config=arg)
+    except RuntimeError as timeout_error:
+        pass
+    if image_text:
+        return ' '.join(image_text.replace(': ', ':').split())
+    else:
+        return False
 
 
 def getCfgData():
     try:
         get_cfg = {'activate_script': int(config.get('HotKeys', 'Activate Script'), 16), 'activate_push_notification': int(config.get('HotKeys', 'Activate Push Notification'), 16),
                    'info_newest_match': int(config.get('HotKeys', 'Get Info on newest Match'), 16), 'info_multiple_matches': int(config.get('HotKeys', 'Get Info on multiple Matches'), 16),
-                   'open_live_tab': int(config.get('HotKeys', 'Live Tab Key'), 16), 'switch_accounts': int(config.get('HotKeys', 'Switch accounts for csgostats.gg'), 16), 'end_script': int(config.get('HotKeys', 'End Script'), 16),
+                   'open_live_tab': int(config.get('HotKeys', 'Live Tab Key'), 16), 'switch_accounts': int(config.get('HotKeys', 'Switch accounts for csgostats.gg'), 16), 'stop_warmup_ocr': int(config.get('HotKeys', 'Stop Warmup OCR'), 16),
+                   'end_script': int(config.get('HotKeys', 'End Script'), 16),
                    'screenshot_interval': config.getint('Screenshot', 'Interval'), 'steam_api_key': config.get('csgostats.gg', 'API Key'), 'last_x_matches': config.getint('csgostats.gg', 'Number of Requests'),
                    'completed_matches': config.getint('csgostats.gg', 'Completed Matches'), 'max_queue_position': config.getint('csgostats.gg', 'Auto-Retrying for queue position below'),
-                   'auto_retry_interval': config.getint('csgostats.gg', 'Auto-Retrying-Interval'),
-                   'pushbullet_device_name': config.get('Pushbullet', 'Device Name'), 'pushbullet_api_key': config.get('Pushbullet', 'API Key')}
+                   'auto_retry_interval': config.getint('csgostats.gg', 'Auto-Retrying-Interval'), 'pushbullet_device_name': config.get('Pushbullet', 'Device Name'), 'pushbullet_api_key': config.get('Pushbullet', 'API Key'),
+                   'tesseract_path': config.get('Warmup', 'Tesseract Path'), 'warmup_test_interval': config.getint('Warmup', 'Test Interval'), 'warmup_push_interval': config.get('Warmup', 'Push Interval'),
+                   'warmup_no_text_limit': config.getint('Warmup', 'No Text Limit')}
         return get_cfg
+        # 'imgur_id': config.get('Imgur', 'Client ID'), 'imgur_secret': config.get('Imgur', 'Client Secret'),
     except (configparser.NoOptionError, configparser.NoSectionError, ValueError):
         write('ERROR IN CONFIG')
         exit('CHECK FOR NEW CONFIG')
@@ -233,16 +260,23 @@ toplist, winlist = [], []
 hwnd = 0
 
 # BOOLEAN INITIALIZATION
-test_for_live_game, test_for_success, push_urgency, testing = False, False, False, False
+test_for_live_game, test_for_success, push_urgency, test_for_warmup, testing = False, False, False, False, False
 
 # csgostats.gg VAR
 retrying_games = []
+
+# WARMUP DETECTION SETUP
+pytesseract.pytesseract.tesseract_cmd = cfg['tesseract_path']
+push_times, no_text_found, push_counter = [], [], 0
+for i in cfg['warmup_push_interval'].split(','):
+    push_times.append(int(i))
+push_times.sort(reverse=True)
 
 # PUSHBULLET VAR
 note = ''
 
 # INITIALIZATION OF TIME VARS
-screenshot_time, error_check_time = time(), time()
+screenshot_time, error_check_time, warmup_test_timer, warmup_push_timer = time(), time(), time(), time()
 
 write('READY')
 write('Current account is: %s\n' % accounts[current_account]['name'], add_time=False)
@@ -293,6 +327,12 @@ while True:
             current_account = 0
         write('current account is: %s' % accounts[current_account]['name'], add_time=False)
 
+    if win32api.GetAsyncKeyState(cfg['stop_warmup_ocr']) & 1:  # ESC (STOP WARMUP OCR)
+        write('STOPPING WARMUP TIME FINDER!')
+        test_for_warmup = False
+        no_text_found = []
+        warmup_push_timer, warmup_test_timer = time(), time()
+
     if win32api.GetAsyncKeyState(cfg['end_script']) & 1:  # POS1 (END SCRIPT)
         write('Exiting Script')
         break
@@ -312,11 +352,14 @@ while True:
     hwnd = csgo[0][0]
 
     # TESTING HERE
-    if win32api.GetAsyncKeyState(0) & 1:  # UNBINDED, TEST CODE
+    if win32api.GetAsyncKeyState(0x74) & 1:  # UNBOUND, TEST CODE
         print('\n')
         write('Executing TestCode')
         print('\n')
-        testing = not testing
+        # testing = not testing
+        push_counter = 0
+        test_for_warmup = True
+        warmup_test_timer, warmup_push_timer = time(), time()
 
     if testing:
         # screenshot_time = time()
@@ -365,7 +408,9 @@ while True:
                 write('Took %s since trying to find a game.' % str(timedelta(seconds=int(time() - time_searching))), add_time=False, push=push_urgency + 1)
                 write('Game should have started', push=push_urgency + 2, push_now=True)
                 test_for_success = False
+                test_for_warmup = True
                 playsound('sounds/done_testing.mp3')
+                warmup_test_timer, warmup_push_timer = time()+5, time()+5
 
             if any([searching, not_searching]):
                 write('Took: %s ' % str(timedelta(seconds=int(time() - screenshot_time))), add_time=False, push=push_urgency + 1)
@@ -382,5 +427,35 @@ while True:
             print(not_searching_avg)
             playsound('sounds/fail.mp3')
             img.save(os.path.expanduser('~') + '\\Unknown Error.png')
+
+    if test_for_warmup:
+        if time() - warmup_test_timer >= cfg['warmup_test_interval']:
+            img = getScreenShot(hwnd, (1036, 425, 1525, 456))  # 'WAITING FOR PLAYERS X:XX'
+            img_text = Image_to_Text(img, img.size, [225, 225, 225], arg='--psm 6')
+            warmup_test_timer = time()
+            if img_text:
+                time_left = img_text.split()[-1].split(':')
+                write(img_text, add_time=False)
+                try:
+                    time_left = int(time_left[0]) * 60 + int(time_left[1])
+                except ValueError:
+                    time_left = push_times[0] + 1
+                if time_left <= push_times[push_counter]:
+                    push_counter += 1
+                    write(img_text, add_time=True, push=push_urgency + 1, output=False, push_now=True)
+            else:
+                no_text_found.append(True)
+
+        if push_counter >= len(push_times):
+            write('Warmup should be over in less then %s seconds!' % push_times[-1], push=push_urgency + 1, push_now=True)
+            push_counter = 0
+            no_text_found = []
+            test_for_warmup = False
+
+        if len(no_text_found) >= cfg['warmup_no_text_limit']:
+            push_counter = 0
+            no_text_found = []
+            test_for_warmup = False
+            write('Did not find any warmup text.', push=push_urgency + 1, push_now=True)
 
 exit('ENDED BY USER')

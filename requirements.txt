@@ -1,3 +1,4 @@
+pytesseract
 pyperclip
 requests
 pywin32
