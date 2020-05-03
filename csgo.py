@@ -1,6 +1,7 @@
 import configparser
 import operator
 import os
+import sys
 import time
 import webbrowser
 from datetime import datetime, timedelta
@@ -33,12 +34,12 @@ def write(message, add_time: bool = True, push: int = 0, push_now: bool = False,
             message = datetime.now().strftime('%H:%M:%S') + ': ' + message
         overwrite_log = open(appdata_path + '\\overwrite_log.txt', 'rb+')
         lines = overwrite_log.readlines()
-        last_key = lines[0].split(b'\\')[0]
-        last_line = lines[-1].split(b'\\')[-1]
+        last_key = lines[0].split(b'**')[0]
+        last_line = lines[-1].split(b'**')[-1]
         if overwrite != '0':
-            ending = ''
+            ending = console_window[0]
             if last_key == overwrite.encode():
-                message = '\r' + message
+                message = console_window[1] + message
             else:
                 if last_line != b'\n':
                     message = '\n' + message
@@ -49,7 +50,7 @@ def write(message, add_time: bool = True, push: int = 0, push_now: bool = False,
 
         overwrite_log.seek(0)
         overwrite_log.truncate()
-        overwrite_log.write((overwrite + '\\' + message + '\\' + ending).encode())
+        overwrite_log.write((overwrite + '**' + message + '**' + ending).encode())
         overwrite_log.close()
         print(message, end=ending)
 
@@ -269,15 +270,22 @@ def getCfgData():
         exit('CHECK FOR NEW CONFIG')
 
 
-# LOG FILE
+# OVERWRITE SETUP
 appdata_path = os.getenv('APPDATA') + '\\CSGO AUTO ACCEPT\\'
 try:
     os.mkdir(appdata_path)
 except FileExistsError:
     pass
 overwrite_log = open(appdata_path+'\\overwrite_log.txt', 'wb')
-overwrite_log.write('0\\\n'.encode())
+overwrite_log.write('0**\n'.encode())
 overwrite_log.close()
+console_window = ()
+if not sys.stdout.isatty():
+    console_window = ('', '\r')
+else:
+    console_window = ('\r', '')
+
+
 
 # CONFIG HANDLING
 config = configparser.ConfigParser()
@@ -341,7 +349,10 @@ while True:
 
     if win32api.GetAsyncKeyState(cfg['info_newest_match']) & 1:  # F7 Key (UPLOAD NEWEST MATCH)
         write('Uploading / Getting status on newest match')
-        sharecodes = getNewCSGOMatches(getOldSharecodes()[0])
+        sharecodes = retrying_games
+        for code in getNewCSGOMatches(getOldSharecodes()[0]):
+            if code not in [i for i in sharecodes]:
+                sharecodes.append(code)
         UpdateCSGOstats(sharecodes, num_completed=len(sharecodes))
 
     if win32api.GetAsyncKeyState(cfg['info_multiple_matches']) & 1:  # F6 Key (GET INFO ON LAST X MATCHES)
@@ -401,8 +412,8 @@ while True:
         img = getScreenShot(hwnd, (1265, 760, 1295, 785))
         if not img:
             continue
-        accept_avg = color_average(img, [76, 176, 80, 90, 203, 95])
-
+        accept_avg = color_average(img, [76, 176, 80, 89, 203, 94])
+        write(accept_avg, add_time=False)
         if relate_list(accept_avg, [(1, 2, 1), (1, 1, 2)]):
             write('Trying to Accept', push=push_urgency + 1)
 
