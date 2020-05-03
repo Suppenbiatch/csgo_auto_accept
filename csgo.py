@@ -14,7 +14,6 @@ import win32gui
 from PIL import ImageGrab
 from playsound import playsound
 
-# ADDED MULTIACCOUNT SUPPORT
 
 def Avg(lst):
     return sum(lst) / len(lst)
@@ -162,7 +161,8 @@ def UpdateCSGOstats(sharecodes, num_completed=1):
             write("URL: %s" % game_url, add_time=False, push=push_urgency)
             write("Status: %s." % info, add_time=False, push=push_urgency)
     write(None, add_time=False, push=push_urgency, push_now=True)
-    pyperclip.copy(completed_games[-1]["data"]["url"])
+    if completed_games:
+        pyperclip.copy(completed_games[-1]["data"]["url"])
     return game_url
 
 
@@ -189,14 +189,16 @@ for i in config.sections():
         steam_id = config.get(i, "Steam ID")
         auth_code = config.get(i, "Authentication Code")
         match_token = config.get(i, "Match Token")
-        steam_ids = steam_id + "," + steam_ids
+        steam_ids += steam_id + ","
         accounts.append({"steam_id": steam_id, "auth_code": auth_code, "match_token": match_token})
 
-steam_ids = steam_ids[:-1]
+steam_ids = steam_ids.lstrip(",").rstrip(",")
 profiles = requests.get("http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=" + steam_api_key + "&steamids=" + steam_ids).json()["response"]["players"]
-for i, val in enumerate(profiles):
-    accounts[i]["name"] = val["personaname"]
-
+for i in profiles:
+    for n in accounts:
+        if n["steam_id"] == i["steamid"]:
+            n["name"] = i["personaname"]
+            break
 
 screen_width, screen_height = win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1)
 toplist, winlist = [], []
@@ -257,6 +259,7 @@ while True:
         current_account += 1
         if current_account > len(accounts)-1:
             current_account = 0
+        print(current_account)
         write("current account is: %s" % accounts[current_account]["name"], add_time=False)
 
     if win32api.GetAsyncKeyState(keys[6]) & 1:  # POS1/HOME Key
@@ -271,7 +274,7 @@ while True:
     hwnd = csgo[0][0]
 
     # TESTING HERE
-    if win32api.GetAsyncKeyState(0x73) & 1:  # F5, TEST CODE
+    if win32api.GetAsyncKeyState(0) & 1:  # F5, TEST CODE
         print("\n")
         write("Executing TestCode")
         print("\n")
