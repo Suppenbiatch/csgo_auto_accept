@@ -1,7 +1,6 @@
 import configparser
 import operator
 import os
-import sys
 import time
 import webbrowser
 from datetime import datetime, timedelta
@@ -21,25 +20,24 @@ def Avg(lst: list):
     return sum(lst) / len(lst)
 
 
-# noinspection PyShadowingNames
+# noinspection PyShadowingNames,PyUnusedLocal
 def enum_cb(hwnd, results):
     winlist.append((hwnd, win32gui.GetWindowText(hwnd)))
 
 
 # noinspection PyShadowingNames
-def write(message, add_time: bool = True, push: int = 0, push_now: bool = False, output: bool = True, overwrite: tuple = (False, '0')):
+def write(message, add_time: bool = True, push: int = 0, push_now: bool = False, output: bool = True, overwrite: str = '0'):
     if output:
         message = str(message)
         if add_time:
             message = datetime.now().strftime('%H:%M:%S') + ': ' + message
-        log_file = open(log_path + '\\log.txt', 'rb')
-        lines = log_file.readlines()
-        log_file.close()
+        overwrite_log = open(appdata_path + '\\overwrite_log.txt', 'rb+')
+        lines = overwrite_log.readlines()
         last_key = lines[0].split(b'\\')[0]
-        last_line = lines[-1].split(b'\r')[-1]
-        if overwrite[0]:
+        last_line = lines[-1].split(b'\\')[-1]
+        if overwrite != '0':
             ending = ''
-            if last_key == overwrite[1].encode():
+            if last_key == overwrite.encode():
                 message = '\r' + message
             else:
                 if last_line != b'\n':
@@ -49,9 +47,10 @@ def write(message, add_time: bool = True, push: int = 0, push_now: bool = False,
             if last_line != b'\n':
                 message = '\n' + message
 
-        log_file = open(log_path + '\\log.txt', 'w')
-        log_file.write(overwrite[1] + '\\' + message + ending)
-        log_file.close()
+        overwrite_log.seek(0)
+        overwrite_log.truncate()
+        overwrite_log.write((overwrite + '\\' + message + '\\' + ending).encode())
+        overwrite_log.close()
         print(message, end=ending)
 
     if push >= 3:
@@ -71,18 +70,15 @@ def click(x: int, y: int):
 
 
 # noinspection PyShadowingNames
-def relate_list(l_org, l1, l2=None, relate: operator = operator.le):
+def relate_list(l_org, compare_list, relate: operator = operator.le):
     if not l_org:
         return False
-    truth_list, l3 = [], []
-    for i, val in enumerate(l1, start=0):
-        l3.append(relate(l_org[i], val))
-    truth_list.append(all(l3))
-    l3 = []
-    if l2:
-        for i, val in enumerate(l2, start=len(l1)):
-            l3.append(relate(l_org[i], val))
-        truth_list.append(all(l3))
+    truth_list = []
+    for list_part in compare_list:
+        partial_truth = []
+        for i, val in enumerate(list_part):
+            partial_truth.append(relate(l_org[i], val))
+        truth_list.append(all(partial_truth))
     return any(truth_list)
 
 
@@ -142,15 +138,15 @@ def getAccountsFromCfg():
 # noinspection PyShadowingNames
 def getOldSharecodes(num: int = -1):
     try:
-        last_game = open(log_path+'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'r')
+        last_game = open(appdata_path+'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'r')
         games = last_game.readlines()
         last_game.close()
     except FileNotFoundError:
-        last_game = open(log_path+'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'w')
+        last_game = open(appdata_path+'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'w')
         last_game.write(accounts[current_account]['match_token'] + '\n')
         games = [accounts[current_account]['match_token']]
         last_game.close()
-    last_game = open(log_path+'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'w')
+    last_game = open(appdata_path+'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'w')
     games = games[-200:]
     for i, val in enumerate(games):
         games[i] = 'CSGO' + val.strip('\n').split('CSGO')[1]
@@ -163,7 +159,7 @@ def getOldSharecodes(num: int = -1):
 def getNewCSGOMatches(game_id: str):
     sharecodes = []
     next_code = game_id
-    last_game = open(log_path+'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'a')
+    last_game = open(appdata_path+'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'a')
     while next_code != 'n/a':
         steam_url = 'https://api.steampowered.com/ICSGOPlayers_730/GetNextMatchSharingCode/v1?key=' + cfg['steam_api_key'] + '&steamid=' + accounts[current_account]['steam_id'] + '&steamidkey=' + accounts[current_account][
             'auth_code'] + '&knowncode=' + game_id
@@ -209,7 +205,7 @@ def UpdateCSGOstats(sharecodes: list, num_completed: int = 1):
         for i, val in enumerate(queued_games):
             temp_string += '#' + str(i + 1) + ': in Queue #' + str(val) + '. - '
         temp_string = temp_string.rstrip(' - ')
-        write(temp_string, add_time=False, overwrite=(True, '5'))
+        write(temp_string, add_time=False, overwrite='4')
 
     if len(not_completed_games) - len(queued_games) > 0:
         write('An error occurred in %s game[s].' % (len(not_completed_games) - len(queued_games)), add_time=False)
@@ -227,13 +223,13 @@ def UpdateCSGOstats(sharecodes: list, num_completed: int = 1):
         write(None, add_time=False, push=push_urgency, push_now=True, output=False)
 
 
-# noinspection PyShadowingNames
-def Image_to_Text(image: Image, size: tuple, white_threshold: list, arg: str = ''):
+# noinspection PyShadowingNames,PyUnusedLocal
+def Image_to_Text(image: Image, size: tuple, white_threshold: tuple, arg: str = ''):
     image_data = image.getdata()
     pixel_map, image_text = [], ''
     for y in range(size[1]):
         for x in range(size[0]):
-            if relate_list(image_data[y * size[0] + x], white_threshold, relate=operator.ge):
+            if relate_list(image_data[y * size[0] + x], [white_threshold], relate=operator.ge):
                 pixel_map.append((0, 0, 0))
             else:
                 pixel_map.append((255, 255, 255))
@@ -274,14 +270,14 @@ def getCfgData():
 
 
 # LOG FILE
-log_path = os.getenv('APPDATA') + '\\CSGO AUTO ACCEPT\\'
+appdata_path = os.getenv('APPDATA') + '\\CSGO AUTO ACCEPT\\'
 try:
-    os.mkdir(log_path)
+    os.mkdir(appdata_path)
 except FileExistsError:
     pass
-log_file = open(log_path+'\\log.txt', 'w')
-log_file.write('0\\\n')
-log_file.close()
+overwrite_log = open(appdata_path+'\\overwrite_log.txt', 'wb')
+overwrite_log.write('0\\\n'.encode())
+overwrite_log.close()
 
 # CONFIG HANDLING
 config = configparser.ConfigParser()
@@ -323,7 +319,7 @@ write('Current account is: %s\n' % accounts[current_account]['name'], add_time=F
 while True:
     if win32api.GetAsyncKeyState(cfg['activate_script']) & 1:  # F9 (ACTIVATE / DEACTIVATE SCRIPT)
         truth_table['test_for_live_game'] = not truth_table['test_for_live_game']
-        write('TESTING: %s' % truth_table['test_for_live_game'], overwrite=(True, '1'))
+        write('TESTING: %s' % truth_table['test_for_live_game'], overwrite='1')
         if truth_table['test_for_live_game']:
             playsound('sounds/activated_2.mp3')
             time_table['time_searching'] = time.time()
@@ -341,7 +337,7 @@ while True:
             if push_urgency > 3:
                 push_urgency = 0
             push_info = ['not active', 'only if accepted', 'all game status related information', 'all information (game status/csgostats.gg information)']
-            write('Pushing: %s' % push_info[push_urgency], overwrite=(True, '2'))
+            write('Pushing: %s' % push_info[push_urgency], overwrite='2')
 
     if win32api.GetAsyncKeyState(cfg['info_newest_match']) & 1:  # F7 Key (UPLOAD NEWEST MATCH)
         write('Uploading / Getting status on newest match')
@@ -364,7 +360,7 @@ while True:
         current_account += 1
         if current_account > len(accounts) - 1:
             current_account = 0
-        write('current account is: %s' % accounts[current_account]['name'], add_time=False, overwrite=(True, '4'))
+        write('current account is: %s' % accounts[current_account]['name'], add_time=False, overwrite='3')
 
     if win32api.GetAsyncKeyState(cfg['end_script']) & 1:  # POS1 (END SCRIPT)
         write('Exiting Script')
@@ -386,12 +382,11 @@ while True:
 
     # TESTING HERE
     if win32api.GetAsyncKeyState(0x6F) & 1:  # UNBOUND, TEST CODE
-        # write('Executing Debugging\n')
         # truth_table['testing'] = not truth_table['testing']
-        # truth_table['debugging'] = not truth_table['debugging']
-        truth_table['test_for_warmup'] = not truth_table['test_for_warmup']
-        time_table['warmup_test_timer'] = time.time() + 2
-        # write('DEBUGGING: %s\n' % truth_table['debugging'])
+        truth_table['debugging'] = not truth_table['debugging']
+        # truth_table['test_for_warmup'] = not truth_table['test_for_warmup']
+        # time_table['warmup_test_timer'] = time.time() + 2
+        write('DEBUGGING: %s\n' % truth_table['debugging'])
 
     if truth_table['testing']:
         # time_table['screenshot_time'] = time.time()
@@ -408,7 +403,7 @@ while True:
             continue
         accept_avg = color_average(img, [76, 176, 80, 90, 203, 95])
 
-        if relate_list(accept_avg, [1, 2, 1], l2=[1, 1, 2]):
+        if relate_list(accept_avg, [(1, 2, 1), (1, 1, 2)]):
             write('Trying to Accept', push=push_urgency + 1)
 
             truth_table['test_for_success'] = True
@@ -428,12 +423,12 @@ while True:
             not_searching_avg = color_average(img, [6, 10, 10])
             searching_avg = color_average(img, [6, 163, 97, 4, 63, 35])
 
-            not_searching = relate_list(not_searching_avg, [2, 5, 5])
-            searching = relate_list(searching_avg, [2.7, 55, 35], l2=[1, 50, 35])
+            not_searching = relate_list(not_searching_avg, [(2, 5, 5)])
+            searching = relate_list(searching_avg, [(2.7, 55, 35), (1, 50, 35)])
 
             img = getScreenShot(hwnd, (467, 1409, 1300, 1417))
             success_avg = color_average(img, [21, 123, 169])
-            success = relate_list(success_avg, [1, 8, 7])
+            success = relate_list(success_avg, [(1, 8, 7)])
 
             if success:
                 write('Took %s since pressing accept.' % str(timedelta(seconds=int(time.time() - time_table['screenshot_time']))), add_time=False, push=push_urgency + 1)
@@ -476,7 +471,7 @@ while True:
 
             if time.time() - time_table['warmup_test_timer'] >= cfg['warmup_test_interval']:
                 img = getScreenShot(hwnd, (1036, 425, 1525, 456))  # 'WAITING FOR PLAYERS X:XX'
-                img_text = Image_to_Text(img, img.size, [225, 225, 225], arg='--psm 6')
+                img_text = Image_to_Text(img, img.size, (225, 225, 225), arg='--psm 6')
                 time_table['warmup_test_timer'] = time.time()
                 if img_text:
                     time_left = img_text.split()[-1].split(':')
@@ -492,18 +487,18 @@ while True:
                         time_left = push_times[0] + 1
 
                     time_left_data = timedelta(seconds=int(time.time() - time_table['screenshot_time'])), time.strftime('%H:%M:%S', time.gmtime(abs((join_warmup_time - time_left) - (time.time() - time_table['screenshot_time'])))), img_text
-                    write('Time since start: %s - Time Difference: %s - Time left: %s' % (time_left_data[0], time_left_data[1], time_left_data[2]), add_time=False, overwrite=True, key='1')
+                    write('Time since start: %s - Time Difference: %s - Time left: %s' % (time_left_data[0], time_left_data[1], time_left_data[2]), add_time=False, overwrite='1')
                     if no_text_found > 0:
                         no_text_found -= 1
 
                     if time_left <= push_times[push_counter]:
                         push_counter += 1
-                        write('Time since start: %s\nTime Difference: %s\nTime left: %s' % (time_left_data[0], time_left_data[1], time_left_data[2]), add_time=True, push=push_urgency + 1, output=False, push_now=True)
+                        write('Time since start: %s\nTime Difference: %s\nTime left: %s' % (time_left_data[0], time_left_data[1], time_left_data[2]), push=push_urgency + 1, output=False, push_now=True)
 
                     if truth_table['first_push']:
                         if abs((join_warmup_time - time_left) - (time.time() - time_table['screenshot_time'])) >= 5:
                             truth_table['first_push'] = False
-                            write('Match should start in ' + str(time_left) + 'seconds, All players have connected', push=push_urgency + 2, push_now=True, add_time=True)
+                            write('Match should start in ' + str(time_left) + 'seconds, All players have connected', push=push_urgency + 2, push_now=True)
 
                 else:
                     no_text_found += 1
@@ -514,7 +509,7 @@ while True:
                 truth_table['test_for_warmup'] = False
                 truth_table['first_ocr'] = True
                 truth_table['first_push'] = True
-                write('Warmup should be over in less then %s seconds!' % push_times[-1], add_time=True, push=push_urgency + 2, push_now=True)
+                write('Warmup should be over in less then %s seconds!' % push_times[-1], push=push_urgency + 2, push_now=True)
                 break
 
             if no_text_found >= cfg['warmup_no_text_limit']:
@@ -523,7 +518,7 @@ while True:
                 truth_table['test_for_warmup'] = False
                 truth_table['first_ocr'] = True
                 truth_table['first_push'] = True
-                write('Did not find any warmup text.', add_time=True, push=push_urgency + 2, push_now=True)
+                write('Did not find any warmup text.', push=push_urgency + 2, push_now=True)
                 break
 
 exit('ENDED BY USER')
