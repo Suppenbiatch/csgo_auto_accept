@@ -35,21 +35,16 @@ def write(message, add_time: bool = True, push: int = 0, push_now: bool = False,
         if add_time:
             message = datetime.now().strftime('%H:%M:%S') + ': ' + message
         overwrite_log = open(appdata_path + '\\overwrite_log.txt', 'rb+')
-        # lines = overwrite_log.readlines()
-        # line = b''.join(lines)
         splits = b''.join(overwrite_log.readlines()).split(b'**')
         last_key = splits[0]
-        last_end = splits[-1]
         last_string = splits[1].strip(b'\n\r')
+        last_end = splits[-1]
 
         if overwrite != '0':
-            ending = console_window['sufix']
+            ending = console_window['suffix']
             if last_key == overwrite.encode():
                 if console_window['isatty']:
-                    overwrite_last_line = ''
-                    for _ in last_string.decode():
-                        overwrite_last_line += ' '
-                    print(overwrite_last_line, end='\r')
+                    print(' ' * len(last_string.decode()), end=ending)
                 message = console_window['prefix'] + message
             else:
                 if last_end != b'\n':
@@ -64,6 +59,14 @@ def write(message, add_time: bool = True, push: int = 0, push_now: bool = False,
         overwrite_log.write((overwrite + '**' + message + '**' + ending).encode())
         overwrite_log.close()
         print(message, end=ending)
+
+        if push >= 3:
+            global note
+            if message:
+                note = note + str(message) + '\n'
+            if push_now:
+                device.push_note('CSGO AUTO ACCEPT', note)
+                note = ''
 
 
 # noinspection PyShadowingNames
@@ -133,15 +136,15 @@ def getAccountsFromCfg():
 
     steam_ids = steam_ids.lstrip(',').rstrip(',')
     profiles = requests.get('http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=' + cfg['steam_api_key'] + '&steamids=' + steam_ids).json()['response']['players']
-    for i in profiles:
-        for n in accounts:
-            if n['steam_id'] == i['steamid']:
-                n['name'] = i['personaname']
-                break
+    name_list = [online_data['personaname'] for local_acc in accounts for online_data in profiles if online_data['steamid'] == local_acc['steam_id']]
+    for num, val in enumerate(accounts):
+        val['name'] = name_list[num]
 
 
 # noinspection PyShadowingNames
 def getOldSharecodes(num: int = -1):
+    if num >= 0:
+        return []
     try:
         last_game = open(appdata_path+'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'r')
         games = last_game.readlines()
@@ -302,9 +305,9 @@ overwrite_log.write('0**\n'.encode())
 overwrite_log.close()
 console_window = {}
 if not sys.stdout.isatty():
-    console_window = {'prefix': '\r', 'sufix': '', 'isatty': False}
+    console_window = {'prefix': '\r', 'suffix': '', 'isatty': False}
 else:
-    console_window = {'prefix': '', 'sufix': '\r', 'isatty': True}
+    console_window = {'prefix': '', 'suffix': '\r', 'isatty': True}
 
 
 # CONFIG HANDLING
@@ -359,7 +362,7 @@ while True:
                 device = pushbullet.PushBullet(cfg['pushbullet_api_key']).get_device(cfg['pushbullet_device_name'])
             except (pushbullet.errors.PushbulletError, pushbullet.errors.InvalidKeyError):
                 write('Pushbullet is wrongly configured.\nWrong API Key or DeviceName in config.ini')
-        if device:
+        else:
             push_urgency += 1
             if push_urgency > 3:
                 push_urgency = 0
@@ -371,6 +374,8 @@ while True:
         queue_difference = []
         sharecodes = [i[0] for i in retrying_games] + getOldSharecodes(getAllQueuedGames())
         sharecodes = sorted(set(sharecodes), key=lambda x: sharecodes.index(x))
+        if not sharecodes:
+            sharecodes = getOldSharecodes()
         UpdateCSGOstats(sharecodes, num_completed=len(sharecodes))
 
     if win32api.GetAsyncKeyState(cfg['info_multiple_matches']) & 1:  # F6 Key (GET INFO ON LAST X MATCHES)
