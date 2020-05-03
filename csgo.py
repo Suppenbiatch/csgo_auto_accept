@@ -587,9 +587,10 @@ while True:
                 for _ in range(5):
                     click(int(screen_size[0] / 2), int(screen_size[1] / 1.78))
                     pass
+                time.sleep(0.075)
+                win32gui.ShowWindow(hwnd, csgo_window_status)
                 write('Trying to catch a loading map')
                 playsound('sounds/accept_found.mp3')
-                win32gui.ShowWindow(hwnd, csgo_window_status)
                 time_table['screenshot_time'] = time.time()
 
     if truth_table['test_for_accept_button'] or truth_table['test_for_success']:
