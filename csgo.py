@@ -5,6 +5,7 @@ import webbrowser
 from datetime import datetime, timedelta
 from time import time
 
+import pushbullet
 import pyperclip
 import requests
 import win32api
@@ -12,7 +13,6 @@ import win32con
 import win32gui
 from PIL import ImageGrab
 from playsound import playsound
-from pushbullet import PushBullet
 
 
 def Avg(lst):
@@ -37,7 +37,6 @@ def write(message, add_time=True, push=0, push_now=False):
             note = note + m + "\n"
         if push_now:
             device.push_note("CSGO AUTO ACCEPT", note)
-            # print(note)
             note = ""
 
 
@@ -95,9 +94,15 @@ def getScreenShot(window_id, area=(0, 0, 0, 0)):
 
 
 def getOldSharecodes(num=-1):
-    last_game = open("last_game.txt", "r")
-    games = last_game.readlines()
-    last_game.close()
+    try:
+        last_game = open("last_game.txt", "r")
+        games = last_game.readlines()
+        last_game.close()
+    except FileNotFoundError:
+        last_game = open("last_game.txt", "w")
+        last_game.write(config.get("csgostats.gg", "Match Token") + "\n")
+        games = [config.get("csgostats.gg", "Match Token")]
+        last_game.close()
     last_game = open("last_game.txt", "w")
     games = games[-200:]
     for i, val in enumerate(games):
@@ -163,7 +168,7 @@ game_code = config.get("csgostats.gg", "Game Code")
 
 keys = getHotKeys()
 
-PushBulletDeviceName, PushBulletAPIKey = 0, 0
+device = 0
 
 screen_width, screen_height = win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1)
 toplist, winlist = [], []
@@ -188,16 +193,19 @@ while True:
             playsound('sounds/deactivated.mp3')
 
     if win32api.GetAsyncKeyState(keys[1]) & 1:  # F8 (ACTIVATE / DEACTIVATE PUSH NOTIFICATION)
-        push_urgency += 1
-        if push_urgency > 2:
-            push_urgency = 0
-        push_info = ["not active", "little information", "all information"]
-        write("Pushing: %s" % push_info[push_urgency])
-
-        if not PushBulletDeviceName:
+        if not device:
             PushBulletDeviceName = config.get('Pushbullet', 'DeviceName')
             PushBulletAPIKey = config.get('Pushbullet', 'API Key')
-            device = PushBullet(PushBulletAPIKey).get_device(PushBulletDeviceName)
+            try:
+                device = pushbullet.PushBullet(PushBulletAPIKey).get_device(PushBulletDeviceName)
+            except pushbullet.errors.PushbulletError or pushbullet.errors.InvalidKeyError:
+                write("Pushbullet is wrongly configured.\nWrong API Key or DeviceName in config.ini")
+        if device:
+            push_urgency += 1
+            if push_urgency > 2:
+                push_urgency = 0
+            push_info = ["not active", "little information", "all information"]
+            write("Pushing: %s" % push_info[push_urgency])
 
     if win32api.GetAsyncKeyState(keys[2]) & 1:  # F7 Key (UPLOAD NEWEST MATCH)
         newest_match = getNewCSGOMatches(getOldSharecodes()[0])
@@ -290,7 +298,7 @@ while True:
                 playsound('sounds/done_testing.mp3')
 
             if any([searching, not_searching]):
-                write("Took: %s " % str(timedelta(seconds=int(time() - start_time))),add_time=False, push=push_urgency)
+                write("Took: %s " % str(timedelta(seconds=int(time() - start_time))), add_time=False, push=push_urgency)
                 write("Game doesnt seem to have started. Continuing to search for accept Button!", push=push_urgency, push_now=True)
                 playsound('sounds/back_to_testing.mp3')
                 test_for_success = False
