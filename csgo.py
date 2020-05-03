@@ -8,6 +8,7 @@ import time
 import webbrowser
 import winreg
 from datetime import datetime, timedelta
+from typing import List
 
 import pushbullet
 import pyperclip
@@ -33,7 +34,7 @@ def enum_cb(hwnd, results):
 
 
 def mute_csgo(lvl: int):
-    os.system(mute_csgo_path + str(lvl))
+    os.system(path_vars['mute_csgo_path'] + str(lvl))
 
 
 # noinspection PyShadowingNames
@@ -116,7 +117,7 @@ def color_average(image: Image, compare_list: list):
 def getScreenShot(window_id: int, area: tuple = (0, 0, 0, 0)):
     area = list(area)
     win32gui.ShowWindow(window_id, win32con.SW_MAXIMIZE)
-    scaled_area = [screen_width / 2560, screen_height / 1440]
+    scaled_area = [screen_size[0] / 2560, screen_size[1] / 1440]
     scaled_area = 2 * scaled_area
     for i, _ in enumerate(area[-2:], start=len(area) - 2):
         area[i] += 1
@@ -186,16 +187,17 @@ def CheckUserDataAutoExec(steam_id_3: str, csgo_int_path: str, steam_int_path: s
 def getOldSharecodes(last_x: int = -1, from_x: str = ''):
     if last_x >= 0:
         return []
+    global path_vars
     try:
-        last_game = open(appdata_path+'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'r')
+        last_game = open(path_vars['appdata_path']+'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'r')
         games = last_game.readlines()
         last_game.close()
     except FileNotFoundError:
-        last_game = open(appdata_path+'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'w')
+        last_game = open(path_vars['appdata_path']+'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'w')
         last_game.write(accounts[current_account]['match_token'] + '\n')
         games = [accounts[current_account]['match_token']]
         last_game.close()
-    last_game = open(appdata_path+'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'w')
+    last_game = open(path_vars['appdata_path']+'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'w')
     games = games[-200:]
     for i, val in enumerate(games):
         games[i] = 'CSGO' + val.strip('\n').split('CSGO')[1]
@@ -213,13 +215,13 @@ def getOldSharecodes(last_x: int = -1, from_x: str = ''):
 def getNewCSGOSharecodes(game_id: str):
     sharecodes = []
     next_code = game_id
-    last_game = open(appdata_path+'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'a')
+    last_game = open(path_vars['appdata_path']+'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'a')
     while next_code != 'n/a':
         steam_url = 'https://api.steampowered.com/ICSGOPlayers_730/GetNextMatchSharingCode/v1?key=' + cfg['steam_api_key'] + '&steamid=' + accounts[current_account]['steam_id'] + '&steamidkey=' + accounts[current_account]['auth_code'] + '&knowncode=' + game_id
         try:
             next_code = (requests.get(steam_url, timeout=2).json()['result']['nextcode'])
-        except (KeyError, requests.exceptions.ConnectionError, requests.exceptions.Timeout) as err:
-            write('WRONG Match Token, Authentication Code or Steam ID\n Following Error: %s' % err)
+        except (KeyError, requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+            write('WRONG Match Token, Authentication Code or Steam ID!')
             if sharecodes:
                 return sharecodes
             else:
@@ -237,9 +239,9 @@ def getNewCSGOSharecodes(game_id: str):
 # noinspection PyShadowingNames
 def UpdateCSGOstats(repeater=None, get_all_games=False):
     all_games, completed_games, not_completed_games, = [], [], []
-
     if repeater is None:
         repeater = []
+
     if repeater:
         if get_all_games:
             sharecodes = [getOldSharecodes(from_x=code['sharecode']) for code in repeater]
@@ -341,6 +343,15 @@ def Image_to_Text(image: Image, size: tuple, white_threshold: tuple, arg: str = 
         return ''
 
 
+# noinspection PyShadowingNames
+def str_in_list(compare_strings: List[str], list_of_strings: List[str], replacement_str: str = ''):
+    matching = [string.replace(replacement_str, '') for string in list_of_strings for compare_str in compare_strings if compare_str in string]
+    if not replacement_str:
+        return any(matching)
+    else:
+        return matching
+
+
 def getCfgData():
     try:
         get_cfg = {'activate_script': int(config.get('HotKeys', 'Activate Script'), 16), 'activate_push_notification': int(config.get('HotKeys', 'Activate Push Notification'), 16),
@@ -360,9 +371,9 @@ def getCfgData():
 
 
 # OVERWRITE SETUP
-appdata_path = os.getenv('APPDATA') + '\\CSGO AUTO ACCEPT\\'
+path_vars = {'appdata_path': os.getenv('APPDATA') + '\\CSGO AUTO ACCEPT\\'}
 try:
-    os.mkdir(appdata_path)
+    os.mkdir(path_vars['appdata_path'])
 except FileExistsError:
     pass
 last_printed_line = b'0**\n'
@@ -384,28 +395,27 @@ device = 0
 # ACCOUNT HANDLING, GETTING ACCOUNT NAME, GETTING CSGO PATH, CHECKING AUTOEXEC
 accounts, current_account = [], 0
 getAccountsFromCfg()
-csgo_path, steam_path = getCsgoPath()
-CheckUserDataAutoExec(accounts[current_account]['steam_id_3'], csgo_path, steam_path)
-match_reservation = 'Matchmaking reservation confirmed: '
-with open(csgo_path + 'console_log.log', 'w') as log:
+path_vars['csgo_path'], path_vars['steam_path'] = getCsgoPath()
+CheckUserDataAutoExec(accounts[current_account]['steam_id_3'], path_vars['csgo_path'], path_vars['steam_path'])
+
+with open(path_vars['csgo_path'] + 'console_log.log', 'w') as log:
     log.write('')
 with open(cfg['debug_path'] + '\\console.log', 'w') as debug_log:
     debug_log.write('')
 
-if not os.path.exists(csgo_path + 'cfg\\gamestate_integration_GSI.cfg'):
-    copyfile(os.path.join(os.getcwd(), 'GSI') + '\\gamestate_integration_GSI.cfg', csgo_path + 'cfg\\gamestate_integration_GSI.cfg')
+if not os.path.exists(path_vars['csgo_path'] + 'cfg\\gamestate_integration_GSI.cfg'):
+    copyfile(os.path.join(os.getcwd(), 'GSI') + '\\gamestate_integration_GSI.cfg', path_vars['csgo_path'] + 'cfg\\gamestate_integration_GSI.cfg')
     write('Added GSI CONFIG to cfg folder. Counter-Strike needs to be restarted if running!')
 gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
 
 # INITIALIZATION FOR getScreenShot
-screen_width, screen_height = win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1)
-hwnd = 0
+screen_size = (win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1))
+hwnd, csgo_window_status = 0, 0
 toplist, csgo = [], []
 
 # BOOLEAN, TIME INITIALIZATION
 truth_table = {'test_for_accept_button': False, 'test_for_success': False, 'test_for_warmup': False, 'first_ocr': True, 'testing': False, 'debugging': False, 'first_push': True, 'still_in_warmup': False, 'test_for_server': False, 'test_for_freezetime': False, 'first_freezetime': True, 'gsi_server_running': False}
-time_table = {'screenshot_time': time.time(), 'time_since_retry': time.time(), 'warmup_test_timer': time.time(), 'time_searching': time.time(), 'not_searching_cc': time.time(), 'searching_cc': time.time(), 'freezetime_time': time.time()}
-test_for_accept_counter = 0
+time_table = {'screenshot_time': time.time(), 'time_since_retry': time.time(), 'warmup_test_timer': time.time(), 'time_searching': time.time(), 'not_searching_cc': time.time(), 'searching_cc': time.time(), 'freezetime_time': time.time(), 'join_warmup_time': 0.0}
 if cfg['freezetime_auto_on']:
     truth_table['test_for_freezetime'] = True
 
@@ -417,18 +427,16 @@ pytesseract.pytesseract.tesseract_cmd = cfg['tesseract_path']
 no_text_found, push_counter = 0, 0
 push_times = [int(i) for i in cfg['warmup_push_interval'].split(',')]
 push_times.sort(reverse=True)
-join_warmup_time = push_times[0] + 1
 
 # PUSHBULLET VAR
 note = ''
 push_urgency = 0
 
 # MUTE CSGO PATH
-mute_csgo_path = '"' + os.getcwd() + '\\sounds\\nircmdc.exe" muteappvolume csgo.exe '
+path_vars['mute_csgo_path'] = '"' + os.getcwd() + '\\sounds\\nircmdc.exe" muteappvolume csgo.exe '
 mute_csgo(0)
 
 write('READY')
-write('Current account is: %s\n' % accounts[current_account]['name'], add_time=False)
 
 
 while True:
@@ -475,7 +483,7 @@ while True:
         current_account += 1
         if current_account > len(accounts) - 1:
             current_account = 0
-        CheckUserDataAutoExec(accounts[current_account]['steam_id_3'], csgo_path, steam_path)
+        CheckUserDataAutoExec(accounts[current_account]['steam_id_3'], path_vars['csgo_path'], path_vars['steam_path'])
         write('current account is: %s' % accounts[current_account]['name'], add_time=False, overwrite='3')
 
     if win32api.GetAsyncKeyState(cfg['mute_csgo_toggle']) & 1:  # F6 (TOGGLE MUTE CSGO)
@@ -484,7 +492,6 @@ while True:
 
     if win32api.GetAsyncKeyState(cfg['freezetime_test']) & 1:
         truth_table['test_for_freezetime'] = not truth_table['test_for_freezetime']
-        truth_table['first_freezetime'] = True
         cfg['freezetime_auto_on'] = truth_table['test_for_freezetime']
         write('Freeze Time Signal: %s' % truth_table['test_for_freezetime'], add_time=False, overwrite='6')
 
@@ -504,62 +511,63 @@ while True:
     hwnd = csgo[0][0]
 
     if not truth_table['gsi_server_running']:
-        write('CS:GO GSI Server starting..', add_time=False, overwrite='8')
+        write('CS:GO GSI Server starting..', overwrite='8')
         gsi_server.start_server()
         truth_table['gsi_server_running'] = True
-        write('CS:GO GSI Server running..', add_time=False, overwrite='8')
+        write('CS:GO GSI Server running..', overwrite='8')
+        if gsi_server.get_info('map', 'name') is None and gsi_server.get_info('player', 'activity') == 'menu':
+            current_steamid = gsi_server.get_info('player', 'steamid')
+            try:
+                current_account = [i for i, val in enumerate(accounts) if current_steamid == val['steam_id']][0]
+                CheckUserDataAutoExec(accounts[current_account]['steam_id_3'], path_vars['csgo_path'], path_vars['steam_path'])
+            except IndexError:
+                write('Account is not in the config.ini!\nScript might not work properly!\n')
+        write('Current account is: %s\n' % accounts[current_account]['name'], add_time=False)
+
 
     # TESTING HERE
     if win32api.GetAsyncKeyState(0x6F) & 1:  # UNBOUND, TEST CODE
         # truth_table['debugging'] = not truth_table['debugging']
-        time_table['screenshot_time'] = time.time()
-        truth_table['test_for_success'] = not truth_table['test_for_success']
-        write(truth_table['test_for_success'], add_time=False)
-        # truth_table['testing'] = not truth_table['testing']
-
-    if truth_table['testing']:
         # time_table['screenshot_time'] = time.time()
-        pass
-        # print('Took: %s ' % str(timedelta(milliseconds=int(time.time()*1000 - time_table['screenshot_time']*1000))))
-    # TESTING ENDS HERE
+        # truth_table['test_for_success'] = not truth_table['test_for_success']
+        # write(truth_table['test_for_success'], add_time=False)
+        truth_table['testing'] = not truth_table['testing']
+        write(truth_table['testing'], add_time=False)
 
-    if truth_table['test_for_server']:
-        if time.time() - time_table['searching_cc'] > 0.2:
-            time_table['searching_cc'] = time.time()
-        else:
-            continue
-        with open(csgo_path + 'console_log.log', 'rb+') as log:
+    if time.time() - time_table['searching_cc'] > 0.2:
+        time_table['searching_cc'] = time.time()
+        with open(path_vars['csgo_path'] + 'console_log.log', 'rb+') as log:
             log_lines = log.readlines()
-            console_line = [line.decode('utf-8', 'ignore').encode("utf-8").rstrip(b'\n\r').decode() for line in log_lines]
+            console_lines = [line.decode('utf-8', 'ignore').encode('utf-8').rstrip(b'\n\r').decode() for line in log_lines]
             log.seek(0)
             log.truncate()
         with open(cfg['debug_path'] + '\\console.log', 'ab') as debug_log:
             [debug_log.write(i) for i in log_lines]
-        server_ready = any('Matchmaking reservation confirmed: ' in i for i in console_line)
-        matchmaking_msg = [i.replace('Matchmaking message: ', '') for i in console_line if 'Matchmaking message:' in i]
-        if server_ready:
-            test_for_accept_counter = 0
+        matchmaking_msg = str_in_list(['Matchmaking message: '], console_lines, replacement_str='Matchmaking message: ')
+    else:
+        matchmaking_msg = []
+        console_lines = []
+
+    matchmaking_update = str_in_list(['Matchmaking update: '], console_lines, replacement_str='Matchmaking update: ')
+    if matchmaking_update:
+        if matchmaking_update[-1] == '1' and not truth_table['test_for_server']:
+            truth_table['test_for_server'] = True
+            write('TESTING: %s' % truth_table['test_for_server'], overwrite='1')
+            mute_csgo(1)
+            playsound('sounds/activated_2.mp3')
+
+    if truth_table['test_for_server']:
+        if str_in_list(['Matchmaking reservation confirmed: '], console_lines):
             write('Server found, starting to look for accept button')
             truth_table['test_for_accept_button'] = True
+            truth_table['test_for_success'] = False
             playsound('sounds/server_found.mp3')
+            csgo_window_status = win32gui.GetWindowPlacement(hwnd)[1]
             win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
             mute_csgo(0)
-        if matchmaking_msg:
-            [write(i, add_time=False) for i in matchmaking_msg]
-            write(truth_table['test_for_accept_button'], add_time=False)
-            truth_table['test_for_server'] = False if any('Match confirmed' in i for i in matchmaking_msg) else True
-            write(truth_table['test_for_server'], add_time=False)
-            test_for_accept_counter = 0
 
-    else:
-        if time.time() - time_table['not_searching_cc'] > 20:
-            time_table['not_searching_cc'] = time.time()
-            with open(csgo_path + 'console_log.log', 'rb+') as log:
-                log_lines = log.readlines()
-                log.seek(0)
-                log.truncate()
-            with open(cfg['debug_path'] + '\\console.log', 'ab') as debug_log:
-                [debug_log.write(i) for i in log_lines]
+    if matchmaking_msg:
+        [write(i, add_time=False) for i in matchmaking_msg]
 
     if truth_table['test_for_accept_button']:
         if time.time() - time_table['screenshot_time'] < cfg['screenshot_interval']:
@@ -572,75 +580,44 @@ while True:
         if relate_list(accept_avg, [(2, 2, 2), (2, 2, 2)]):
             write('Trying to Accept', push=push_urgency + 1)
             truth_table['test_for_success'] = True
-            truth_table['test_for_accept_button'] = False
-            accept_avg = []
 
             for _ in range(5):
-                click(int(screen_width / 2), int(screen_height / 1.78))
+                # click(int(screen_size[0] / 2), int(screen_size[1] / 1.78))
                 pass
-
             write('Trying to catch a loading map')
             playsound('sounds/accept_found.mp3')
+            win32gui.ShowWindow(hwnd, csgo_window_status)
             time_table['screenshot_time'] = time.time()
-        test_for_accept_counter += 1
-        '''
-        if test_for_accept_counter > cfg['timeout_time']:
-            write('NO ACCEPT BUTTON FOUND AFTER %s seconds.' % str(int(cfg['timeout_time']*cfg['screenshot_interval'])))
-            write('Continuing to look for ready server.')
-            mute_csgo(1)
-            playsound('sounds/back_to_testing.mp3')
-            truth_table['test_for_accept_button'] = False
-        '''
-    if truth_table['test_for_success']:
-        if time.time() - time_table['screenshot_time'] < 40:
-            img = getScreenShot(hwnd, (2435, 65, 2555, 100))
-            not_searching_avg = color_average(img, [(6, 10, 10)])
-            searching_avg = color_average(img, [(6, 163, 97), (4, 63, 35)])
 
-            not_searching = relate_list(not_searching_avg, [(2, 5, 5)])
-            searching = relate_list(searching_avg, [(2.7, 55, 35), (1, 50, 35)])
-
-            img = getScreenShot(hwnd, (467, 1409, 1300, 1417))
-            success_avg = color_average(img, [(21, 123, 169)])
-            success = relate_list(success_avg, [(1, 8, 7)])
-
-            if success:
-                write('\tTook %s since pressing accept.' % str(timedelta(seconds=int(time.time() - time_table['screenshot_time']))), add_time=False, push=push_urgency + 1)
-                write('\tTook %s since trying to find a game.' % str(timedelta(seconds=int(time.time() - time_table['time_searching']))), add_time=False, push=push_urgency + 1)
-                write('Game should have started', push=push_urgency + 2, push_now=True)
-                truth_table['test_for_warmup'] = True
-                truth_table['test_for_success'] = False
-                truth_table['test_for_freezetime'] = False
-                playsound('sounds/done_testing.mp3')
-                time_table['warmup_test_timer'] = time.time() + 5
-                continue
-
-            if any([searching, not_searching]):
-                write('\tTook: %s ' % str(timedelta(seconds=int(time.time() - time_table['screenshot_time']))), add_time=False, push=push_urgency + 1)
-                write('Game doesnt seem to have started. Continuing to search for a Server!', push=push_urgency + 1, push_now=True)
-                playsound('sounds/back_to_testing.mp3')
-                mute_csgo(1)
-                truth_table['test_for_success'] = False
-                truth_table['test_for_server'] = True
-                continue
-
-        else:
-            write('40 Seconds after accept, did not find a loading map nor searching queue')
+    if truth_table['test_for_accept_button'] or truth_table['test_for_success']:
+        if str_in_list(['Match confirmed'], matchmaking_msg):
+            write('\tTook %s since pressing accept.' % str(timedelta(seconds=int(time.time() - time_table['screenshot_time']))), add_time=False, push=push_urgency + 1)
+            write('\tTook %s since trying to find a game.' % str(timedelta(seconds=int(time.time() - time_table['time_searching']))), add_time=False, push=push_urgency + 1)
+            write('Game should have started', push=push_urgency + 2, push_now=True)
+            truth_table['test_for_warmup'] = True
+            truth_table['still_in_warmup'] = True
+            truth_table['first_freezetime'] = False
+            truth_table['test_for_server'] = False
             truth_table['test_for_success'] = False
-            # noinspection PyUnboundLocalVariable
-            print(success_avg)
-            # noinspection PyUnboundLocalVariable
-            print(searching_avg)
-            # noinspection PyUnboundLocalVariable
-            print(not_searching_avg)
-            playsound('sounds/fail.mp3')
-            # noinspection PyUnboundLocalVariable
-            img.save(cfg['debug_path'] + '\\Unknown Error.png')
+            truth_table['test_for_accept_button'] = False
+            playsound('sounds/done_testing.mp3')
+            time_table['warmup_test_timer'] = time.time() + 5
+            time_table['freezetime_time'] = time.time() + 5
+            continue
+        if str_in_list(['Other players failed to connect', 'Failed to ready up'], matchmaking_msg):
+            write('\tTook: %s ' % str(timedelta(seconds=int(time.time() - time_table['screenshot_time']))), add_time=False, push=push_urgency + 1)
+            write('Game doesnt seem to have started. Continuing to search for a Server!', push=push_urgency + 1, push_now=True)
+            playsound('sounds/back_to_testing.mp3')
+            mute_csgo(1)
+            truth_table['test_for_server'] = True
+            truth_table['test_for_accept_button'] = False
+            continue
 
     if truth_table['test_for_freezetime']:
         if time.time() - time_table['freezetime_time'] > 2:
             time_table['freezetime_time'] = time.time()
             game_state = {'map_phase': gsi_server.get_info('map', 'phase'), 'round_phase': gsi_server.get_info('round', 'phase')}
+
             if truth_table['first_freezetime']:
                 if game_state['map_phase'] == 'live' and game_state['round_phase'] == 'freezetime':
                     truth_table['first_freezetime'] = False
@@ -651,17 +628,20 @@ while True:
                 if game_state['map_phase'] == 'live' and game_state['round_phase'] != 'freezetime':
                     truth_table['first_freezetime'] = True
 
-    if truth_table['still_in_warmup']:
-        if time.time() - time_table['freezetime_time'] > 2:
-            time_table['freezetime_time'] = time.time()
-            if gsi_server.get_info('map', 'phase') != 'warmup':
-                truth_table['still_in_warmup'] = False
-                truth_table['first_freezetime'] = False
-                write('WARMUP is over!', overwrite='7')
-                if cfg['freezetime_auto_on']:
-                    truth_table['test_for_freezetime'] = True
-                if win32gui.GetWindowPlacement(hwnd)[1] == 2:
-                    playsound('sounds/ready_up_warmup.mp3')
+            if truth_table['still_in_warmup']:
+                if game_state['map_phase'] != 'warmup':
+                    truth_table['still_in_warmup'] = False
+                    write('WARMUP is over!', push=push_urgency + 2, push_now=True, overwrite='7')
+                    if win32gui.GetWindowPlacement(hwnd)[1] == 2:
+                        playsound('sounds/ready_up_warmup.mp3')
+
+    if truth_table['testing']:
+        test_time = time.time()
+        test = str_in_list(['Matchmaking update:'], console_lines, replacement_str='Matchmaking update: ')
+        if test:
+            write(test)
+            console_lines = []
+            # print('Took: %s ' % str(timedelta(milliseconds=int(time.time()*1000 - test_time*1000))))
 
     if truth_table['test_for_warmup']:
         for i in range(cfg['stop_warmup_ocr'][0], cfg['stop_warmup_ocr'][1]):
@@ -687,10 +667,10 @@ while True:
                     time_left = list(map(int, re.findall(re.compile('\d+?:\d+'), img_text)[0].split(':')))
                     time_left = time_left[0] * 60 + time_left[1]
                     if truth_table['first_ocr']:
-                        join_warmup_time = time_left
+                        time_table['join_warmup_time'] = time_left
                         time_table['screenshot_time'] = time.time()
                         truth_table['first_ocr'] = False
-                    time_left_data = timedelta(seconds=int(time.time() - time_table['screenshot_time'])), time.strftime('%H:%M:%S', time.gmtime(abs((join_warmup_time - time_left) - (time.time() - time_table['screenshot_time'])))), img_text
+                    time_left_data = timedelta(seconds=int(time.time() - time_table['screenshot_time'])), time.strftime('%H:%M:%S', time.gmtime(abs((time_table['join_warmup_time'] - time_left) - (time.time() - time_table['screenshot_time'])))), img_text
                     write('Time since start: %s - Time Difference: %s - Time left: %s' % (time_left_data[0], time_left_data[1], time_left_data[2]), add_time=False, overwrite='1')
                     if no_text_found > 0:
                         no_text_found = 0
@@ -700,7 +680,7 @@ while True:
                         write('Time since start: %s\nTime Difference: %s\nTime left: %s' % (time_left_data[0], time_left_data[1], time_left_data[2]), push=push_urgency + 1, push_now=True, output=False)
 
                     if truth_table['first_push']:
-                        if abs((join_warmup_time - time_left) - (time.time() - time_table['screenshot_time'])) >= 5:
+                        if abs((time_table['join_warmup_time'] - time_left) - (time.time() - time_table['screenshot_time'])) >= 5:
                             truth_table['first_push'] = False
                             write('Match should start in ' + str(time_left) + ' seconds, All players have connected.', push=push_urgency + 2, push_now=True)
 
@@ -714,8 +694,6 @@ while True:
                     truth_table['first_ocr'] = True
                     truth_table['first_push'] = True
                     truth_table['still_in_warmup'] = False
-                    if cfg['freezetime_auto_on']:
-                        truth_table['test_for_freezetime'] = True
                     write('WARMUP is over!', push=push_urgency + 2, push_now=True)
                     break
 
