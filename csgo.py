@@ -338,7 +338,7 @@ def Image_to_Text(image: Image, size: tuple, white_threshold: tuple, arg: str = 
 def getCfgData():
     try:
         get_cfg = {'activate_script': int(config.get('HotKeys', 'Activate Script'), 16), 'activate_push_notification': int(config.get('HotKeys', 'Activate Push Notification'), 16),
-                   'info_newest_match': int(config.get('HotKeys', 'Get Info on newest Match'), 16),
+                   'info_newest_match': int(config.get('HotKeys', 'Get Info on newest Match'), 16), 'mute_csgo_toggle': int(config.get('HotKeys', 'Mute CSGO'), 16),
                    'open_live_tab': int(config.get('HotKeys', 'Live Tab Key'), 16), 'switch_accounts': int(config.get('HotKeys', 'Switch accounts for csgostats.gg'), 16),
                    'end_script': int(config.get('HotKeys', 'End Script'), 16), 'stop_warmup_ocr': config.get('HotKeys', 'Stop Warmup OCR'),
                    'screenshot_interval': float(config.get('Screenshot', 'Interval')), 'timeout_time': config.getint('Screenshot', 'Timeout Time'), 'debug_path': config.get('Screenshot', 'Debug Path'), 'steam_api_key': config.get('csgostats.gg', 'API Key'),
@@ -413,6 +413,7 @@ push_urgency = 0
 
 # MUTE CSGO PATH
 mute_csgo_path = '"' + os.getcwd() + '\\sounds\\nircmdc.exe" muteappvolume csgo.exe '
+mute_csgo(0)
 
 write('READY')
 write('Current account is: %s\n' % accounts[current_account]['name'], add_time=False)
@@ -464,6 +465,10 @@ while True:
             current_account = 0
         getCsgoPath(accounts[current_account]['steam_id_3'])
         write('current account is: %s' % accounts[current_account]['name'], add_time=False, overwrite='3')
+
+    if win32api.GetAsyncKeyState(cfg['mute_csgo_toggle']) & 1:  # POS1 (END SCRIPT)
+        write("MUTE TOGGLED", add_time=False)
+        mute_csgo(2)
 
     if win32api.GetAsyncKeyState(cfg['end_script']) & 1:  # POS1 (END SCRIPT)
         write('Exiting Script')
