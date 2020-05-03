@@ -163,13 +163,15 @@ def getCsgoPath(steam_id_3: str):
         exit('LORD PLZ HELP')
 
     userdata_path = steam_path + '\\userdata\\' + steam_id_3 + '\\730\\local\\cfg\\'
+    autoexec_strs = ['developer 1', 'con_logfile "console_log.log"', 'con_filter_enable "2"', 'con_filter_text_out "Player:"', 'con_filter_text "Damage"', 'log_color General ' + cfg['log_color']]
     with open(userdata_path + 'autoexec.cfg', 'a+') as autoexec:
         autoexec.seek(0)
         lines = autoexec.readlines()
-        if 'con_logfile "console_log.log"' not in [line.rstrip('\n') for line in lines]:
-            write('ADDED CONSOLE LOGGING OUTPUT TO "autoexec.cfg" FILE IN %s' % userdata_path, add_time=False)
-            write('YOU HAVE TO RESTART Counter-Strike FOR THE SCRIPT TO WORK', add_time=False)
-            autoexec.write('\ncon_logfile "console_log.log"\n')
+        for autoexec_str in autoexec_strs:
+            if not any(autoexec_str.lower() in line.rstrip('\n').lower() for line in lines):
+                write('Added %s to "autoexec.cfg" file in %s' % (autoexec_str, userdata_path), add_time=False)
+                write('RESTART Counter-Strike for the script to work', add_time=False)
+                autoexec.write('\n' + autoexec_str + '\n')
     if os.path.exists(csgo_path + '\\cfg\\autoexec.cfg'):
         write('YOU HAVE TO DELETE THE "autoexec.cfg" in %s WITH AND MERGE IT WITH THE ONE IN %s' % (csgo_path + '\\cfg', userdata_path), add_time=False)
         write('THE SCRIPT WONT WORK UNTIL THERE IS NO "autoexec.cfg" in %s' % csgo_path + '\\cfg', add_time=False)
@@ -342,7 +344,7 @@ def getCfgData():
                    'open_live_tab': int(config.get('HotKeys', 'Live Tab Key'), 16), 'switch_accounts': int(config.get('HotKeys', 'Switch accounts for csgostats.gg'), 16),
                    'end_script': int(config.get('HotKeys', 'End Script'), 16), 'stop_warmup_ocr': config.get('HotKeys', 'Stop Warmup OCR'),
                    'screenshot_interval': float(config.get('Screenshot', 'Interval')), 'timeout_time': config.getint('Screenshot', 'Timeout Time'), 'debug_path': config.get('Screenshot', 'Debug Path'), 'steam_api_key': config.get('csgostats.gg', 'API Key'),
-                   'max_queue_position': config.getint('csgostats.gg', 'Auto-Retrying for queue position below'),
+                   'max_queue_position': config.getint('csgostats.gg', 'Auto-Retrying for queue position below'), 'log_color': config.get('Screenshot', 'Log Color').lower(),
                    'auto_retry_interval': config.getint('csgostats.gg', 'Auto-Retrying-Interval'), 'pushbullet_device_name': config.get('Pushbullet', 'Device Name'), 'pushbullet_api_key': config.get('Pushbullet', 'API Key'),
                    'tesseract_path': config.get('Warmup', 'Tesseract Path'), 'warmup_test_interval': config.getint('Warmup', 'Test Interval'), 'warmup_push_interval': config.get('Warmup', 'Push Interval'),
                    'warmup_no_text_limit': config.getint('Warmup', 'No Text Limit')}
@@ -583,6 +585,7 @@ while True:
                 write('\tTook: %s ' % str(timedelta(seconds=int(time.time() - time_table['screenshot_time']))), add_time=False, push=push_urgency + 1)
                 write('Game doesnt seem to have started. Continuing to search for a Server!', push=push_urgency + 1, push_now=True)
                 playsound('sounds/back_to_testing.mp3')
+                mute_csgo(1)
                 truth_table['test_for_success'] = False
                 truth_table['test_for_server'] = True
                 continue
