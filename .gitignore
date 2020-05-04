@@ -3,8 +3,8 @@
 /.idea/
 /__pycache__/
 basics.py
+test.py
 config.ini
 *.pyc
-test.py
-CSGO AUTO ACCEPT.lnk
+*.lnk
 log.txt

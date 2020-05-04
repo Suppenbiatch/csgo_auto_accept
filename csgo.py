@@ -587,8 +587,12 @@ while True:
                 for _ in range(5):
                     click(int(screen_size[0] / 2), int(screen_size[1] / 1.78))
                     pass
-                time.sleep(0.075)
-                win32gui.ShowWindow(hwnd, csgo_window_status)
+                if csgo_window_status == 2:  # was minimized when a server was found
+                    time.sleep(0.075)
+                    win32gui.ShowWindow(hwnd, 2)
+                    time.sleep(0.025)
+                    click(int(screen_size[0] / 2), int(screen_size[1] / 1.78))
+
                 write('Trying to catch a loading map')
                 playsound('sounds/accept_found.mp3')
                 time_table['screenshot_time'] = time.time()
@@ -605,8 +609,8 @@ while True:
             truth_table['test_for_accept_button'] = False
             truth_table['test_for_success'] = False
             playsound('sounds/done_testing.mp3')
-            time_table['warmup_test_timer'] = time.time() + 5
-            time_table['freezetime_time'] = time.time() + 5
+            time_table['warmup_test_timer'] = time.time() + 10
+            time_table['freezetime_time'] = time.time() + 10
 
         if str_in_list(['Other players failed to connect', 'Failed to ready up'], matchmaking_msg):
             write('\tTook: %s ' % str(timedelta(seconds=int(time.time() - time_table['screenshot_time']))), add_time=False, push=push_urgency + 1)
