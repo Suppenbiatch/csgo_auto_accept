@@ -8,3 +8,4 @@ config.ini
 *.pyc
 *.lnk
 log.txt
+avg_and_relate.py
