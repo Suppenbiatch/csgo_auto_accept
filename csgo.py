@@ -24,7 +24,7 @@ from playsound import playsound
 
 def Avg(lst: list):
     if not lst:
-        return 0.0
+        return None
     return sum(lst) / len(lst)
 
 
@@ -272,15 +272,16 @@ def UpdateCSGOstats(repeater=None, get_all_games=False):
 
         if repeater:
             current_queue_difference = Avg([last_game['queue_pos'] - game['queue_pos'] for game in queued_games for last_game in repeater if last_game['sharecode'] == game['sharecode'] and last_game['queue_pos'] is not None])
-            if current_queue_difference >= 0.0:
-                queue_difference.append(current_queue_difference / ((time.time() - time_table['time_since_retry']) / 60))
-                queue_difference = queue_difference[-10:]
-                matches_per_min = round(Avg(queue_difference), 1)
-                if matches_per_min != 0.0:
-                    time_till_done = str(timedelta(seconds=int((queued_games[0]['queue_pos'] / matches_per_min) * 60)))
-                else:
-                    time_till_done = '∞:∞:∞'
-                temp_string += str(matches_per_min) + ' matches/min - #1 done in ' + time_till_done
+            if current_queue_difference:
+                if current_queue_difference >= 0.0:
+                    queue_difference.append(current_queue_difference / ((time.time() - time_table['time_since_retry']) / 60))
+                    queue_difference = queue_difference[-10:]
+                    matches_per_min = round(Avg(queue_difference), 1)
+                    if matches_per_min != 0.0:
+                        time_till_done = str(timedelta(seconds=int((queued_games[0]['queue_pos'] / matches_per_min) * 60)))
+                    else:
+                        time_till_done = '∞:∞:∞'
+                    temp_string += str(matches_per_min) + ' matches/min - #1 done in ' + time_till_done
         temp_string = temp_string.rstrip(' - ')
         write(temp_string, add_time=False, overwrite='4')
 
