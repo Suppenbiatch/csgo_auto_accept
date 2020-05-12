@@ -75,10 +75,31 @@ def write(message, add_time: bool = True, push: int = 0, push_now: bool = False,
 
 
 # noinspection PyShadowingNames
-def click(x: int, y: int):
+def click(x: int or tuple, y: int = 0):
+    if isinstance(x, tuple):
+        y = x[1]
+        x = x[0]
+
+    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, x, y, 0, 0)
     win32api.SetCursorPos((x, y))
     win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, x, y, 0, 0)
     win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, x, y, 0, 0)
+
+
+# noinspection PyShadowingNames
+def anti_afk(window_id: int):
+    current_cursor_position = win32api.GetCursorPos()
+    win32gui.ShowWindow(window_id, win32con.SW_MAXIMIZE)
+    time.sleep(0.03)
+    win32api.mouse_event(win32con.MOUSEEVENTF_MOVE | win32con.MOUSEEVENTF_ABSOLUTE, 0, int(-0.5 * 65535.0))
+    click(win32api.GetCursorPos())
+    time.sleep(0.03)
+    win32api.mouse_event(win32con.MOUSEEVENTF_MOVE | win32con.MOUSEEVENTF_ABSOLUTE, 0, int(0.5 * 65535.0))
+    win32gui.ShowWindow(window_id, 2)
+    click(current_cursor_position)
+    time.sleep(0.01)
+    win32api.SetCursorPos(current_cursor_position)
+    win32api.SetCursorPos(current_cursor_position)
 
 
 # noinspection PyShadowingNames
@@ -172,25 +193,38 @@ def CheckUserDataAutoExec(steam_id_3: str, csgo_int_path: str, steam_int_path: s
 
 
 # noinspection PyShadowingNames
+def getAvgMatchTime(steam_id: str):
+    try:
+        with open(path_vars['appdata_path'] + 'game_time_' + steam_id + '.txt', 'r+') as game_time:
+            all_game_times = game_time.readlines()
+            game_time.seek(0)
+            [game_time.write(i) for i in all_game_times[-1000:]]
+            all_game_times = [float(i.strip('\n')) for i in all_game_times[-1000:]]
+    except FileNotFoundError:
+        all_game_times = []
+    return Avg(all_game_times)
+
+
+# noinspection PyShadowingNames
 def getOldSharecodes(last_x: int = -1, from_x: str = ''):
     if last_x >= 0:
         return []
     global path_vars
+
     try:
-        last_game = open(path_vars['appdata_path']+'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'r')
-        games = last_game.readlines()
-        last_game.close()
+        with open(path_vars['appdata_path']+'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'r') as last_game:
+            games = last_game.readlines()
     except FileNotFoundError:
-        last_game = open(path_vars['appdata_path']+'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'w')
-        last_game.write(accounts[current_account]['match_token'] + '\n')
-        games = [accounts[current_account]['match_token']]
-        last_game.close()
-    last_game = open(path_vars['appdata_path']+'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'w')
-    games = games[-200:]
-    for i, val in enumerate(games):
-        games[i] = 'CSGO' + val.strip('\n').split('CSGO')[1]
-        last_game.write(games[i] + '\n')
-    last_game.close()
+        with open(path_vars['appdata_path']+'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'w') as last_game:
+            last_game.write(accounts[current_account]['match_token'] + '\n')
+            games = [accounts[current_account]['match_token']]
+
+    with open(path_vars['appdata_path']+'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'w') as last_game:
+        games = games[-1000:]
+        for i, val in enumerate(games):
+            games[i] = 'CSGO' + val.strip('\n').split('CSGO')[1]
+            last_game.write(games[i] + '\n')
+
     if from_x:
         try:
             return games[(len(games) - games.index(from_x)) * -1:]
@@ -236,17 +270,17 @@ def UpdateCSGOstats(repeater=None, get_all_games=False):
             sharecodes = max(sharecodes, key=len)
         else:
             sharecodes = [code['sharecode'] for code in repeater]
-        all_games = [requests.post('https://csgostats.gg/match/upload/ajax', data={'sharecode': sharecode, 'index': '1'}).json() for sharecode in sharecodes]
+        all_games = [requests.post('https://csgostats.gg/match/upload/ajax', data={'sharecode': sharecode, 'index': '0'}).json() for sharecode in sharecodes]
     else:
         num = -1
         sharecode = getOldSharecodes(num)[0]
         while True:
-            response = requests.post('https://csgostats.gg/match/upload/ajax', data={'sharecode': sharecode, 'index': '1'})
+            response = requests.post('https://csgostats.gg/match/upload/ajax', data={'sharecode': sharecode, 'index': '0'})
             all_games.append(response.json())
             if response.json()['status'] != 'complete':
                 num -= 1
                 try:
-                    sharecode = getOldSharecodes(num)[0]
+                    sharecode = getOldSharecodes(num)[num]
                 except IndexError:
                     break
             else:
@@ -400,12 +434,13 @@ gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
 
 # INITIALIZATION FOR getScreenShot
 screen_size = (win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1))
-hwnd, hwnd_old, csgo_window_status = 0, 0, 0
+hwnd, hwnd_old = 0, 0
+csgo_window_status = {'server_found': 2, 'new_tab': 2}
 toplist, csgo = [], []
 
 # BOOLEAN, TIME INITIALIZATION
-truth_table = {'test_for_accept_button': False, 'test_for_warmup': False, 'test_for_success': False, 'first_ocr': True, 'testing': False, 'debugging': False, 'first_push': True, 'still_in_warmup': False, 'test_for_server': False, 'test_for_freezetime': False, 'first_freezetime': True, 'gsi_server_running': False, 'game_over': False, 'csgo_re-started': False}
-time_table = {'screenshot_time': time.time(), 'time_since_retry': time.time(), 'warmup_test_timer': time.time(), 'time_searching': time.time(), 'not_searching_cc': time.time(), 'searching_cc': time.time(), 'freezetime_time': time.time(), 'join_warmup_time': 0.0}
+truth_table = {'test_for_accept_button': False, 'test_for_warmup': False, 'test_for_success': False, 'first_ocr': True, 'testing': False, 'debugging': False, 'first_push': True, 'still_in_warmup': False, 'test_for_server': False, 'test_for_freezetime': False, 'first_freezetime': True, 'gsi_server_running': False, 'game_over': False, 'csgo_re-started': False, 'monitoring_since_start': False}
+time_table = {'screenshot_time': time.time(), 'time_since_retry': time.time(), 'warmup_test_timer': time.time(), 'time_searching': time.time(), 'not_searching_cc': time.time(), 'searching_cc': time.time(), 'freezetime_time': time.time(), 'join_warmup_time': 0.0, 'time_in_warmup': 0}
 matchmaking = {'msg': [], 'update': [], 'server_found': False}
 if cfg['freezetime_auto_on']:
     truth_table['test_for_freezetime'] = True
@@ -435,11 +470,11 @@ while True:
         truth_table['test_for_server'] = not truth_table['test_for_server']
         write('Looking for game: %s' % truth_table['test_for_server'], overwrite='1')
         if truth_table['test_for_server']:
-            playsound('sounds/activated_2.mp3')
+            playsound('sounds/activated.wav', block=False)
             time_table['time_searching'] = time.time()
             mute_csgo(1)
         else:
-            playsound('sounds/deactivated.mp3')
+            playsound('sounds/deactivated.wav', block=False)
             mute_csgo(0)
 
     if win32api.GetAsyncKeyState(cfg['activate_push_notification']) & 1:  # F8 (ACTIVATE / DEACTIVATE PUSH NOTIFICATION)
@@ -464,11 +499,14 @@ while True:
         retryer = UpdateCSGOstats(retryer, get_all_games=True)
 
     if win32api.GetAsyncKeyState(cfg['open_live_tab']) & 1:  # F13 Key (OPEN WEB BROWSER ON LIVE GAME TAB)
-        win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
+        csgo_window_status['new_tab'] = win32gui.GetWindowPlacement(hwnd)[1]
+        if csgo_window_status['new_tab'] != 2:
+            win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
         webbrowser.open_new_tab('https://csgostats.gg/player/' + accounts[current_account]['steam_id'] + '#/live')
         write('new tab opened', add_time=False)
-        time.sleep(0.5)
-        win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
+        if csgo_window_status['new_tab'] != 2:
+            time.sleep(0.5)
+            win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
 
     if win32api.GetAsyncKeyState(cfg['switch_accounts']) & 1:  # F15 (SWITCH ACCOUNTS)
         current_account += 1
@@ -532,8 +570,9 @@ while True:
         matchmaking['msg'] = str_in_list(['Matchmaking message: '], console_lines, replacement_str='Matchmaking message: ')
         matchmaking['update'] = str_in_list(['Matchmaking update: '], console_lines, replacement_str='Matchmaking update: ')
         matchmaking['server_found'] = str_in_list(['Matchmaking reservation confirmed: '], console_lines)
+        matchmaking['server_ready'] = str_in_list(['ready-up!'], console_lines)
     else:
-        matchmaking = {'msg': [], 'update': [], 'server_found': False}
+        matchmaking = {'msg': [], 'update': [], 'server_found': False, 'server_ready': False}
 
     if matchmaking['update']:
         if matchmaking['update'][-1] == '1':
@@ -541,17 +580,18 @@ while True:
                 truth_table['test_for_server'] = True
                 write('Looking for game: %s' % truth_table['test_for_server'], overwrite='1')
                 time_table['time_searching'] = time.time()
-                playsound('sounds/activated_2.mp3')
+                playsound('sounds/activated.wav', block=False)
             mute_csgo(1)
         elif matchmaking['update'][-1] == '0' and truth_table['test_for_server']:
             mute_csgo(0)
 
     if truth_table['test_for_server']:
         if matchmaking['server_found']:
+            playsound('sounds/server_found.wav', block=False)
+        if matchmaking['server_ready']:
             write('Server found, starting to look for accept button')
             truth_table['test_for_accept_button'] = True
-            playsound('sounds/server_found.mp3', block=False)
-            csgo_window_status = win32gui.GetWindowPlacement(hwnd)[1]
+            csgo_window_status['server_found'] = win32gui.GetWindowPlacement(hwnd)[1]
             win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
             mute_csgo(0)
         if truth_table['csgo_re-started']:
@@ -562,8 +602,9 @@ while True:
                     current_account = [i for i, val in enumerate(accounts) if current_steamid == val['steam_id']][0]
                     CheckUserDataAutoExec(accounts[current_account]['steam_id_3'], path_vars['csgo_path'], path_vars['steam_path'])
                 except IndexError:
-                    write('Account is not in the config.ini!\nScript might not work properly!', overwrite='9')
-            write('Current account is: %s' % accounts[current_account]['name'], add_time=False, overwrite='9')
+                    write('\tAccount is not in the config.ini!\nScript will not work properly!', overwrite='9')
+                    exit('Update config.ini')
+            write('\tCurrent account is: %s' % accounts[current_account]['name'], add_time=False, overwrite='9')
 
     if truth_table['test_for_accept_button']:
         img = getScreenShot(hwnd, (1265, 760, 1295, 785))
@@ -573,17 +614,20 @@ while True:
             truth_table['test_for_accept_button'] = False
             truth_table['test_for_success'] = True
 
+            with open(cfg['debug_path'] + '\\console.log', 'ab') as debug_log:
+                debug_log.write(b'\naccepted\n\n ')
+
             for _ in range(5):
                 click(int(screen_size[0] / 2), int(screen_size[1] / 1.78))
                 pass
-            if csgo_window_status == 2:  # was minimized when a server was found
+            if csgo_window_status['server_found'] == 2:  # was minimized when a server was found
                 time.sleep(0.075)
                 win32gui.ShowWindow(hwnd, 2)
                 time.sleep(0.025)
                 click(int(screen_size[0] / 2), int(screen_size[1] / 1.78))
 
             write('Trying to catch a loading map')
-            playsound('sounds/accept_found.mp3', block=False)
+            playsound('sounds/accept_found.wav', block=False)
             time_table['screenshot_time'] = time.time()
 
     if truth_table['test_for_accept_button'] or truth_table['test_for_success']:
@@ -597,13 +641,15 @@ while True:
             truth_table['test_for_server'] = False
             truth_table['test_for_accept_button'] = False
             truth_table['test_for_success'] = False
-            playsound('sounds/done_testing.mp3', block=False)
+            truth_table['monitoring_since_start'] = True
+            playsound('sounds/done_testing.wav', block=False)
             time_table['time_searching'] = time.time()
+            time_table['time_in_warmup'] = 0
 
         if str_in_list(['Other players failed to connect', 'Failed to ready up'], matchmaking['msg']):
             write('\tTook: %s ' % str(timedelta(seconds=int(time.time() - time_table['screenshot_time']))), add_time=False, push=push_urgency + 1)
             write('Game doesnt seem to have started. Continuing to search for a Server!', push=push_urgency + 1, push_now=True)
-            playsound('sounds/back_to_testing.mp3', block=False)
+            playsound('sounds/back_to_testing.wav', block=False)
             mute_csgo(1)
             truth_table['test_for_server'] = True
             truth_table['test_for_accept_button'] = False
@@ -619,7 +665,7 @@ while True:
                     truth_table['game_over'] = False
                     write('Freeze Time starting.', overwrite='7')
                     if win32gui.GetWindowPlacement(hwnd)[1] == 2:
-                        playsound('sounds/ready_up.mp3')
+                        playsound('sounds/ready_up.wav', block=False)
             elif game_state['map_phase'] == 'live' and game_state['round_phase'] != 'freezetime':
                 truth_table['first_freezetime'] = True
 
@@ -630,15 +676,34 @@ while True:
                     write('\tTook %s since the Game started.' % str(timedelta(seconds=int(time.time() - time_table['time_searching']))), add_time=False)
                     time_table['time_searching'] = time.time()
                     if win32gui.GetWindowPlacement(hwnd)[1] == 2:
-                        playsound('sounds/ready_up_warmup.mp3')
+                        playsound('sounds/ready_up_warmup.wav', block=False)
+                if time.time() - time_table['time_searching'] - time_table['time_in_warmup'] >= 240:
+                    time_table['time_in_warmup'] += 240
+                    if win32gui.GetWindowPlacement(hwnd)[1] == 2:
+                        write('Ran ANTI-AFK Script')
+                        anti_afk(hwnd)
 
             if not truth_table['game_over'] and game_state['map_phase'] == 'gameover':
+                game_took_seconds = int(time.time() - time_table['time_searching'])
                 write('The Game is over!')
-                write('\t It took %s.' % str(timedelta(seconds=int(time.time() - time_table['time_searching']))), add_time=False)
-                new_sharecodes = getNewCSGOSharecodes(getOldSharecodes(-1)[0])
-                for new_code in new_sharecodes:
-                    retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
-                retryer = UpdateCSGOstats(retryer, get_all_games=True)
+                write('\tIt took %s.' % str(timedelta(seconds=game_took_seconds)), add_time=False)
+                if gsi_server.get_info('map', 'mode') == 'competitive':
+                    if truth_table['monitoring_since_start']:
+                        with open(path_vars['appdata_path'] + 'game_time_' + accounts[current_account]['steam_id'] + '.txt', 'a') as game_time:
+                            game_time.write(str(game_took_seconds) + '\n')
+                    avg_match_time = getAvgMatchTime(accounts[current_account]['steam_id'])
+                    if avg_match_time:
+                        avg_match_time = int(avg_match_time)
+                        avg_time_difference = abs(game_took_seconds - avg_match_time)
+                        if game_took_seconds - avg_match_time >= 0:
+                            write('\tThe games was %s longer than the average game with %s' % (str(timedelta(seconds=avg_time_difference)), str(timedelta(seconds=avg_match_time))), add_time=False)
+                        else:
+                            write('\tThe games was %s shorter than the average game with %s' % (str(timedelta(seconds=avg_time_difference)), str(timedelta(seconds=avg_match_time))), add_time=False)
+                    time.sleep(5)
+                    new_sharecodes = getNewCSGOSharecodes(getOldSharecodes(-1)[0])
+                    for new_code in new_sharecodes:
+                        retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
+                    retryer = UpdateCSGOstats(retryer, get_all_games=True)
                 truth_table['game_over'] = True
 
     if truth_table['testing']:
@@ -709,6 +774,12 @@ while True:
                 except IndexError:
                     no_text_found += 1
 
+                if time.time() - time_table['time_searching'] - time_table['screenshot_time'] >= 240:
+                    time_table['time_in_warmup'] += 240
+                    if win32gui.GetWindowPlacement(hwnd)[1] == 2:
+                        write('Ran ANTI-AFK Script')
+                        anti_afk(hwnd)
+
                 if gsi_server.get_info('map', 'phase') != 'warmup':
                     push_counter = 0
                     no_text_found = 0
@@ -716,6 +787,7 @@ while True:
                     truth_table['first_ocr'] = True
                     truth_table['first_push'] = True
                     truth_table['still_in_warmup'] = False
+                    time_table['time_in_warmup'] = 0
                     write('WARMUP is over!', push=push_urgency + 2, push_now=True)
                     write('\tTook %s since the Game started.' % str(timedelta(seconds=int(time.time() - time_table['time_searching']))), add_time=False)
                     break
