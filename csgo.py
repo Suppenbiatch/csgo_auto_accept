@@ -89,12 +89,16 @@ def click(x: int or tuple, y: int = 0):
 # noinspection PyShadowingNames
 def anti_afk(window_id: int):
     current_cursor_position = win32api.GetCursorPos()
+    moves = int(win32api.GetSystemMetrics(1) / 3) + 1
     win32gui.ShowWindow(window_id, win32con.SW_MAXIMIZE)
-    time.sleep(0.03)
-    win32api.mouse_event(win32con.MOUSEEVENTF_MOVE | win32con.MOUSEEVENTF_ABSOLUTE, 0, int(-0.5 * 65535.0))
+    for _ in range(moves):
+        win32api.mouse_event(win32con.MOUSEEVENTF_MOVE, 0, -15)
     click(win32api.GetCursorPos())
-    time.sleep(0.03)
-    win32api.mouse_event(win32con.MOUSEEVENTF_MOVE | win32con.MOUSEEVENTF_ABSOLUTE, 0, int(0.5 * 65535.0))
+    for _ in range(moves):
+        win32api.mouse_event(win32con.MOUSEEVENTF_MOVE, 0, 15)
+    for _ in range(int(moves/1.07)):
+        win32api.mouse_event(win32con.MOUSEEVENTF_MOVE, 0, -8)
+    time.sleep(0.01)
     win32gui.ShowWindow(window_id, 2)
     click(current_cursor_position)
     time.sleep(0.01)
@@ -677,8 +681,8 @@ while True:
                     time_table['time_searching'] = time.time()
                     if win32gui.GetWindowPlacement(hwnd)[1] == 2:
                         playsound('sounds/ready_up_warmup.wav', block=False)
-                if time.time() - time_table['time_searching'] - time_table['time_in_warmup'] >= 240:
-                    time_table['time_in_warmup'] += 240
+                if time.time() - time_table['time_searching'] - time_table['time_in_warmup'] >= 225:
+                    time_table['time_in_warmup'] += 225
                     if win32gui.GetWindowPlacement(hwnd)[1] == 2:
                         write('Ran ANTI-AFK Script')
                         anti_afk(hwnd)
@@ -774,8 +778,8 @@ while True:
                 except IndexError:
                     no_text_found += 1
 
-                if time.time() - time_table['time_searching'] - time_table['screenshot_time'] >= 240:
-                    time_table['time_in_warmup'] += 240
+                if time.time() - time_table['time_searching'] - time_table['screenshot_time'] >= 225:
+                    time_table['time_in_warmup'] += 225
                     if win32gui.GetWindowPlacement(hwnd)[1] == 2:
                         write('Ran ANTI-AFK Script')
                         anti_afk(hwnd)
