@@ -202,11 +202,13 @@ def getAvgMatchTime(steam_id: str):
         with open(path_vars['appdata_path'] + 'game_time_' + steam_id + '.txt', 'r+') as game_time:
             all_game_times = game_time.readlines()
             game_time.seek(0)
-            [game_time.write(i) for i in all_game_times[-1000:]]
-            all_game_times = [float(i.strip('\n')) for i in all_game_times[-1000:]]
+            [game_time.write(i) for i in all_game_times[-10000:]]
+            all_game_times = [i.rstrip('\n').split(',') for i in all_game_times[-1000:]]
+            match_time = sorted([int(i[0]) for i in all_game_times], reverse=True)
+            search_time = sorted([int(i[1]) for i in all_game_times if i[1] != ''], reverse=True)
     except FileNotFoundError:
-        all_game_times = []
-    return Avg(all_game_times)
+        return None, None, None, None
+    return int(Avg(match_time)), int(Avg(search_time)), str(timedelta(seconds=sum(match_time))), str(timedelta(seconds=sum(search_time)))
 
 
 # noinspection PyShadowingNames
@@ -444,7 +446,7 @@ toplist, csgo = [], []
 
 # BOOLEAN, TIME INITIALIZATION
 truth_table = {'test_for_accept_button': False, 'test_for_warmup': False, 'test_for_success': False, 'first_ocr': True, 'testing': False, 'debugging': False, 'first_push': True, 'still_in_warmup': False, 'test_for_server': False, 'test_for_freezetime': False, 'first_freezetime': True, 'gsi_server_running': False, 'game_over': False, 'csgo_re-started': False, 'monitoring_since_start': False}
-time_table = {'screenshot_time': time.time(), 'time_since_retry': time.time(), 'warmup_test_timer': time.time(), 'time_searching': time.time(), 'not_searching_cc': time.time(), 'searching_cc': time.time(), 'freezetime_time': time.time(), 'join_warmup_time': 0.0, 'time_in_warmup': 0}
+time_table = {'screenshot_time': time.time(), 'time_since_retry': time.time(), 'warmup_test_timer': time.time(), 'time_searching': time.time(), 'not_searching_cc': time.time(), 'searching_cc': time.time(), 'freezetime_time': time.time(), 'join_warmup_time': 0.0, 'time_in_warmup': 0, 'search_time_seconds': None}
 matchmaking = {'msg': [], 'update': [], 'server_found': False}
 if cfg['freezetime_auto_on']:
     truth_table['test_for_freezetime'] = True
@@ -620,7 +622,7 @@ while True:
 
             with open(cfg['debug_path'] + '\\console.log', 'ab') as debug_log:
                 debug_log.write(b'\naccepted\n\n ')
-
+            current_cursor_position = win32api.GetCursorPos()
             for _ in range(5):
                 click(int(screen_size[0] / 2), int(screen_size[1] / 1.78))
                 pass
@@ -628,7 +630,9 @@ while True:
                 time.sleep(0.075)
                 win32gui.ShowWindow(hwnd, 2)
                 time.sleep(0.025)
-                click(int(screen_size[0] / 2), int(screen_size[1] / 1.78))
+                click(current_cursor_position)
+            else:
+                win32api.SetCursorPos(current_cursor_position)
 
             write('Trying to catch a loading map')
             playsound('sounds/accept_found.wav', block=False)
@@ -637,7 +641,8 @@ while True:
     if truth_table['test_for_accept_button'] or truth_table['test_for_success']:
         if str_in_list(['Match confirmed'], matchmaking['msg']):
             write('\tTook %s since pressing accept.' % str(timedelta(seconds=int(time.time() - time_table['screenshot_time']))), add_time=False, push=push_urgency + 1)
-            write('\tTook %s since trying to find a game.' % str(timedelta(seconds=int(time.time() - time_table['time_searching']))), add_time=False, push=push_urgency + 1)
+            time_table['search_time_seconds'] = int(time.time() - time_table['time_searching'])
+            write('\tTook %s since trying to find a game.' % str(timedelta(seconds=time_table['search_time_seconds'])), add_time=False, push=push_urgency + 1)
             write('Game should have started', push=push_urgency + 2, push_now=True)
             truth_table['test_for_warmup'] = True
             truth_table['warmup_started'] = False
@@ -678,6 +683,7 @@ while True:
                     truth_table['still_in_warmup'] = False
                     write('WARMUP is over!', push=push_urgency + 2, push_now=True, overwrite='7')
                     write('\tTook %s since the Game started.' % str(timedelta(seconds=int(time.time() - time_table['time_searching']))), add_time=False)
+
                     time_table['time_searching'] = time.time()
                     if win32gui.GetWindowPlacement(hwnd)[1] == 2:
                         playsound('sounds/ready_up_warmup.wav', block=False)
@@ -690,19 +696,27 @@ while True:
             if not truth_table['game_over'] and game_state['map_phase'] == 'gameover':
                 game_took_seconds = int(time.time() - time_table['time_searching'])
                 write('The Game is over!')
-                write('\tIt took %s.' % str(timedelta(seconds=game_took_seconds)), add_time=False)
+                write('\tMatch duration: %s.' % str(timedelta(seconds=game_took_seconds)), add_time=False)
+                write('\tSearch-time:    %s.' % str(timedelta(seconds=time_table['search_time_seconds'])), add_time=False)
                 if gsi_server.get_info('map', 'mode') == 'competitive':
                     if truth_table['monitoring_since_start']:
                         with open(path_vars['appdata_path'] + 'game_time_' + accounts[current_account]['steam_id'] + '.txt', 'a') as game_time:
-                            game_time.write(str(game_took_seconds) + '\n')
-                    avg_match_time = getAvgMatchTime(accounts[current_account]['steam_id'])
-                    if avg_match_time:
-                        avg_match_time = int(avg_match_time)
-                        avg_time_difference = abs(game_took_seconds - avg_match_time)
-                        if game_took_seconds - avg_match_time >= 0:
-                            write('\tThe games was %s longer than the average game with %s' % (str(timedelta(seconds=avg_time_difference)), str(timedelta(seconds=avg_match_time))), add_time=False)
-                        else:
-                            write('\tThe games was %s shorter than the average game with %s' % (str(timedelta(seconds=avg_time_difference)), str(timedelta(seconds=avg_match_time))), add_time=False)
+                            game_time.write(str(game_took_seconds) + ', ' + str(time_table['search_time_seconds']) + '\n')
+                    average_match_time = getAvgMatchTime(accounts[current_account]['steam_id'])
+                    this_game_time = (game_took_seconds, time_table['search_time_seconds'])
+                    game_time_output_strs = (('\tThe games was %s longer than the average game with %s.', '\tThe games was %s shorter than the average game with %s.'),
+                                             ('\tThe search-time was %s longer than the average search-time with %s.', '\tThe search-time was %s shorter than the average search-time with %s.'),
+                                             '\tTime wasted in competitive matchmaking: %s.', '\tTime wasted in the searching queue: %s.')
+                    for i, val in enumerate(average_match_time):
+                        if isinstance(val, int):
+                            avg_time_difference = this_game_time[i] - val
+                            if avg_time_difference >= 0:
+                                write(game_time_output_strs[i][0] % (str(timedelta(seconds=abs(avg_time_difference))), str(timedelta(seconds=val))), add_time=False)
+                            else:
+                                write(game_time_output_strs[i][1] % (str(timedelta(seconds=abs(avg_time_difference))), str(timedelta(seconds=val))), add_time=False)
+                        elif isinstance(val, str):
+                            write(game_time_output_strs[i] % val, add_time=False)
+
                     time.sleep(5)
                     new_sharecodes = getNewCSGOSharecodes(getOldSharecodes(-1)[0])
                     for new_code in new_sharecodes:
