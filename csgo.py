@@ -361,10 +361,6 @@ def Image_to_Text(image: Image, size: tuple, white_threshold: int, arg: str = ''
         pass
     if image_text:
         image_text = ' '.join(image_text.replace(': ', ':').split())
-        global truth_table
-        if truth_table['debugging']:
-            image.save(str(cfg['debug_path']) + '\\' + datetime.now().strftime('%H-%M-%S') + '_' + image_text.replace(':', '-') + '.png', format='PNG')
-            temp_image.save(str(cfg['debug_path']) + '\\' + datetime.now().strftime('%H-%M-%S') + '_' + image_text.replace(':', '-') + '_temp.png', format='PNG')
         return image_text
     else:
         return ''
@@ -384,14 +380,13 @@ def getCfgData():
         get_cfg = {'activate_script': int(config.get('HotKeys', 'Activate Script'), 16), 'activate_push_notification': int(config.get('HotKeys', 'Activate Push Notification'), 16),
                    'info_newest_match': int(config.get('HotKeys', 'Get Info on newest Match'), 16), 'mute_csgo_toggle': int(config.get('HotKeys', 'Mute CSGO'), 16),
                    'open_live_tab': int(config.get('HotKeys', 'Live Tab Key'), 16), 'switch_accounts': int(config.get('HotKeys', 'Switch accounts for csgostats.gg'), 16),
-                   'end_script': int(config.get('HotKeys', 'End Script'), 16), 'stop_warmup_ocr': config.get('HotKeys', 'Stop Warmup OCR'), 'freezetime_test': int(config.get('HotKeys', 'FreezeTime Signaler'), 16),
+                   'end_script': int(config.get('HotKeys', 'End Script'), 16), 'stop_warmup_ocr': config.get('HotKeys', 'Stop Warmup OCR'),
                    'screenshot_interval': float(config.get('Screenshot', 'Interval')), 'debug_path': config.get('Screenshot', 'Debug Path'), 'steam_api_key': config.get('csgostats.gg', 'API Key'),
                    'max_queue_position': config.getint('csgostats.gg', 'Auto-Retrying for queue position below'), 'log_color': config.get('Screenshot', 'Log Color').lower(),
                    'auto_retry_interval': config.getint('csgostats.gg', 'Auto-Retrying-Interval'), 'pushbullet_device_name': config.get('Pushbullet', 'Device Name'), 'pushbullet_api_key': config.get('Pushbullet', 'API Key'),
                    'tesseract_path': config.get('Warmup', 'Tesseract Path'), 'warmup_test_interval': config.getint('Warmup', 'Test Interval'), 'warmup_push_interval': config.get('Warmup', 'Push Interval'),
-                   'warmup_no_text_limit': config.getint('Warmup', 'No Text Limit'), 'freezetime_auto_on': config.getboolean('Screenshot', 'FreezeTime Signaler Auto-On')}
+                   'warmup_no_text_limit': config.getint('Warmup', 'No Text Limit')}
         return get_cfg
-        # 'imgur_id': config.get('Imgur', 'Client ID'), 'imgur_secret': config.get('Imgur', 'Client Secret'), 'info_multiple_matches': int(config.get('HotKeys', 'Get Info on multiple Matches'), 16), 'timeout_time': config.getint('Screenshot', 'Timeout Time')
     except (configparser.NoOptionError, configparser.NoSectionError, ValueError):
         write('ERROR IN CONFIG')
         exit('CHECK FOR NEW CONFIG')
@@ -445,11 +440,12 @@ csgo_window_status = {'server_found': 2, 'new_tab': 2}
 toplist, csgo = [], []
 
 # BOOLEAN, TIME INITIALIZATION
-truth_table = {'test_for_accept_button': False, 'test_for_warmup': False, 'test_for_success': False, 'first_ocr': True, 'testing': False, 'debugging': False, 'first_push': True, 'still_in_warmup': False, 'test_for_server': False, 'test_for_freezetime': False, 'first_freezetime': True, 'gsi_server_running': False, 'game_over': False, 'csgo_re-started': False, 'monitoring_since_start': False}
-time_table = {'screenshot_time': time.time(), 'time_since_retry': time.time(), 'warmup_test_timer': time.time(), 'time_searching': time.time(), 'not_searching_cc': time.time(), 'searching_cc': time.time(), 'freezetime_time': time.time(), 'join_warmup_time': 0.0, 'time_in_warmup': 0, 'search_time_seconds': None}
+truth_table = {'test_for_accept_button': False, 'test_for_warmup': False, 'test_for_success': False, 'first_ocr': True, 'testing': False, 'first_push': True, 'still_in_warmup': False, 'test_for_server': False, 'first_freezetime': True,
+               'gsi_server_running': False, 'game_over': False, 'csgo_re-started': False, 'monitoring_since_start': False}
+time_table = {'screenshot_time': time.time(), 'time_since_retry': time.time(), 'warmup_test_timer': time.time(), 'time_searching': time.time(), 'searching_cc': time.time(), 'timed_execution_time': time.time(), 'join_warmup_time': 0.0,
+              'time_in_warmup': 0, 'search_time_seconds': None}
 matchmaking = {'msg': [], 'update': [], 'server_found': False}
-if cfg['freezetime_auto_on']:
-    truth_table['test_for_freezetime'] = True
+anti_afk_dict = {'time': time.time(), 'still_afk': []}
 
 # csgostats.gg VAR
 retryer = []
@@ -525,11 +521,6 @@ while True:
         write("MUTE TOGGLED", add_time=False)
         mute_csgo(2)
 
-    if win32api.GetAsyncKeyState(cfg['freezetime_test']) & 1:
-        truth_table['test_for_freezetime'] = not truth_table['test_for_freezetime']
-        cfg['freezetime_auto_on'] = truth_table['test_for_freezetime']
-        write('Freeze Time Signal: %s' % truth_table['test_for_freezetime'], add_time=False, overwrite='6')
-
     if win32api.GetAsyncKeyState(cfg['end_script']) & 1:  # POS1 (END SCRIPT)
         write('Exiting Script')
         break
@@ -559,8 +550,6 @@ while True:
 
     # TESTING HERE
     if win32api.GetAsyncKeyState(0x6F) & 1:  # UNBOUND, TEST CODE
-        # truth_table['debugging'] = not truth_table['debugging']
-        # time_table['screenshot_time'] = time.time()
         truth_table['testing'] = not truth_table['testing']
         write('TestCode active: %s' % str(truth_table['testing']), add_time=False, overwrite='9')
 
@@ -594,6 +583,7 @@ while True:
     if truth_table['test_for_server']:
         if matchmaking['server_found']:
             playsound('sounds/server_found.wav', block=False)
+            truth_table['test_for_success'] = True
         if matchmaking['server_ready']:
             write('Server found, starting to look for accept button')
             truth_table['test_for_accept_button'] = True
@@ -618,7 +608,6 @@ while True:
         if relate_list(accept_avg, (2, 2, 2)):
             write('Trying to Accept', push=push_urgency + 1)
             truth_table['test_for_accept_button'] = False
-            truth_table['test_for_success'] = True
 
             with open(cfg['debug_path'] + '\\console.log', 'ab') as debug_log:
                 debug_log.write(b'\naccepted\n\n ')
@@ -640,7 +629,7 @@ while True:
 
     if truth_table['test_for_accept_button'] or truth_table['test_for_success']:
         if str_in_list(['Match confirmed'], matchmaking['msg']):
-            write('\tTook %s since pressing accept.' % str(timedelta(seconds=int(time.time() - time_table['screenshot_time']))), add_time=False, push=push_urgency + 1)
+            # write('\tTook %s since pressing accept.' % str(timedelta(seconds=int(time.time() - time_table['screenshot_time']))), add_time=False, push=push_urgency + 1)
             time_table['search_time_seconds'] = int(time.time() - time_table['time_searching'])
             write('\tTook %s since trying to find a game.' % str(timedelta(seconds=time_table['search_time_seconds'])), add_time=False, push=push_urgency + 1)
             write('Game should have started', push=push_urgency + 2, push_now=True)
@@ -656,7 +645,6 @@ while True:
             time_table['time_in_warmup'] = 0
 
         if str_in_list(['Other players failed to connect', 'Failed to ready up'], matchmaking['msg']):
-            write('\tTook: %s ' % str(timedelta(seconds=int(time.time() - time_table['screenshot_time']))), add_time=False, push=push_urgency + 1)
             write('Game doesnt seem to have started. Continuing to search for a Server!', push=push_urgency + 1, push_now=True)
             playsound('sounds/back_to_testing.wav', block=False)
             mute_csgo(1)
@@ -664,75 +652,77 @@ while True:
             truth_table['test_for_accept_button'] = False
             truth_table['test_for_success'] = False
 
-    if truth_table['test_for_freezetime']:
-        if time.time() - time_table['freezetime_time'] > 2:
-            time_table['freezetime_time'] = time.time()
-            game_state = {'map_phase': gsi_server.get_info('map', 'phase'), 'round_phase': gsi_server.get_info('round', 'phase')}
-            if truth_table['first_freezetime']:
-                if game_state['map_phase'] == 'live' and game_state['round_phase'] == 'freezetime':
-                    truth_table['first_freezetime'] = False
-                    truth_table['game_over'] = False
-                    write('Freeze Time starting.', overwrite='7')
-                    if win32gui.GetWindowPlacement(hwnd)[1] == 2:
-                        playsound('sounds/ready_up.wav', block=False)
-            elif game_state['map_phase'] == 'live' and game_state['round_phase'] != 'freezetime':
-                truth_table['first_freezetime'] = True
+    if time.time() - time_table['timed_execution_time'] > 2:
+        time_table['timed_execution_time'] = time.time()
+        game_state = {'map_phase': gsi_server.get_info('map', 'phase'), 'round_phase': gsi_server.get_info('round', 'phase')}
 
-            if truth_table['still_in_warmup']:
-                if game_state['map_phase'] != 'warmup':
-                    truth_table['still_in_warmup'] = False
-                    write('WARMUP is over!', push=push_urgency + 2, push_now=True, overwrite='7')
-                    write('\tTook %s since the Game started.' % str(timedelta(seconds=int(time.time() - time_table['time_searching']))), add_time=False)
+        if truth_table['first_freezetime']:
+            if game_state['map_phase'] == 'live' and game_state['round_phase'] == 'freezetime':
+                truth_table['first_freezetime'] = False
+                truth_table['game_over'] = False
+                write('Freeze Time starting.', overwrite='7')
+                if win32gui.GetWindowPlacement(hwnd)[1] == 2:
+                    playsound('sounds/ready_up.wav', block=False)
+        elif game_state['map_phase'] == 'live' and game_state['round_phase'] != 'freezetime':
+            truth_table['first_freezetime'] = True
 
-                    time_table['time_searching'] = time.time()
-                    if win32gui.GetWindowPlacement(hwnd)[1] == 2:
-                        playsound('sounds/ready_up_warmup.wav', block=False)
-                if time.time() - time_table['time_searching'] - time_table['time_in_warmup'] >= 225:
-                    time_table['time_in_warmup'] += 225
-                    if win32gui.GetWindowPlacement(hwnd)[1] == 2:
-                        write('Ran ANTI-AFK Script')
-                        anti_afk(hwnd)
+        if truth_table['still_in_warmup']:
+            if game_state['map_phase'] != 'warmup':
+                truth_table['still_in_warmup'] = False
+                write('WARMUP is over!', push=push_urgency + 2, push_now=True, overwrite='7')
+                write('\tTook %s since the Game started.' % str(timedelta(seconds=int(time.time() - time_table['time_searching']))), add_time=False)
+                time_table['time_searching'] = time.time()
 
-            if not truth_table['game_over'] and game_state['map_phase'] == 'gameover':
-                game_took_seconds = int(time.time() - time_table['time_searching'])
-                write('The Game is over!')
-                write('\tMatch duration: %s.' % str(timedelta(seconds=game_took_seconds)), add_time=False)
-                write('\tSearch-time:    %s.' % str(timedelta(seconds=time_table['search_time_seconds'])), add_time=False)
-                if gsi_server.get_info('map', 'mode') == 'competitive':
-                    if truth_table['monitoring_since_start']:
-                        with open(path_vars['appdata_path'] + 'game_time_' + accounts[current_account]['steam_id'] + '.txt', 'a') as game_time:
-                            game_time.write(str(game_took_seconds) + ', ' + str(time_table['search_time_seconds']) + '\n')
-                    average_match_time = getAvgMatchTime(accounts[current_account]['steam_id'])
-                    this_game_time = (game_took_seconds, time_table['search_time_seconds'])
-                    game_time_output_strs = (('\tThe games was %s longer than the average game with %s.', '\tThe games was %s shorter than the average game with %s.'),
-                                             ('\tThe search-time was %s longer than the average search-time with %s.', '\tThe search-time was %s shorter than the average search-time with %s.'),
-                                             '\tTime wasted in competitive matchmaking: %s.', '\tTime wasted in the searching queue: %s.')
-                    for i, val in enumerate(average_match_time):
-                        if isinstance(val, int):
-                            avg_time_difference = this_game_time[i] - val
-                            if avg_time_difference >= 0:
-                                write(game_time_output_strs[i][0] % (str(timedelta(seconds=abs(avg_time_difference))), str(timedelta(seconds=val))), add_time=False)
-                            else:
-                                write(game_time_output_strs[i][1] % (str(timedelta(seconds=abs(avg_time_difference))), str(timedelta(seconds=val))), add_time=False)
-                        elif isinstance(val, str):
-                            write(game_time_output_strs[i] % val, add_time=False)
+                if win32gui.GetWindowPlacement(hwnd)[1] == 2:
+                    playsound('sounds/ready_up_warmup.wav', block=False)
 
-                    time.sleep(5)
-                    new_sharecodes = getNewCSGOSharecodes(getOldSharecodes(-1)[0])
-                    for new_code in new_sharecodes:
-                        retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
-                    retryer = UpdateCSGOstats(retryer, get_all_games=True)
-                truth_table['game_over'] = True
+        if game_state['map_phase'] in ['live', 'warmup']:
+            anti_afk_dict['still_afk'].append(win32gui.GetWindowPlacement(hwnd)[1] == 2)
+            anti_afk_dict['still_afk'] = [all(anti_afk_dict['still_afk'])]
+            if not anti_afk_dict['still_afk'][0]:
+                anti_afk_dict['still_afk'] = []
+                anti_afk_dict['time'] = time.time()
+            if time.time() - anti_afk_dict['time'] >= 235:
+                write('Ran Anti-Afk Script.', overwrite='10')
+                anti_afk_dict['still_afk'] = []
+                anti_afk_dict['time'] = time.time()
+                anti_afk(hwnd)
+
+        if not truth_table['game_over'] and game_state['map_phase'] == 'gameover':
+            game_took_seconds = int(time.time() - time_table['time_searching'])
+            write('The Game is over!')
+            write('\tMatch duration: %s.' % str(timedelta(seconds=game_took_seconds)), add_time=False)
+            write('\tSearch-time:    %s.' % str(timedelta(seconds=time_table['search_time_seconds'])), add_time=False)
+            if gsi_server.get_info('map', 'mode') == 'competitive':
+                if truth_table['monitoring_since_start']:
+                    with open(path_vars['appdata_path'] + 'game_time_' + accounts[current_account]['steam_id'] + '.txt', 'a') as game_time:
+                        game_time.write(str(game_took_seconds) + ', ' + str(time_table['search_time_seconds']) + '\n')
+                average_match_time = getAvgMatchTime(accounts[current_account]['steam_id'])
+                this_game_time = (game_took_seconds, time_table['search_time_seconds'])
+                game_time_output_strs = (('\tThe games was %s longer than the average game with %s.', '\tThe games was %s shorter than the average game with %s.'),
+                                         ('\tThe search-time was %s longer than the average search-time with %s.', '\tThe search-time was %s shorter than the average search-time with %s.'),
+                                         '\tTime wasted in competitive matchmaking: %s.', '\tTime wasted in the searching queue: %s.')
+                for i, val in enumerate(average_match_time):
+                    if isinstance(val, int):
+                        avg_time_difference = this_game_time[i] - val
+                        if avg_time_difference >= 0:
+                            write(game_time_output_strs[i][0] % (str(timedelta(seconds=abs(avg_time_difference))), str(timedelta(seconds=val))), add_time=False)
+                        else:
+                            write(game_time_output_strs[i][1] % (str(timedelta(seconds=abs(avg_time_difference))), str(timedelta(seconds=val))), add_time=False)
+                    elif isinstance(val, str):
+                        write(game_time_output_strs[i] % val, add_time=False)
+
+                time.sleep(5)
+                new_sharecodes = getNewCSGOSharecodes(getOldSharecodes(-1)[0])
+                for new_code in new_sharecodes:
+                    retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
+                retryer = UpdateCSGOstats(retryer, get_all_games=True)
+            truth_table['game_over'] = True
 
     if truth_table['testing']:
         # test_time = time.time()
-        if matchmaking['msg']:
-            write('Matchmaking Message:', add_time=False)
-            [write(i, add_time=False) for i in matchmaking['msg']]
-        if matchmaking['update']:
-            write('Matchmaking Update:', add_time=False)
-            [write(i, add_time=False) for i in matchmaking['update']]
-            # print('Took: %s ' % str(timedelta(milliseconds=int(time.time()*1000 - test_time*1000))))
+        pass
+        # print('Took: %s ' % str(timedelta(milliseconds=int(time.time()*1000 - test_time*1000))))
 
     if truth_table['test_for_warmup']:
         for i in range(cfg['stop_warmup_ocr'][0], cfg['stop_warmup_ocr'][1]):
@@ -757,7 +747,7 @@ while True:
                 truth_table['test_for_warmup'] = False
                 truth_table['first_ocr'] = True
                 truth_table['first_push'] = True
-                time_table['freezetime_time'] = time.time() + 7
+                time_table['timed_execution_time'] = time.time()
                 break
 
             if not push_urgency:
@@ -792,11 +782,11 @@ while True:
                 except IndexError:
                     no_text_found += 1
 
-                if time.time() - time_table['time_searching'] - time_table['screenshot_time'] >= 225:
-                    time_table['time_in_warmup'] += 225
-                    if win32gui.GetWindowPlacement(hwnd)[1] == 2:
-                        write('Ran ANTI-AFK Script')
-                        anti_afk(hwnd)
+                if time.time() - time_table['time_searching'] - time_table['time_in_warmup'] >= 210:
+                    time_table['time_in_warmup'] += 210
+                    write('Ran Anit-Afk Script.')
+                    anti_afk_dict['time'] = time.time()
+                    anti_afk(hwnd)
 
                 if gsi_server.get_info('map', 'phase') != 'warmup':
                     push_counter = 0
@@ -805,7 +795,6 @@ while True:
                     truth_table['first_ocr'] = True
                     truth_table['first_push'] = True
                     truth_table['still_in_warmup'] = False
-                    time_table['time_in_warmup'] = 0
                     write('WARMUP is over!', push=push_urgency + 2, push_now=True)
                     write('\tTook %s since the Game started.' % str(timedelta(seconds=int(time.time() - time_table['time_searching']))), add_time=False)
                     break
@@ -817,7 +806,7 @@ while True:
                 truth_table['first_ocr'] = True
                 truth_table['first_push'] = True
                 write('Did not find any warmup text.', push=push_urgency + 2, push_now=True)
-                time_table['freezetime_time'] = time.time() + 2
+                time_table['timed_execution_time'] = time.time()
                 break
 
 
