@@ -642,6 +642,7 @@ while True:
             truth_table['monitoring_since_start'] = True
             playsound('sounds/done_testing.wav', block=False)
             time_table['time_searching'] = time.time()
+            anti_afk_dict['time'] = time.time()
             time_table['time_in_warmup'] = 0
 
         if str_in_list(['Other players failed to connect', 'Failed to ready up'], matchmaking['msg']):
@@ -682,7 +683,7 @@ while True:
             if not anti_afk_dict['still_afk'][0]:
                 anti_afk_dict['still_afk'] = []
                 anti_afk_dict['time'] = time.time()
-            if time.time() - anti_afk_dict['time'] >= 235:
+            if time.time() - anti_afk_dict['time'] >= 210:
                 write('Ran Anti-Afk Script.', overwrite='10')
                 anti_afk_dict['still_afk'] = []
                 anti_afk_dict['time'] = time.time()
