@@ -372,9 +372,10 @@ def Image_to_Text(image: Image, size: tuple, white_threshold: int, arg: str = ''
 
 
 # noinspection PyShadowingNames
-def str_in_list(compare_strings: List[str], list_of_strings: List[str], replacement_str: str = ''):
+def str_in_list(compare_strings: List[str], list_of_strings: List[str], replace: bool = False):
+    replacement_str = '' if not replace else compare_strings[0]
     matching = [string.replace(replacement_str, '') for string in list_of_strings for compare_str in compare_strings if compare_str in string]
-    if not replacement_str:
+    if not replace:
         return any(matching)
     else:
         return matching
@@ -449,11 +450,13 @@ toplist, csgo = [], []
 
 # BOOLEAN, TIME INITIALIZATION
 truth_table = {'test_for_accept_button': False, 'test_for_warmup': False, 'test_for_success': False, 'first_ocr': True, 'testing': False, 'first_push': True, 'still_in_warmup': False, 'test_for_server': False, 'first_freezetime': True,
-               'gsi_server_running': False, 'game_over': False, 'csgo_re-started': False, 'monitoring_since_start': False}
+               'gsi_server_running': False, 'game_over': False, 'csgo_re-started': False, 'monitoring_since_start': False, 'players_still_connecting': False}
 time_table = {'screenshot_time': time.time(), 'time_since_retry': time.time(), 'warmup_test_timer': time.time(), 'time_searching': time.time(), 'searching_cc': time.time(), 'timed_execution_time': time.time(), 'join_warmup_time': 0.0,
               'time_in_warmup': 0, 'search_time_seconds': 0}
-matchmaking = {'msg': [], 'update': [], 'server_found': False}
+matchmaking_blank = {'msg': [], 'update': [], 'players_accepted': [], 'lobby_data': [], 'server_found': False, 'server_ready': False}
+matchmaking = matchmaking_blank
 anti_afk_dict = {'time': time.time(), 'still_afk': []}
+join_dict = {'lobby_data': [], 'unwanted_indices': [], 't_full': False, 'ct_full': False}
 
 # csgostats.gg VAR
 retryer = []
@@ -473,6 +476,7 @@ mute_csgo(0)
 path_vars['appdata_path'] = os.getenv('APPDATA') + '\\CSGO AUTO ACCEPT\\'
 
 write('READY')
+
 
 while True:
     if win32api.GetAsyncKeyState(cfg['activate_script']) & 1:  # F9 (ACTIVATE / DEACTIVATE SCRIPT)
@@ -558,7 +562,7 @@ while True:
         write('CS:GO GSI Server running..', overwrite='8')
 
     # TESTING HERE
-    if win32api.GetAsyncKeyState(0x0) & 1:  # UNBOUND, TEST CODE
+    if win32api.GetAsyncKeyState(0x0) & 1:  # UNBOUND, 6f == '\' TEST CODE
         truth_table['testing'] = not truth_table['testing']
         write('TestCode active: %s' % str(truth_table['testing']), add_time=False, overwrite='testcode')
 
@@ -571,13 +575,14 @@ while True:
             log.truncate()
         with open(cfg['debug_path'] + '\\console.log', 'ab') as debug_log:
             [debug_log.write(i) for i in log_lines]
-        matchmaking['msg'] = str_in_list(['Matchmaking message: '], console_lines, replacement_str='Matchmaking message: ')
-        matchmaking['update'] = str_in_list(['Matchmaking update: '], console_lines, replacement_str='Matchmaking update: ')
+        matchmaking['msg'] = str_in_list(['Matchmaking message: '], console_lines, replace=True)
+        matchmaking['update'] = str_in_list(['Matchmaking update: '], console_lines, replace=True)
+        matchmaking['players_accepted'] = str_in_list(['Server reservation2 is awaiting '], console_lines, replace=True)
+        matchmaking['lobby_data'] = str_in_list(["LobbySetData: 'members:num"], console_lines, replace=True)
         matchmaking['server_found'] = str_in_list(['Matchmaking reservation confirmed: '], console_lines)
         matchmaking['server_ready'] = str_in_list(['ready-up!'], console_lines)
-        matchmaking['players_accepted'] = str_in_list(['Server reservation2 is awaiting '], console_lines, replacement_str='Server reservation2 is awaiting ')
     else:
-        matchmaking = {'msg': [], 'update': [], 'server_found': False, 'server_ready': False, 'players_accepted': 0}
+        matchmaking = matchmaking_blank
 
     if matchmaking['update']:
         if matchmaking['update'][-1] == '1':
@@ -671,6 +676,27 @@ while True:
                 players_accepted = str(int(i[1]) - int(i[0]))
                 write('\t%s Players of %s already accepted.' % (players_accepted, i[1]), add_time=False, overwrite='11')
 
+    if truth_table['players_still_connecting']:
+        if matchmaking['lobby_data']:
+            join_dict['lobby_data'] = [i.rstrip("'\n").split("' = '") for i in matchmaking['lobby_data']]
+            join_dict['unwanted_indices'] = [list(range(i, i + 3)) for i, val in enumerate(join_dict['lobby_data']) if val[0] == 'Machines']
+            join_dict['unwanted_indices'] = [inner for outer in join_dict['unwanted_indices'] for inner in outer]
+            for i in sorted(join_dict['unwanted_indices'], reverse=True):
+                del join_dict['lobby_data'][i]
+            join_dict['t_full'], join_dict['ct_full'] = False, False
+            for i in join_dict['lobby_data']:
+                if i[0] == 'Players':
+                    write('\t%s players joined' % i[1], add_time=False, overwrite='11')
+                if i[0] == 'TSlotsFree' and i[1] == '0':
+                    join_dict['t_full'] = True
+                if i[0] == 'CTSlotsFree' and i[1] == '0':
+                    join_dict['ct_full'] = True
+                if join_dict['t_full'] and join_dict['ct_full']:
+                    write('Server Full, All Players connected', overwrite='11')
+                    playsound('sounds/minute_warning.wav', block=True)
+                    join_dict['t_full'], join_dict['ct_full'] = False, False
+                    truth_table['players_still_connecting'] = False
+
     if time.time() - time_table['timed_execution_time'] > 2:
         time_table['timed_execution_time'] = time.time()
         game_state = {'map_phase': gsi_server.get_info('map', 'phase'), 'round_phase': gsi_server.get_info('round', 'phase')}
@@ -755,6 +781,7 @@ while True:
                     if gsi_server.get_info('map', 'phase') == 'warmup':
                         write("Warmup detected")
                         truth_table['still_in_warmup'] = True
+                        truth_table['players_still_connecting'] = True
                         break
 
         while True:
