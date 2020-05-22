@@ -38,7 +38,7 @@ def mute_csgo(lvl: int):
 
 
 # noinspection PyShadowingNames
-def write(message, add_time: bool = True, push: int = 0, push_now: bool = False, output: bool = True, overwrite: str = '0'):  # last overwrite key used: 9
+def write(message, add_time: bool = True, push: int = 0, push_now: bool = False, output: bool = True, overwrite: str = '0'):  # last overwrite key used: 11
     if output:
         message = str(message)
         if add_time:
@@ -52,7 +52,7 @@ def write(message, add_time: bool = True, push: int = 0, push_now: bool = False,
             ending = console_window['suffix']
             if last_key == overwrite.encode():
                 if console_window['isatty']:
-                    print(' ' * len(last_string.decode()), end=ending)
+                    print('\t' * int(len(last_string.decode()) / 4 + 1), end=ending)
                 message = console_window['prefix'] + message
             else:
                 if last_end != b'\n':
@@ -451,7 +451,7 @@ toplist, csgo = [], []
 truth_table = {'test_for_accept_button': False, 'test_for_warmup': False, 'test_for_success': False, 'first_ocr': True, 'testing': False, 'first_push': True, 'still_in_warmup': False, 'test_for_server': False, 'first_freezetime': True,
                'gsi_server_running': False, 'game_over': False, 'csgo_re-started': False, 'monitoring_since_start': False}
 time_table = {'screenshot_time': time.time(), 'time_since_retry': time.time(), 'warmup_test_timer': time.time(), 'time_searching': time.time(), 'searching_cc': time.time(), 'timed_execution_time': time.time(), 'join_warmup_time': 0.0,
-              'time_in_warmup': 0, 'search_time_seconds': None}
+              'time_in_warmup': 0, 'search_time_seconds': 0}
 matchmaking = {'msg': [], 'update': [], 'server_found': False}
 anti_afk_dict = {'time': time.time(), 'still_afk': []}
 
@@ -558,9 +558,9 @@ while True:
         write('CS:GO GSI Server running..', overwrite='8')
 
     # TESTING HERE
-    if win32api.GetAsyncKeyState(0x6F) & 1:  # UNBOUND, TEST CODE
+    if win32api.GetAsyncKeyState(0x0) & 1:  # UNBOUND, TEST CODE
         truth_table['testing'] = not truth_table['testing']
-        write('TestCode active: %s' % str(truth_table['testing']), add_time=False, overwrite='9')
+        write('TestCode active: %s' % str(truth_table['testing']), add_time=False, overwrite='testcode')
 
     if time.time() - time_table['searching_cc'] > 0.2:
         time_table['searching_cc'] = time.time()
@@ -575,8 +575,9 @@ while True:
         matchmaking['update'] = str_in_list(['Matchmaking update: '], console_lines, replacement_str='Matchmaking update: ')
         matchmaking['server_found'] = str_in_list(['Matchmaking reservation confirmed: '], console_lines)
         matchmaking['server_ready'] = str_in_list(['ready-up!'], console_lines)
+        matchmaking['players_accepted'] = str_in_list(['Server reservation2 is awaiting '], console_lines, replacement_str='Server reservation2 is awaiting ')
     else:
-        matchmaking = {'msg': [], 'update': [], 'server_found': False, 'server_ready': False}
+        matchmaking = {'msg': [], 'update': [], 'server_found': False, 'server_ready': False, 'players_accepted': 0}
 
     if matchmaking['update']:
         if matchmaking['update'][-1] == '1':
@@ -640,6 +641,7 @@ while True:
         if str_in_list(['Match confirmed'], matchmaking['msg']):
             # write('\tTook %s since pressing accept.' % str(timedelta(seconds=int(time.time() - time_table['screenshot_time']))), add_time=False, push=pushbullet_dict['urgency'] + 1)
             time_table['search_time_seconds'] = int(time.time() - time_table['time_searching'])
+            write('\tAll Players accepted', add_time=False, overwrite='11')
             write('\tTook %s since trying to find a game.' % str(timedelta(seconds=time_table['search_time_seconds'])), add_time=False, push=pushbullet_dict['urgency'] + 1)
             write('Game should have started', push=pushbullet_dict['urgency'] + 2, push_now=True)
             truth_table['test_for_warmup'] = True
@@ -662,6 +664,12 @@ while True:
             truth_table['test_for_server'] = True
             truth_table['test_for_accept_button'] = False
             truth_table['test_for_success'] = False
+
+        if matchmaking['players_accepted']:
+            for i in matchmaking['players_accepted']:
+                i = i.split('/')
+                players_accepted = str(int(i[1]) - int(i[0]))
+                write('\t%s Players of %s already accepted.' % (players_accepted, i[1]), add_time=False, overwrite='11')
 
     if time.time() - time_table['timed_execution_time'] > 2:
         time_table['timed_execution_time'] = time.time()
@@ -760,7 +768,7 @@ while True:
                 time_table['timed_execution_time'] = time.time()
                 break
 
-            if pushbullet_dict['urgency'] <= 1:
+            if pushbullet_dict['urgency'] <= 2:
                 truth_table['test_for_warmup'] = False
                 break
 
