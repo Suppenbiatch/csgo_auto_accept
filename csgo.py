@@ -54,7 +54,7 @@ def write(message, add_time: bool = True, push: int = 0, push_now: bool = False,
             ending = console_window['suffix']
             if last_key == overwrite.encode():
                 if console_window['isatty']:
-                    print('\t' * int(len(last_string.decode()) / 4 + 1), end=ending)
+                    print(' ' * int(len(last_string.decode()) + 1), end=ending)
                 message = console_window['prefix'] + message
             else:
                 if last_end != b'\n':
@@ -720,7 +720,7 @@ while True:
                 except AttributeError:
                     scoreboard['last_round_info'] = 'No info on last round!'
 
-                write('Freeze Time starting. {}! Current Score: {:02d}:{:02d}.'.format(scoreboard['last_round_info'], scoreboard[scoreboard['my_team']], scoreboard[scoreboard['opposing_team']]), overwrite='7')
+                write('Freeze Time starting. {}! Current Score: {:02d}:{:02d}'.format(scoreboard['last_round_info'], scoreboard[scoreboard['my_team']], scoreboard[scoreboard['opposing_team']]), overwrite='7')
                 if win32gui.GetWindowPlacement(hwnd)[1] == 2:
                     playsound('sounds/ready_up.wav', block=False)
 
@@ -765,8 +765,7 @@ while True:
             write('The Game is over!')
             write('Match duration: {}.'.format(str(timedelta(seconds=time_table['game_took_seconds']))), add_time=False)
             write('Search-time:    {}.'.format(str(timedelta(seconds=time_table['search_time_seconds']))), add_time=False)
-            write('Time AFK:       {}.'.format(str(timedelta(seconds=afk_dict['time_afk']))), add_time=False)
-            write('{:.1%} of Match duration.'.format(afk_dict['time_afk'] / time_table['game_took_seconds']), add_time=False)
+            write('Time AFK:       {}, {:.1%} of match duration.'.format(str(timedelta(seconds=afk_dict['time_afk'])), afk_dict['time_afk'] / time_table['game_took_seconds']), add_time=False)
             if gsi_server.get_info('map', 'mode') == 'competitive':
                 if truth_table['monitoring_since_start']:
                     with open(path_vars['appdata_path'] + 'game_time_' + accounts[current_account]['steam_id'] + '.txt', 'a') as game_time:
