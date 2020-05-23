@@ -43,6 +43,8 @@ def write(message, add_time: bool = True, push: int = 0, push_now: bool = False,
         message = str(message)
         if add_time:
             message = datetime.now().strftime('%H:%M:%S') + ': ' + message
+        else:
+            message = ' ' * 10 + message
         global last_printed_line
         splits = last_printed_line.split(b'**')
         last_key = splits[0]
@@ -189,12 +191,12 @@ def CheckUserDataAutoExec(steam_id_3: str):
         lines = autoexec.readlines()
         for autoexec_str in str_in_autoexec:
             if not any(autoexec_str.lower() in line.rstrip('\n').lower() for line in lines):
-                write('Added %s to "autoexec.cfg" file in %s' % (autoexec_str, userdata_path), add_time=False)
+                write('Added {} to "autoexec.cfg" file in {}'.format(autoexec_str, userdata_path), add_time=False)
                 write('RESTART Counter-Strike for the script to work', add_time=False)
                 autoexec.write('\n' + autoexec_str + '\n')
     if os.path.exists(path_vars['csgo_path'] + '\\cfg\\autoexec.cfg'):
-        write('YOU HAVE TO DELETE THE "autoexec.cfg" in %s WITH AND MERGE IT WITH THE ONE IN %s' % (path_vars['csgo_path'] + '\\cfg', userdata_path), add_time=False)
-        write('THE SCRIPT WONT WORK UNTIL THERE IS NO "autoexec.cfg" in %s' % path_vars['csgo_path'] + '\\cfg', add_time=False)
+        write('YOU HAVE TO DELETE THE "autoexec.cfg" in {} WITH AND MERGE IT WITH THE ONE IN {}'.format(path_vars['csgo_path'] + '\\cfg', userdata_path), add_time=False)
+        write('THE SCRIPT WONT WORK UNTIL THERE IS NO "autoexec.cfg" in {}'.format(path_vars['csgo_path'] + '\\cfg'), add_time=False)
         global error_level
         error_level += 1
 
@@ -334,7 +336,7 @@ def UpdateCSGOstats(repeater=None, get_all_games=False):
     repeater.extend([game for game in corrupt_games])
 
     if corrupt_games:
-        write('An error occurred in %s game[s].' % len(corrupt_games), overwrite='5')
+        write('An error occurred in {} game[s].'.format(len(corrupt_games)), overwrite='5')
 
     if completed_games:
         global pushbullet_dict
@@ -342,9 +344,9 @@ def UpdateCSGOstats(repeater=None, get_all_games=False):
             sharecode = i['data']['sharecode']
             game_url = i['data']['url']
             info = ' '.join(i['data']['msg'].replace('-', '').replace('<br />', '. ').split('<')[0].rstrip(' ').split())
-            write('Sharecode: %s' % sharecode, add_time=False, push=pushbullet_dict['urgency'])
-            write('URL: %s' % game_url, add_time=False, push=pushbullet_dict['urgency'])
-            write('Status: %s.' % info, add_time=True, push=pushbullet_dict['urgency'])
+            write('Sharecode: {}'.format(sharecode), add_time=False, push=pushbullet_dict['urgency'])
+            write('URL: {}'.format(game_url), add_time=False, push=pushbullet_dict['urgency'])
+            write('Status: {}.'.format(info), add_time=True, push=pushbullet_dict['urgency'])
             pyperclip.copy(game_url)
         write(None, add_time=False, push=pushbullet_dict['urgency'], push_now=True, output=False)
     return repeater
@@ -445,16 +447,16 @@ gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
 # INITIALIZATION FOR getScreenShot
 screen_size = (win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1))
 hwnd, hwnd_old = 0, 0
-csgo_window_status = {'server_found': 2, 'new_tab': 2}
+csgo_window_status = {'server_found': 2, 'new_tab': 2, 'in_game': 0}
 toplist, csgo = [], []
 
 # BOOLEAN, TIME INITIALIZATION
 truth_table = {'test_for_accept_button': False, 'test_for_warmup': False, 'test_for_success': False, 'first_ocr': True, 'testing': False, 'first_push': True, 'still_in_warmup': False, 'test_for_server': False, 'first_freezetime': True,
                'gsi_server_running': False, 'game_over': False, 'csgo_re-started': False, 'monitoring_since_start': False, 'players_still_connecting': False}
 time_table = {'screenshot_time': time.time(), 'time_since_retry': time.time(), 'warmup_test_timer': time.time(), 'time_searching': time.time(), 'searching_cc': time.time(), 'timed_execution_time': time.time(), 'join_warmup_time': 0.0,
-              'time_in_warmup': 0, 'search_time_seconds': 0}
-matchmaking_blank = {'msg': [], 'update': [], 'players_accepted': [], 'lobby_data': [], 'server_found': False, 'server_ready': False}
-matchmaking = matchmaking_blank
+              'time_in_warmup': 0, 'search_time_seconds': 0, 'game_took_seconds': 0}
+matchmaking = {'msg': [], 'update': [], 'players_accepted': [], 'lobby_data': [], 'server_found': False, 'server_ready': False}
+afk_dict = {'start_time': time.time(), 'time_afk': 0}
 anti_afk_dict = {'time': time.time(), 'still_afk': []}
 join_dict = {'lobby_data': [], 'unwanted_indices': [], 't_full': False, 'ct_full': False}
 
@@ -481,7 +483,7 @@ write('READY')
 while True:
     if win32api.GetAsyncKeyState(cfg['activate_script']) & 1:  # F9 (ACTIVATE / DEACTIVATE SCRIPT)
         truth_table['test_for_server'] = not truth_table['test_for_server']
-        write('Looking for game: %s' % truth_table['test_for_server'], overwrite='1')
+        write('Looking for game: {}'.format(truth_table['test_for_server']), overwrite='1')
         if truth_table['test_for_server']:
             playsound('sounds/activated.wav', block=False)
             time_table['time_searching'] = time.time()
@@ -500,7 +502,7 @@ while True:
             pushbullet_dict['urgency'] += 1
             if pushbullet_dict['urgency'] > len(pushbullet_dict['push_info']) - 1:
                 pushbullet_dict['urgency'] = 0
-            write('Pushing: %s' % pushbullet_dict['push_info'][pushbullet_dict['urgency']], overwrite='2')
+            write('Pushing: {}'.format(pushbullet_dict['push_info'][pushbullet_dict['urgency']]), overwrite='2')
 
     if win32api.GetAsyncKeyState(cfg['info_newest_match']) & 1:  # F7 Key (UPLOAD NEWEST MATCH)
         write('Uploading / Getting status on newest match')
@@ -525,14 +527,14 @@ while True:
         if current_account > len(accounts) - 1:
             current_account = 0
         CheckUserDataAutoExec(accounts[current_account]['steam_id_3'])
-        write('current account is: %s' % accounts[current_account]['name'], add_time=False, overwrite='3')
+        write('current account is: {}'.format(accounts[current_account]['name']), add_time=False, overwrite='3')
 
     if win32api.GetAsyncKeyState(cfg['mute_csgo_toggle']) & 1:  # F6 (TOGGLE MUTE CSGO)
-        write("MUTE TOGGLED", add_time=False)
+        write('Mute toggled!', add_time=False)
         mute_csgo(2)
 
     if win32api.GetAsyncKeyState(cfg['end_script']) & 1:  # POS1 (END SCRIPT)
-        write('Exiting Script')
+        write('Exiting Script!')
         break
 
     if retryer:
@@ -564,7 +566,7 @@ while True:
     # TESTING HERE
     if win32api.GetAsyncKeyState(0x0) & 1:  # UNBOUND, 6f == '\' TEST CODE
         truth_table['testing'] = not truth_table['testing']
-        write('TestCode active: %s' % str(truth_table['testing']), add_time=False, overwrite='testcode')
+        write('TestCode active: %s.' % str(truth_table['testing']), add_time=False, overwrite='testcode')
 
     if time.time() - time_table['searching_cc'] > 0.2:
         time_table['searching_cc'] = time.time()
@@ -582,13 +584,13 @@ while True:
         matchmaking['server_found'] = str_in_list(['Matchmaking reservation confirmed: '], console_lines)
         matchmaking['server_ready'] = str_in_list(['ready-up!'], console_lines)
     else:
-        matchmaking = matchmaking_blank
+        matchmaking = {'msg': [], 'update': [], 'players_accepted': [], 'lobby_data': [], 'server_found': False, 'server_ready': False}
 
     if matchmaking['update']:
         if matchmaking['update'][-1] == '1':
             if not truth_table['test_for_server']:
                 truth_table['test_for_server'] = True
-                write('Looking for game: %s' % truth_table['test_for_server'], overwrite='1')
+                write('Looking for game: {}.'.format(truth_table['test_for_server']), overwrite='1')
                 time_table['time_searching'] = time.time()
                 playsound('sounds/activated.wav', block=False)
             mute_csgo(1)
@@ -600,7 +602,7 @@ while True:
             playsound('sounds/server_found.wav', block=False)
             truth_table['test_for_success'] = True
         if matchmaking['server_ready']:
-            write('Server found, starting to look for accept button')
+            write('Server found, starting to look for accept button.')
             truth_table['test_for_accept_button'] = True
             csgo_window_status['server_found'] = win32gui.GetWindowPlacement(hwnd)[1]
             win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
@@ -612,16 +614,16 @@ while True:
                     current_account = [i for i, val in enumerate(accounts) if current_steamid == val['steam_id']][0]
                     CheckUserDataAutoExec(accounts[current_account]['steam_id_3'])
                 except IndexError:
-                    write('\tAccount is not in the config.ini!\nScript will not work properly!', overwrite='9')
+                    write('Account is not in the config.ini!\nScript will not work properly!', add_time=False, overwrite='9')
                     playsound('sounds/fail.wav', block=False)
-                    exit('Update config.ini')
-            write('\tCurrent account is: %s' % accounts[current_account]['name'], add_time=False, overwrite='9')
+                    exit('Update config.ini!')
+            write('Current account is: {}.'.format(accounts[current_account]['name']), add_time=False, overwrite='9')
 
     if truth_table['test_for_accept_button']:
         img = getScreenShot(hwnd, (1265, 760, 1295, 785))
         accept_avg = color_average(img, [(76, 175, 80), (90, 203, 94)])
         if relate_list(accept_avg, (2, 2, 2)):
-            write('Trying to Accept', push=pushbullet_dict['urgency'] + 1)
+            write('Trying to Accept.', push=pushbullet_dict['urgency'] + 1)
             truth_table['test_for_accept_button'] = False
 
             with open(cfg['debug_path'] + '\\console.log', 'ab') as debug_log:
@@ -638,17 +640,16 @@ while True:
             else:
                 win32api.SetCursorPos(current_cursor_position)
 
-            write('Trying to catch a loading map')
+            write('Trying to catch a loading map.')
             playsound('sounds/accept_found.wav', block=False)
             time_table['screenshot_time'] = time.time()
 
     if truth_table['test_for_accept_button'] or truth_table['test_for_success']:
         if str_in_list(['Match confirmed'], matchmaking['msg']):
-            # write('\tTook %s since pressing accept.' % str(timedelta(seconds=int(time.time() - time_table['screenshot_time']))), add_time=False, push=pushbullet_dict['urgency'] + 1)
             time_table['search_time_seconds'] = int(time.time() - time_table['time_searching'])
-            write('\tAll Players accepted', add_time=False, overwrite='11')
-            write('\tTook %s since trying to find a game.' % str(timedelta(seconds=time_table['search_time_seconds'])), add_time=False, push=pushbullet_dict['urgency'] + 1)
-            write('Game should have started', push=pushbullet_dict['urgency'] + 2, push_now=True)
+            write('All Players accepted.', add_time=False, overwrite='11')
+            write('Took {} since trying to find a game.'.format(str(timedelta(seconds=time_table['search_time_seconds']))), add_time=False, push=pushbullet_dict['urgency'] + 1)
+            write('Game should have started.', push=pushbullet_dict['urgency'] + 2, push_now=True)
             truth_table['test_for_warmup'] = True
             truth_table['warmup_started'] = False
             truth_table['first_freezetime'] = False
@@ -661,6 +662,7 @@ while True:
             time_table['time_searching'] = time.time()
             anti_afk_dict['time'] = time.time()
             time_table['time_in_warmup'] = 0
+            afk_dict['start_time'] = time.time()
 
         if str_in_list(['Other players failed to connect', 'Failed to ready up'], matchmaking['msg']):
             write('Game doesnt seem to have started. Continuing to search for a Server!', push=pushbullet_dict['urgency'] + 1, push_now=True)
@@ -670,11 +672,10 @@ while True:
             truth_table['test_for_accept_button'] = False
             truth_table['test_for_success'] = False
 
-        if matchmaking['players_accepted']:
-            for i in matchmaking['players_accepted']:
-                i = i.split('/')
-                players_accepted = str(int(i[1]) - int(i[0]))
-                write('\t%s Players of %s already accepted.' % (players_accepted, i[1]), add_time=False, overwrite='11')
+        for i in matchmaking['players_accepted']:
+            i = i.split('/')
+            players_accepted = str(int(i[1]) - int(i[0]))
+            write('{} Players of {} already accepted.'.format(players_accepted, i[1]), add_time=False, overwrite='11')
 
     if truth_table['players_still_connecting']:
         if matchmaking['lobby_data']:
@@ -686,13 +687,13 @@ while True:
             join_dict['t_full'], join_dict['ct_full'] = False, False
             for i in join_dict['lobby_data']:
                 if i[0] == 'Players':
-                    write('\t%s players joined' % i[1], add_time=False, overwrite='11')
+                    write('{} players joined.'.format(i[1]), add_time=False, overwrite='11')
                 if i[0] == 'TSlotsFree' and i[1] == '0':
                     join_dict['t_full'] = True
                 if i[0] == 'CTSlotsFree' and i[1] == '0':
                     join_dict['ct_full'] = True
                 if join_dict['t_full'] and join_dict['ct_full']:
-                    write('Server Full, All Players connected', overwrite='11')
+                    write('Server full, All Players connected.', push=pushbullet_dict['urgency']+2, push_now=True, overwrite='11')
                     playsound('sounds/minute_warning.wav', block=True)
                     join_dict['t_full'], join_dict['ct_full'] = False, False
                     truth_table['players_still_connecting'] = False
@@ -705,9 +706,24 @@ while True:
             if game_state['map_phase'] == 'live' and game_state['round_phase'] == 'freezetime':
                 truth_table['first_freezetime'] = False
                 truth_table['game_over'] = False
-                write('Freeze Time starting.', overwrite='7')
+                scoreboard = {'CT': gsi_server.get_info('map', 'team_ct')['score'], 'T': gsi_server.get_info('map', 'team_t')['score'], 'team': gsi_server.get_info('player', 'team'), 'steamid': gsi_server.get_info('player', 'steamid'),
+                              'my_team': 'CT', 'opposing_team': 'T', 'last_round_info': gsi_server.get_info('map', 'round_wins'), 'last_round_key': '0'}
+
+                if scoreboard['steamid'] == accounts[current_account]['steam_id']:
+                    scoreboard['my_team'] = scoreboard['team']
+                    scoreboard['opposing_team'] = 'T' if scoreboard['my_team'] == 'CT' else 'CT'
+
+                try:
+                    scoreboard['last_round_key'] = list(scoreboard['last_round_info'].keys())[-1]
+                    scoreboard['last_round_info'] = scoreboard['last_round_info'][scoreboard['last_round_key']]
+                    scoreboard['last_round_info'] = 'Counter-Terrorists won the last round' if scoreboard['last_round_info'].startswith('ct') else 'Terrorists won the last round'
+                except AttributeError:
+                    scoreboard['last_round_info'] = 'No info on last round!'
+
+                write('Freeze Time starting. {}! Current Score: {:02d}:{:02d}.'.format(scoreboard['last_round_info'], scoreboard[scoreboard['my_team']], scoreboard[scoreboard['opposing_team']]), overwrite='7')
                 if win32gui.GetWindowPlacement(hwnd)[1] == 2:
                     playsound('sounds/ready_up.wav', block=False)
+
         elif game_state['map_phase'] == 'live' and game_state['round_phase'] != 'freezetime':
             truth_table['first_freezetime'] = True
 
@@ -715,14 +731,18 @@ while True:
             if game_state['map_phase'] != 'warmup':
                 truth_table['still_in_warmup'] = False
                 write('WARMUP is over!', push=pushbullet_dict['urgency'] + 2, push_now=True, overwrite='7')
-                write('\tTook %s since the Game started.' % str(timedelta(seconds=int(time.time() - time_table['time_searching']))), add_time=False)
+                write('Took {} since the Game started.'.format(str(timedelta(seconds=int(time.time() - time_table['time_searching'])))), add_time=False)
                 time_table['time_searching'] = time.time()
+                afk_dict['start_time'] = time.time()
+                afk_dict['time_afk'] = 0
 
                 if win32gui.GetWindowPlacement(hwnd)[1] == 2:
                     playsound('sounds/ready_up_warmup.wav', block=False)
 
         if game_state['map_phase'] in ['live', 'warmup']:
-            anti_afk_dict['still_afk'].append(win32gui.GetWindowPlacement(hwnd)[1] == 2)
+            csgo_window_status['in_game'] = win32gui.GetWindowPlacement(hwnd)[1]
+
+            anti_afk_dict['still_afk'].append(csgo_window_status['in_game'] == 2)
             anti_afk_dict['still_afk'] = [all(anti_afk_dict['still_afk'])]
             if not anti_afk_dict['still_afk'][0]:
                 anti_afk_dict['still_afk'] = []
@@ -733,29 +753,38 @@ while True:
                 anti_afk_dict['time'] = time.time()
                 anti_afk(hwnd)
 
+            if csgo_window_status['in_game'] != 2:
+                afk_dict['start_time'] = time.time()
+            else:
+                afk_dict['time_afk'] += int(time.time() - afk_dict['start_time'])
+                afk_dict['start_time'] = time.time()
+            # write('{}, {}'.format(afk_dict['time_afk'], int(time.time() - time_table['time_searching'])), overwrite='101')
+
         if not truth_table['game_over'] and game_state['map_phase'] == 'gameover':
-            game_took_seconds = int(time.time() - time_table['time_searching'])
+            time_table['game_took_seconds'] = int(time.time() - time_table['time_searching'])
             write('The Game is over!')
-            write('\tMatch duration: %s.' % str(timedelta(seconds=game_took_seconds)), add_time=False)
-            write('\tSearch-time:    %s.' % str(timedelta(seconds=time_table['search_time_seconds'])), add_time=False)
+            write('Match duration: {}.'.format(str(timedelta(seconds=time_table['game_took_seconds']))), add_time=False)
+            write('Search-time:    {}.'.format(str(timedelta(seconds=time_table['search_time_seconds']))), add_time=False)
+            write('Time AFK:       {}.'.format(str(timedelta(seconds=afk_dict['time_afk']))), add_time=False)
+            write('{:.1%} of Match duration.'.format(afk_dict['time_afk'] / time_table['game_took_seconds']), add_time=False)
             if gsi_server.get_info('map', 'mode') == 'competitive':
                 if truth_table['monitoring_since_start']:
                     with open(path_vars['appdata_path'] + 'game_time_' + accounts[current_account]['steam_id'] + '.txt', 'a') as game_time:
-                        game_time.write(str(game_took_seconds) + ', ' + str(time_table['search_time_seconds']) + '\n')
+                        game_time.write(str(time_table['game_took_seconds']) + ', ' + str(time_table['search_time_seconds']) + '\n')
                 average_match_time = getAvgMatchTime(accounts[current_account]['steam_id'])
-                this_game_time = (game_took_seconds, time_table['search_time_seconds'])
-                game_time_output_strs = (('\tThe games was %s longer than the average game with %s.', '\tThe games was %s shorter than the average game with %s.'),
-                                         ('\tThe search-time was %s longer than the average search-time with %s.', '\tThe search-time was %s shorter than the average search-time with %s.'),
-                                         '\tTime wasted in competitive matchmaking: %s.', '\tTime wasted in the searching queue: %s.')
+                this_game_time = (time_table['game_took_seconds'], time_table['search_time_seconds'])
+                game_time_output_strs = (('The games was {} longer than the average game with {}.', 'The games was {} shorter than the average game with {}.'),
+                                         ('The search-time was {} longer than the average search-time with {}.', 'The search-time was {} shorter than the average search-time with {}.'),
+                                         'Time wasted in competitive matchmaking: {}.', 'Time wasted in the searching queue: {}.')
                 for i, val in enumerate(average_match_time):
                     if isinstance(val, int):
                         avg_time_difference = this_game_time[i] - val
                         if avg_time_difference >= 0:
-                            write(game_time_output_strs[i][0] % (str(timedelta(seconds=abs(avg_time_difference))), str(timedelta(seconds=val))), add_time=False)
+                            write(game_time_output_strs[i][0].format(str(timedelta(seconds=abs(avg_time_difference))), str(timedelta(seconds=val))), add_time=False)
                         else:
-                            write(game_time_output_strs[i][1] % (str(timedelta(seconds=abs(avg_time_difference))), str(timedelta(seconds=val))), add_time=False)
+                            write(game_time_output_strs[i][1].format(str(timedelta(seconds=abs(avg_time_difference))), str(timedelta(seconds=val))), add_time=False)
                     elif isinstance(val, str):
-                        write(game_time_output_strs[i] % val, add_time=False)
+                        write(game_time_output_strs[i].format(val), add_time=False)
 
                 time.sleep(5)
                 new_sharecodes = getNewCSGOSharecodes(getOldSharecodes(-1)[0])
@@ -767,7 +796,7 @@ while True:
     if truth_table['testing']:
         # test_time = time.time()
         pass
-        # print('Took: %s ' % str(timedelta(milliseconds=int(time.time()*1000 - test_time*1000))))
+        # print('Took: {}'.format(str(timedelta(milliseconds=int(time.time()*1000 - test_time*1000))))
 
     if truth_table['test_for_warmup']:
         for i in range(cfg['stop_warmup_ocr'][0], cfg['stop_warmup_ocr'][1]):
@@ -812,13 +841,13 @@ while True:
                         truth_table['first_ocr'] = False
                     time_left_data = timedelta(seconds=int(time.time() - time_table['screenshot_time'])), time.strftime('%H:%M:%S', time.gmtime(
                         abs((time_table['join_warmup_time'] - time_left) - (time.time() - time_table['screenshot_time'])))), img_text
-                    write('Time since start: %s - Time Difference: %s - Time left: %s' % (time_left_data[0], time_left_data[1], time_left_data[2]), add_time=False, overwrite='1')
+                    write('Time since start: {} - Time Difference: {} - Time left: {}'.format(time_left_data[0], time_left_data[1], time_left_data[2]), add_time=False, overwrite='1')
                     if no_text_found > 0:
                         no_text_found = 0
 
                     if time_left <= pushbullet_dict['times'][pushbullet_dict['counter']] and pushbullet_dict['counter'] >= len(pushbullet_dict['times']):
                         pushbullet_dict['counter'] += 1
-                        write('Time since start: %s\nTime Difference: %s\nTime left: %s' % (time_left_data[0], time_left_data[1], time_left_data[2]), push=pushbullet_dict['urgency'] + 1, push_now=True, output=False)
+                        write('Time since start: {}\nTime Difference: {}\nTime left: {}'.format(time_left_data[0], time_left_data[1], time_left_data[2]), push=pushbullet_dict['urgency'] + 1, push_now=True, output=False)
 
                     if truth_table['first_push']:
                         if abs((time_table['join_warmup_time'] - time_left) - (time.time() - time_table['screenshot_time'])) >= 5:
@@ -837,12 +866,13 @@ while True:
                 if gsi_server.get_info('map', 'phase') != 'warmup':
                     no_text_found = 0
                     truth_table['test_for_warmup'] = False
+                    truth_table['players_still_connecting'] = False
                     truth_table['first_ocr'] = True
                     truth_table['first_push'] = True
                     pushbullet_dict['counter'] = 0
                     truth_table['still_in_warmup'] = False
                     write('WARMUP is over!', push=pushbullet_dict['urgency'] + 2, push_now=True)
-                    write('\tTook %s since the Game started.' % str(timedelta(seconds=int(time.time() - time_table['time_searching']))), add_time=False)
+                    write('Took {} since the Game started.'.format(str(timedelta(seconds=int(time.time() - time_table['time_searching'])))), add_time=False)
                     break
 
             if no_text_found >= cfg['warmup_no_text_limit']:
