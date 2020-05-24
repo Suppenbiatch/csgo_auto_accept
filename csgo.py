@@ -458,9 +458,9 @@ truth_table = {'test_for_accept_button': False, 'test_for_warmup': False, 'test_
 time_table = {'screenshot_time': time.time(), 'time_since_retry': time.time(), 'warmup_test_timer': time.time(), 'time_searching': time.time(), 'searching_cc': time.time(), 'timed_execution_time': time.time(), 'join_warmup_time': 0.0,
               'time_in_warmup': 0, 'search_time_seconds': 0, 'game_took_seconds': 0}
 matchmaking = {'msg': [], 'update': [], 'players_accepted': [], 'lobby_data': [], 'server_found': False, 'server_ready': False}
-afk_dict = {'start_time': time.time(), 'time_afk': 0}
-anti_afk_dict = {'time': time.time(), 'still_afk': []}
+afk_dict = {'time': time.time(), 'still_afk': [], 'start_time': time.time(), 'seconds_afk': 0}
 join_dict = {'lobby_data': [], 'unwanted_indices': [], 't_full': False, 'ct_full': False}
+scoreboard = {'CT': 0, 'T': 0, 'last_round_info': '', 'last_round_key': '0'}
 
 # csgostats.gg VAR
 retryer = []
@@ -661,8 +661,8 @@ while True:
             mute_csgo(0)
             playsound('sounds/done_testing.wav', block=False)
             time_table['time_searching'] = time.time()
-            anti_afk_dict['time'] = time.time()
             time_table['time_in_warmup'] = 0
+            afk_dict['time'] = time.time()
             afk_dict['start_time'] = time.time()
 
         if str_in_list(['Other players failed to connect', 'Failed to ready up'], matchmaking['msg']):
@@ -698,6 +698,7 @@ while True:
                     playsound('sounds/minute_warning.wav', block=True)
                     join_dict['t_full'], join_dict['ct_full'] = False, False
                     truth_table['players_still_connecting'] = False
+                    break
 
     if time.time() - time_table['timed_execution_time'] > 2:
         time_table['timed_execution_time'] = time.time()
@@ -707,9 +708,15 @@ while True:
             if game_state['map_phase'] == 'live' and game_state['round_phase'] == 'freezetime':
                 truth_table['first_freezetime'] = False
                 truth_table['game_over'] = False
-                scoreboard = {'CT': gsi_server.get_info('map', 'team_ct')['score'], 'T': gsi_server.get_info('map', 'team_t')['score'], 'team': gsi_server.get_info('player', 'team'), 'steamid': gsi_server.get_info('player', 'steamid'),
-                              'opposing_team': 'T', 'last_round_info': gsi_server.get_info('map', 'round_wins'), 'last_round_key': '0'}
-                scoreboard['opposing_team'] = 'T' if scoreboard['team'] == 'CT' else 'CT'
+                scoreboard['CT'] = gsi_server.get_info('map', 'team_ct')['score']
+                scoreboard['T'] = gsi_server.get_info('map', 'team_t')['score']
+                scoreboard['last_round_info'] = gsi_server.get_info('map', 'round_wins')
+                scoreboard['last_round_key'] = '0'
+                try:
+                    scoreboard['opposing_team'] = 'T' if scoreboard['team'] == 'CT' else 'CT'
+                except KeyError:
+                    scoreboard['team'] = gsi_server.get_info('player', 'team')
+                    scoreboard['opposing_team'] = 'T' if scoreboard['team'] == 'CT' else 'CT'
 
                 try:
                     scoreboard['last_round_key'] = list(scoreboard['last_round_info'].keys())[-1]
@@ -718,6 +725,9 @@ while True:
                         scoreboard['opposing_team'])
                 except AttributeError:
                     scoreboard['last_round_info'] = 'You ({}), No info on the last round!'.format(scoreboard['team'])
+
+                scoreboard['team'] = gsi_server.get_info('player', 'team')
+                scoreboard['opposing_team'] = 'T' if scoreboard['team'] == 'CT' else 'CT'
 
                 write('Freeze Time starting. ' + scoreboard['last_round_info'] + ' Current Score: {:02d}:{:02d}'.format(scoreboard[scoreboard['team']], scoreboard[scoreboard['opposing_team']]), overwrite='7')
                 if win32gui.GetWindowPlacement(hwnd)[1] == 2:
@@ -733,28 +743,28 @@ while True:
                 write('Took {} since the match started.'.format(str(timedelta(seconds=int(time.time() - time_table['time_searching'])))), add_time=False)
                 time_table['time_searching'] = time.time()
                 afk_dict['start_time'] = time.time()
-                afk_dict['time_afk'] = 0
+                afk_dict['seconds_afk'] = 0
                 if win32gui.GetWindowPlacement(hwnd)[1] == 2:
                     playsound('sounds/ready_up_warmup.wav', block=False)
 
         if game_state['map_phase'] in ['live', 'warmup']:
             csgo_window_status['in_game'] = win32gui.GetWindowPlacement(hwnd)[1]
 
-            anti_afk_dict['still_afk'].append(csgo_window_status['in_game'] == 2)
-            anti_afk_dict['still_afk'] = [all(anti_afk_dict['still_afk'])]
-            if not anti_afk_dict['still_afk'][0]:
-                anti_afk_dict['still_afk'] = []
-                anti_afk_dict['time'] = time.time()
-            if time.time() - anti_afk_dict['time'] >= 180:
+            afk_dict['still_afk'].append(csgo_window_status['in_game'] == 2)
+            afk_dict['still_afk'] = [all(afk_dict['still_afk'])]
+            if not afk_dict['still_afk'][0]:
+                afk_dict['still_afk'] = []
+                afk_dict['time'] = time.time()
+            if time.time() - afk_dict['time'] >= 180:
                 write('Ran Anti-Afk Script.', overwrite='10')
-                anti_afk_dict['still_afk'] = []
-                anti_afk_dict['time'] = time.time()
+                afk_dict['still_afk'] = []
+                afk_dict['time'] = time.time()
                 anti_afk(hwnd)
 
             if csgo_window_status['in_game'] != 2:
                 afk_dict['start_time'] = time.time()
             else:
-                afk_dict['time_afk'] += int(time.time() - afk_dict['start_time'])
+                afk_dict['seconds_afk'] += int(time.time() - afk_dict['start_time'])
                 afk_dict['start_time'] = time.time()
 
         if not truth_table['game_over'] and game_state['map_phase'] == 'gameover':
@@ -762,7 +772,7 @@ while True:
             write('The match is over!')
             write('Match duration: {}.'.format(str(timedelta(seconds=time_table['game_took_seconds']))), add_time=False)
             write('Search-time:    {}.'.format(str(timedelta(seconds=time_table['search_time_seconds']))), add_time=False)
-            write('Time AFK:       {}, {:.1%} of match duration.'.format(str(timedelta(seconds=afk_dict['time_afk'])), afk_dict['time_afk'] / time_table['game_took_seconds']), add_time=False)
+            write('Time AFK:       {}, {:.1%} of match duration.'.format(str(timedelta(seconds=afk_dict['seconds_afk'])), afk_dict['seconds_afk'] / time_table['game_took_seconds']), add_time=False)
             if gsi_server.get_info('map', 'mode') == 'competitive':
                 if truth_table['monitoring_since_start']:
                     with open(path_vars['appdata_path'] + 'game_time_' + accounts[current_account]['steam_id'] + '.txt', 'a') as game_time:
@@ -856,7 +866,7 @@ while True:
                 if time.time() - time_table['time_searching'] - time_table['time_in_warmup'] >= 210:
                     time_table['time_searching'] += 210
                     write('Ran Anit-Afk Script.')
-                    anti_afk_dict['time'] = time.time()
+                    afk_dict['time'] = time.time()
                     anti_afk(hwnd)
 
                 if gsi_server.get_info('map', 'phase') != 'warmup':
