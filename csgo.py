@@ -833,6 +833,7 @@ while True:
                         truth_table['still_in_warmup'] = True
                         truth_table['players_still_connecting'] = True
                         break
+            write('You will play as {} in the first half.'.format(gsi_server.get_info('player', 'team')), add_time=False)
 
         while True:
             keys = [(win32api.GetAsyncKeyState(i) & 1) for i in range(cfg['stop_warmup_ocr'][0], cfg['stop_warmup_ocr'][1])]
