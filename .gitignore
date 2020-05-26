@@ -8,6 +8,4 @@ config.ini
 *.pyc
 *.lnk
 *.ps1
-log.txt
-avg_and_relate.py
 auto_responder.py

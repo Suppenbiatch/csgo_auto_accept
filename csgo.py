@@ -521,7 +521,8 @@ while True:
         retryer = UpdateCSGOstats(retryer, get_all_games=True)
 
     if win32api.GetAsyncKeyState(cfg['open_live_tab']) & 1:  # F13 Key (OPEN WEB BROWSER ON LIVE GAME TAB)
-        csgo_window_status['new_tab'] = win32gui.GetWindowPlacement(hwnd)[1]
+        if hwnd:
+            csgo_window_status['new_tab'] = win32gui.GetWindowPlacement(hwnd)[1]
         if csgo_window_status['new_tab'] != 2:
             win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
         webbrowser.open_new_tab('https://csgostats.gg/player/' + accounts[current_account]['steam_id'] + '#/live')
