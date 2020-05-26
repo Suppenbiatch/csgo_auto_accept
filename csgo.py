@@ -102,11 +102,10 @@ def anti_afk(window_id: int):
         win32api.mouse_event(win32con.MOUSEEVENTF_MOVE, 0, 15)
     for _ in range(int(moves / 1.07)):
         win32api.mouse_event(win32con.MOUSEEVENTF_MOVE, 0, -8)
-    time.sleep(0.01)
+    time.sleep(0.075)
     win32gui.ShowWindow(window_id, 2)
-    click(current_cursor_position)
-    time.sleep(0.01)
-    win32api.SetCursorPos(current_cursor_position)
+    click(0, 0)
+    time.sleep(0.025)
     win32api.SetCursorPos(current_cursor_position)
 
 
@@ -568,7 +567,7 @@ while True:
             write('Account is not in the config.ini!\nScript will not work properly!', add_time=False, overwrite='9')
             playsound('sounds/fail.wav', block=False)
             exit('Update config.ini!')
-        write('Current account is: {}.'.format(accounts[current_account]['name']), add_time=False, overwrite='9')
+        write('Current account is: {}'.format(accounts[current_account]['name']), add_time=False, overwrite='9')
 
         if check_for_forbidden_programs(winlist):
             write('A forbidden program is still running...', add_time=False)
@@ -607,7 +606,7 @@ while True:
         if matchmaking['update'][-1] == '1':
             if not truth_table['test_for_server']:
                 truth_table['test_for_server'] = True
-                write('Looking for match: {}.'.format(truth_table['test_for_server']), overwrite='1')
+                write('Looking for match: {}'.format(truth_table['test_for_server']), overwrite='1')
                 time_table['time_searching'] = time.time()
                 playsound('sounds/activated.wav', block=False)
             mute_csgo(1)
@@ -641,7 +640,8 @@ while True:
                 time.sleep(0.075)
                 win32gui.ShowWindow(hwnd, 2)
                 time.sleep(0.025)
-                click(current_cursor_position)
+                click(0, 0)
+                win32api.SetCursorPos(current_cursor_position)
             else:
                 win32api.SetCursorPos(current_cursor_position)
 
@@ -825,16 +825,16 @@ while True:
             win32api.GetAsyncKeyState(i) & 1
 
         time_table['until_warmup_start'] = time.time()
-        if not truth_table['still_in_warmup']:
-            while True:
-                if time.time() - time_table['until_warmup_start'] > 1:
-                    time_table['until_warmup_start'] = time.time()
-                    if gsi_server.get_info('map', 'phase') == 'warmup':
-                        write("Warmup detected")
+        while True:
+            if time.time() - time_table['until_warmup_start'] > 1:
+                time_table['until_warmup_start'] = time.time()
+                if gsi_server.get_info('map', 'phase') == 'warmup':
+                    write('Warmup detected', overwrite='12')
+                    if gsi_server.get_info('player', 'team') is not None:
+                        write('You will play as {} in the first half.'.format(gsi_server.get_info('player', 'team')), add_time=True, overwrite='12')
                         truth_table['still_in_warmup'] = True
                         truth_table['players_still_connecting'] = True
                         break
-            write('You will play as {} in the first half.'.format(gsi_server.get_info('player', 'team')), add_time=False)
 
         while True:
             keys = [(win32api.GetAsyncKeyState(i) & 1) for i in range(cfg['stop_warmup_ocr'][0], cfg['stop_warmup_ocr'][1])]
