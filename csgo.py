@@ -36,13 +36,17 @@ def enum_cb(hwnd, results):
 
 
 def mute_csgo(lvl: int):
+    global path_vars
     os.system(path_vars['mute_csgo_path'] + str(lvl))
 
 
-def timedelta(then: float, now=None):
-    if now is None:
+def timedelta(then=None, seconds=None):
+    if seconds is not None:
+        return str(datetime.timedelta(seconds=abs(int(seconds))))
+    else:
         now = time.time()
-    return str(datetime.timedelta(seconds=abs(int(now - then))))
+        return str(datetime.timedelta(seconds=abs(int(now - then))))
+
 
 # noinspection PyShadowingNames
 def write(message, add_time: bool = True, push: int = 0, push_now: bool = False, output: bool = True, overwrite: str = '0'):  # last overwrite key used: 11
@@ -52,26 +56,22 @@ def write(message, add_time: bool = True, push: int = 0, push_now: bool = False,
             message = datetime.datetime.now().strftime('%H:%M:%S') + ': ' + message
         else:
             message = ' ' * 10 + message
-        global last_printed_line
-        splits = last_printed_line.split(b'**')
-        last_key = splits[0]
-        last_string = splits[1].strip(b'\n\r')
-        last_end = splits[-1]
+        global overwrite_dict
         if overwrite != '0':
             ending = console_window['suffix']
-            if last_key == overwrite.encode():
+            if overwrite_dict['key'] == overwrite:
                 if console_window['isatty']:
-                    print(' ' * int(len(last_string.decode()) + 1), end=ending)
+                    print(' ' * int(len(overwrite_dict['msg']) + 1), end=ending)
                 message = console_window['prefix'] + message
             else:
-                if last_end != b'\n':
+                if overwrite_dict['end'] != '\n':
                     message = '\n' + message
         else:
             ending = '\n'
-            if last_end != b'\n':
+            if overwrite_dict['end'] != '\n':
                 message = '\n' + message
 
-        last_printed_line = (overwrite + '**' + message + '**' + ending).encode()
+        overwrite_dict = {'key': overwrite, 'msg': message, 'end': ending}
         print(message, end=ending)
 
     if push >= 3:
@@ -226,7 +226,7 @@ def getAvgMatchTime(steam_id: str):
             search_time = [int(i[1]) for i in all_game_times if i[1] != '']
     except FileNotFoundError:
         return None, None, None, None
-    return int(Avg(match_time)), int(Avg(search_time)), timedelta(0, sum(match_time)), timedelta(0, sum(search_time))
+    return int(Avg(match_time)), int(Avg(search_time)), timedelta(seconds=sum(match_time)), timedelta(seconds=sum(search_time))
 
 
 # noinspection PyShadowingNames
@@ -337,7 +337,7 @@ def UpdateCSGOstats(repeater=None, get_all_games=False):
                     queue_difference = queue_difference[-10:]
                     matches_per_min = round(Avg(queue_difference), 1)
                     if matches_per_min != 0.0:
-                        time_till_done = timedelta(0, (queued_games[0]['queue_pos'] / matches_per_min) * 60)
+                        time_till_done = timedelta(seconds=(queued_games[0]['queue_pos'] / matches_per_min) * 60)
                     else:
                         time_till_done = '∞:∞:∞'
                     temp_string += str(matches_per_min) + ' matches/min - #1 done in ' + time_till_done
@@ -412,7 +412,8 @@ try:
     os.mkdir(path_vars['appdata_path'])
 except FileExistsError:
     pass
-last_printed_line = b'0**\n'
+
+overwrite_dict = {'key': '0', 'msg': '', 'end': '\n'}
 if not sys.stdout.isatty():
     console_window = {'prefix': '\r', 'suffix': '', 'isatty': False}
 else:
@@ -491,8 +492,6 @@ mute_csgo(0)
 path_vars['appdata_path'] = os.getenv('APPDATA') + '\\CSGO AUTO ACCEPT\\'
 
 write('READY')
-
-
 while True:
     if win32api.GetAsyncKeyState(cfg['activate_script']) & 1:  # F9 (ACTIVATE / DEACTIVATE SCRIPT)
         truth_table['test_for_server'] = not truth_table['test_for_server']
@@ -789,8 +788,8 @@ while True:
         if not truth_table['game_over'] and game_state['map_phase'] == 'gameover':
             write('The match is over!')
             write('Match duration: {}'.format(timedelta(time_table['match_started'])), add_time=False)
-            write('Search-time:    {}'.format(timedelta(0, time_table['match_accepted'] - time_table['search_started'])), add_time=False)
-            write('Time AFK:       {}, {:.1%} of match duration.'.format(timedelta(0, afk_dict['seconds_afk']), afk_dict['seconds_afk'] / (time.time() - time_table['match_started'])), add_time=False)
+            write('Search-time:    {}'.format(timedelta(seconds=time_table['match_accepted'] - time_table['search_started'])), add_time=False)
+            write('Time AFK:       {}, {:.1%} of match duration.'.format(timedelta(seconds=afk_dict['seconds_afk']), afk_dict['seconds_afk'] / (time.time() - time_table['match_started'])), add_time=False)
             if gsi_server.get_info('map', 'mode') == 'competitive':
                 if truth_table['monitoring_since_start']:
                     with open(path_vars['appdata_path'] + 'game_time_' + accounts[current_account]['steam_id'] + '.txt', 'a') as game_time:
@@ -804,9 +803,9 @@ while True:
                     if isinstance(val, int):
                         avg_time_difference = this_game_time[i] - val
                         if avg_time_difference >= 0:
-                            write(game_time_output_strs[i][0].format(timedelta(0, avg_time_difference), timedelta(0, val)), add_time=False)
+                            write(game_time_output_strs[i][0].format(timedelta(seconds=avg_time_difference), timedelta(seconds=val)), add_time=False)
                         else:
-                            write(game_time_output_strs[i][1].format(timedelta(0, avg_time_difference), timedelta(0, val)), add_time=False)
+                            write(game_time_output_strs[i][1].format(timedelta(seconds=avg_time_difference), timedelta(seconds=val)), add_time=False)
                     elif isinstance(val, str):
                         write(game_time_output_strs[i].format(val), add_time=False)
 
@@ -820,7 +819,7 @@ while True:
     if truth_table['testing']:
         # test_time = time.time()
         pass
-        # print('Took: {}'.format(str(timedelta(milliseconds=int(time.time()*1000 - test_time*1000))))
+        # print('Took: {}'.format(str(datetime.timedelta(milliseconds=int(time.time()*1000 - test_time*1000))))
 
     if truth_table['test_for_warmup']:
         for i in range(cfg['stop_warmup_ocr'][0], cfg['stop_warmup_ocr'][1]):
@@ -912,6 +911,6 @@ while True:
                 break
 
 if console_window['isatty']:
-    if last_printed_line.split(b'**')[-1] != b'\n':
+    if overwrite_dict['end'] != '\n':
         print('')
 exit('ENDED BY USER')
