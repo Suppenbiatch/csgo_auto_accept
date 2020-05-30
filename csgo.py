@@ -466,11 +466,11 @@ toplist, csgo = [], []
 
 # BOOLEAN, TIME INITIALIZATION
 truth_table = {'test_for_accept_button': False, 'test_for_warmup': False, 'test_for_success': False, 'first_ocr': True, 'testing': False, 'first_push': True, 'still_in_warmup': False, 'test_for_server': False, 'first_freezetime': True,
-               'gsi_server_running': False, 'game_over': False, 'monitoring_since_start': False, 'players_still_connecting': False}
+               'gsi_server_running': False, 'game_over': False, 'monitoring_since_start': False, 'players_still_connecting': False, 'first_game_over': True}
 time_table = {'csgostats_retry': time.time(), 'warmup_test_timer': time.time(), 'search_started': time.time(), 'console_read': time.time(), 'timed_execution_time': time.time(), 'match_accepted': time.time(),
               'match_started': time.time(), 'join_warmup_time': 0.0}
 matchmaking = {'msg': [], 'update': [], 'players_accepted': [], 'lobby_data': [], 'server_found': False, 'server_ready': False}
-afk_dict = {'time': time.time(), 'still_afk': [], 'start_time': time.time(), 'seconds_afk': 0}
+afk_dict = {'time': time.time(), 'still_afk': [], 'start_time': time.time(), 'seconds_afk': 0, 'player_info': {'steamid': 0, 'state': {}}}
 join_dict = {'lobby_data': [], 'unwanted_indices': [], 't_full': False, 'ct_full': False}
 scoreboard = {'CT': 0, 'T': 0, 'last_round_info': '', 'last_round_key': '0', 'extra_round_info': '', 'player': {}}
 
@@ -587,7 +587,6 @@ while True:
     # TESTING HERE
     if win32api.GetAsyncKeyState(0x6f) & 1:  # UNBOUND, 6f == '\' TEST CODE
         truth_table['testing'] = not truth_table['testing']
-        truth_table['test_for_warmup'] = not truth_table['test_for_warmup']
         write('TestCode active: %s.' % str(truth_table['testing']), add_time=False, overwrite='testcode')
 
     if time.time() - time_table['console_read'] > 0.2:
@@ -605,8 +604,9 @@ while True:
         matchmaking['lobby_data'] = str_in_list(["LobbySetData: 'members:num"], console_lines, replace=True)
         matchmaking['server_found'] = str_in_list(['Matchmaking reservation confirmed: '], console_lines)
         matchmaking['server_ready'] = str_in_list(['ready-up!'], console_lines)
+        matchmaking['server_abandon'] = str_in_list(['Closing Steam Net Connection to ='], console_lines)
     else:
-        matchmaking = {'msg': [], 'update': [], 'players_accepted': [], 'lobby_data': [], 'server_found': False, 'server_ready': False}
+        matchmaking = {'msg': [], 'update': [], 'players_accepted': [], 'lobby_data': [], 'server_found': False, 'server_ready': False, 'server_abandon': False}
 
     if matchmaking['update']:
         if matchmaking['update'][-1] == '1':
@@ -620,6 +620,7 @@ while True:
             mute_csgo(0)
 
     if truth_table['test_for_server']:
+        truth_table['first_game_over'] = True
         if matchmaking['server_found']:
             playsound('sounds/server_found.wav', block=False)
             truth_table['test_for_success'] = True
@@ -707,6 +708,9 @@ while True:
                     truth_table['players_still_connecting'] = False
                     break
 
+    if not truth_table['game_over']:
+        truth_table['game_over'] = True if matchmaking['server_abandon'] else False
+
     if time.time() - time_table['timed_execution_time'] > 2:
         time_table['timed_execution_time'] = time.time()
         game_state = {'map_phase': gsi_server.get_info('map', 'phase'), 'round_phase': gsi_server.get_info('round', 'phase')}
@@ -714,7 +718,6 @@ while True:
         if truth_table['first_freezetime']:
             if game_state['map_phase'] == 'live' and game_state['round_phase'] == 'freezetime':
                 truth_table['first_freezetime'] = False
-                truth_table['game_over'] = False
                 scoreboard['CT'] = gsi_server.get_info('map', 'team_ct')['score']
                 scoreboard['T'] = gsi_server.get_info('map', 'team_t')['score']
                 scoreboard['last_round_info'] = gsi_server.get_info('map', 'round_wins')
@@ -765,19 +768,25 @@ while True:
                 if win32gui.GetWindowPlacement(hwnd)[1] == 2:
                     playsound('sounds/ready_up_warmup.wav', block=False)
 
-        if game_state['map_phase'] in ['live', 'warmup']:
+        if game_state['map_phase'] in ['live', 'warmup'] and not truth_table['test_for_server']:
             csgo_window_status['in_game'] = win32gui.GetWindowPlacement(hwnd)[1]
-
             afk_dict['still_afk'].append(csgo_window_status['in_game'] == 2)
             afk_dict['still_afk'] = [all(afk_dict['still_afk'])]
             if not afk_dict['still_afk'][0]:
                 afk_dict['still_afk'] = []
                 afk_dict['time'] = time.time()
             if time.time() - afk_dict['time'] >= 180:
-                write('Ran Anti-Afk Script.', overwrite='10')
+                while True:
+                    afk_dict['player_info'] = gsi_server.get_info('player')
+                    afk_dict['map_phase'] = gsi_server.get_info('round', 'phase')
+                    if afk_dict['player_info']['steamid'] == accounts[current_account]['steam_id'] and afk_dict['player_info']['state']['health'] > 0 and 'freezetime' not in afk_dict['map_phase']:
+                        write('Ran Anti-Afk Script.', overwrite='10')
+                        anti_afk(hwnd)
+                        break
+                    if win32gui.GetWindowPlacement(hwnd)[1] != 2:
+                        break
                 afk_dict['still_afk'] = []
                 afk_dict['time'] = time.time()
-                anti_afk(hwnd)
 
             if csgo_window_status['in_game'] != 2:
                 afk_dict['start_time'] = time.time()
@@ -785,15 +794,16 @@ while True:
                 afk_dict['seconds_afk'] += int(time.time() - afk_dict['start_time'])
                 afk_dict['start_time'] = time.time()
 
-        if not truth_table['game_over'] and game_state['map_phase'] == 'gameover':
+        if truth_table['game_over']:
             write('The match is over!')
             write('Match duration: {}'.format(timedelta(time_table['match_started'])), add_time=False)
             write('Search-time:    {}'.format(timedelta(seconds=time_table['match_accepted'] - time_table['search_started'])), add_time=False)
             write('Time AFK:       {}, {:.1%} of match duration.'.format(timedelta(seconds=afk_dict['seconds_afk']), afk_dict['seconds_afk'] / (time.time() - time_table['match_started'])), add_time=False)
             if gsi_server.get_info('map', 'mode') == 'competitive':
-                if truth_table['monitoring_since_start']:
+                if truth_table['monitoring_since_start'] and game_state['map_phase'] == 'gameover':
                     with open(path_vars['appdata_path'] + 'game_time_' + accounts[current_account]['steam_id'] + '.txt', 'a') as game_time:
                         game_time.write(str(int(time.time() - time_table['match_started'])) + ', ' + str(int(time_table['match_started'] - time_table['search_started'])) + '\n')
+
                 average_match_time = getAvgMatchTime(accounts[current_account]['steam_id'])
                 this_game_time = (time.time() - time_table['match_started'], time_table['match_accepted'] - time_table['search_started'])
                 game_time_output_strs = (('The match was {} longer than the average match with {}', 'The match was {} shorter than the average match with {}'),
@@ -809,16 +819,21 @@ while True:
                     elif isinstance(val, str):
                         write(game_time_output_strs[i].format(val), add_time=False)
 
-                time.sleep(5)
-                new_sharecodes = getNewCSGOSharecodes(getOldSharecodes(-1)[0])
-                for new_code in new_sharecodes:
-                    retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
-                retryer = UpdateCSGOstats(retryer, get_all_games=True)
+                if game_state['map_phase'] == 'gameover':
+                    time.sleep(5)
+                    new_sharecodes = getNewCSGOSharecodes(getOldSharecodes(-1)[0])
+                    for new_code in new_sharecodes:
+                        retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
+                    retryer = UpdateCSGOstats(retryer, get_all_games=True)
+
+            truth_table['game_over'] = False
+        elif game_state['map_phase'] == 'gameover' and truth_table['first_game_over']:
             truth_table['game_over'] = True
+            truth_table['first_game_over'] = False
 
     if truth_table['testing']:
         # test_time = time.time()
-        pass
+        write(gsi_server.get_info('player', 'state'), overwrite='state')
         # print('Took: {}'.format(str(datetime.timedelta(milliseconds=int(time.time()*1000 - test_time*1000))))
 
     if truth_table['test_for_warmup']:
