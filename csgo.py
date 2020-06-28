@@ -693,7 +693,7 @@ while True:
 
     if truth_table['players_still_connecting']:
         lobby_data = ''.join(matchmaking['lobby_data'])
-        lobby_info = re.findall(re.compile("(?<!Machines' = '\d'\n'members:num)(C?TSlotsFree|Players)(?:' = ')(\d+'?)"), lobby_data)
+        lobby_info = re.findall(re.compile("(?<!Machines' = '\d''members:num)(C?TSlotsFree|Players)(?:' = ')(\d+'?)"), lobby_data)
         lobby_data = [(info, int(num.strip("'\n"))) for info, num in lobby_info]
         for i in lobby_data:
             if i[0] == 'Players':
