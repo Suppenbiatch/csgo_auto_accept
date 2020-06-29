@@ -360,7 +360,10 @@ def UpdateCSGOstats(repeater=None, get_all_games=False):
             write('Sharecode: {}'.format(sharecode), add_time=False, push=pushbullet_dict['urgency'])
             write('URL: {}'.format(game_url), add_time=False, push=pushbullet_dict['urgency'])
             write('Status: {}'.format(info), add_time=True, push=pushbullet_dict['urgency'])
-            pyperclip.copy(game_url)
+            try:
+                pyperclip.copy(game_url)
+            except (pyperclip.PyperclipWindowsException, pyperclip.PyperclipTimeoutException):
+                write('Failed to load URL in to clipboard', add_time=False)
         write(None, add_time=False, push=pushbullet_dict['urgency'], push_now=True, output=False)
     return repeater
 
