@@ -295,6 +295,7 @@ def getNewCSGOSharecodes(game_id: str):
 # noinspection PyShadowingNames
 def UpdateCSGOstats(repeater=None, get_all_games=False):
     all_games, completed_games, not_completed_games, = [], [], []
+    global queue_difference, time_table
     if repeater is None:
         repeater = []
 
@@ -308,6 +309,7 @@ def UpdateCSGOstats(repeater=None, get_all_games=False):
             all_games = [requests.post('https://csgostats.gg/match/upload/ajax', data={'sharecode': sharecode, 'index': '0'}).json() for sharecode in sharecodes]
         except json.JSONDecodeError:
             write('An error occurred in {} game[s].'.format(len(sharecodes)), overwrite='5')
+            time_table['csgostats_retry'] = time.time()
             return [{'sharecode': sharecodes[0], 'queue_pos': None}]
 
     else:
@@ -340,7 +342,6 @@ def UpdateCSGOstats(repeater=None, get_all_games=False):
     queued_games = [{'sharecode': game['data']['sharecode'], 'queue_pos': game['data']['queue_pos']} for game in not_completed_games if game['status'] != 'error']
     corrupt_games = [{'sharecode': game['data']['sharecode'], 'queue_pos': None} for game in not_completed_games if game['status'] == 'error']
 
-    global queue_difference, time_table
     if queued_games:
         temp_string = ''
         for i, val in enumerate(queued_games):
