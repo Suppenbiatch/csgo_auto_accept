@@ -21,7 +21,6 @@ from PIL import ImageGrab, Image
 from playsound import playsound
 
 from GSI import server
-# import hard_add
 
 
 # noinspection PyShadowingNames
@@ -466,9 +465,9 @@ CheckUserDataAutoExec(accounts[current_account]['steam_id_3'])
 if error_level:
     exit('an error occurred')
 
-with open(path_vars['csgo_path'] + 'console_log.log', 'w') as log:
+with open(path_vars['csgo_path'] + 'console_log.log', 'w', encoding='utf-8') as log:
     log.write('')
-with open(cfg['debug_path'] + '\\console.log', 'w') as debug_log:
+with open(cfg['debug_path'] + '\\console.log', 'w', encoding='utf-8') as debug_log:
     debug_log.write('')
 
 if not os.path.exists(path_vars['csgo_path'] + 'cfg\\gamestate_integration_GSI.cfg'):
@@ -530,10 +529,10 @@ while True:
         write('Uploading / Getting status on newest match')
         queue_difference = []
         new_sharecodes = getNewCSGOSharecodes(getOldSharecodes(-1)[0])
+        write(new_sharecodes)
         for new_code in new_sharecodes:
             retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
         retryer = UpdateCSGOstats(retryer, get_all_games=True)
-        # write([hard_add.add_match(i['sharecode']) for i in new_sharecodes])
 
     if win32api.GetAsyncKeyState(cfg['open_live_tab']) & 1:  # F13 Key (OPEN WEB BROWSER ON LIVE GAME TAB)
         if hwnd:
@@ -852,13 +851,13 @@ while True:
                 if game_state['map_phase'] == 'gameover':
                     time.sleep(5)
                     new_sharecodes = getNewCSGOSharecodes(getOldSharecodes(-1)[0])
+                    write(new_sharecodes)
                     try:
                         for new_code in new_sharecodes:
                             retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
                         retryer = UpdateCSGOstats(retryer, get_all_games=True)
                     except TypeError:
                         write('ERROR IN GETTING NEW MATCH CODE! TRY PRESSING "F6" to add it manually')
-                    # write([hard_add.add_match(i['sharecode']) for i in new_sharecodes])
 
             truth_table['game_over'] = False
             truth_table['first_game_over'] = False
