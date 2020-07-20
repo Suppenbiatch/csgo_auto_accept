@@ -21,6 +21,7 @@ from PIL import ImageGrab, Image
 from playsound import playsound
 
 from GSI import server
+# import hard_add
 
 
 # noinspection PyShadowingNames
@@ -305,12 +306,9 @@ def UpdateCSGOstats(repeater=None, get_all_games=False):
             sharecodes = max(sharecodes, key=len)
         else:
             sharecodes = [code['sharecode'] for code in repeater]
-        try:
-            all_games = [requests.post('https://csgostats.gg/match/upload/ajax', data={'sharecode': sharecode, 'index': '0'}).json() for sharecode in sharecodes]
-        except json.JSONDecodeError:
-            write('An error occurred in {} game[s].'.format(len(sharecodes)), overwrite='5')
-            time_table['csgostats_retry'] = time.time()
-            return [{'sharecode': sharecodes[0], 'queue_pos': None}]
+
+        responses = [requests.post('https://csgostats.gg/match/upload/ajax', data={'sharecode': sharecode, 'index': 0}) for sharecode in sharecodes]
+        all_games = [r.json() for r in responses if r.status_code == requests.codes.ok]
 
     else:
         num = -1
@@ -456,6 +454,8 @@ re_pattern = {'damage': [re.compile('(Player: (.+?) - Damage Given\n------------
               'lobby_info': re.compile("(?<!Machines' = '\d''members:num)(C?TSlotsFree|Players)(?:' = ')(\d+'?)"),
               'steam_path': re.compile('\\t"\d*"\\t\\t"')}
 
+
+
 # ACCOUNT HANDLING, GETTING ACCOUNT NAME, GETTING CSGO PATH, CHECKING AUTOEXEC
 accounts, current_account = [], 0
 path_vars = {'steam_path': '', 'csgo_path': '', 'mute_csgo_path': '"' + os.getcwd() + '\\sounds\\nircmdc.exe" muteappvolume csgo.exe '}
@@ -533,6 +533,7 @@ while True:
         for new_code in new_sharecodes:
             retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
         retryer = UpdateCSGOstats(retryer, get_all_games=True)
+        # write([hard_add.add_match(i['sharecode']) for i in new_sharecodes])
 
     if win32api.GetAsyncKeyState(cfg['open_live_tab']) & 1:  # F13 Key (OPEN WEB BROWSER ON LIVE GAME TAB)
         if hwnd:
@@ -850,13 +851,14 @@ while True:
 
                 if game_state['map_phase'] == 'gameover':
                     time.sleep(5)
+                    new_sharecodes = getNewCSGOSharecodes(getOldSharecodes(-1)[0])
                     try:
-                        new_sharecodes = getNewCSGOSharecodes(getOldSharecodes(-1)[0])
                         for new_code in new_sharecodes:
                             retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
                         retryer = UpdateCSGOstats(retryer, get_all_games=True)
                     except TypeError:
                         write('ERROR IN GETTING NEW MATCH CODE! TRY PRESSING "F6" to add it manually')
+                    # write([hard_add.add_match(i['sharecode']) for i in new_sharecodes])
 
             truth_table['game_over'] = False
             truth_table['first_game_over'] = False
