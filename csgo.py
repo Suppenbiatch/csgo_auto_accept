@@ -18,7 +18,7 @@ import win32api
 import win32con
 import win32gui
 from PIL import ImageGrab, Image
-from color import colorize, FgColor
+from color import *
 from playsound import playsound
 
 from GSI import server
@@ -52,6 +52,7 @@ def timedelta(then=None, seconds=None):
 # noinspection PyShadowingNames
 def write(message, add_time: bool = True, push: int = 0, push_now: bool = False, output: bool = True, overwrite: str = '0', color: FgColor = FgColor.Null):  # last overwrite key used: 11
     message = str(message)
+    push_message = message
     if output:
         if add_time:
             message = datetime.datetime.now().strftime('%H:%M:%S') + ': ' + message
@@ -73,13 +74,14 @@ def write(message, add_time: bool = True, push: int = 0, push_now: bool = False,
                 message = '\n' + message
 
         overwrite_dict = {'key': overwrite, 'msg': message, 'end': ending}
-        message = colorize(10, 10, color, message + ending)
-        print(message, end='')
+
+        message = colorize(10, 10, color, message)
+        print(message, end=ending)
 
     if push >= 3:
         global pushbullet_dict
         if message:
-            pushbullet_dict['note'] = pushbullet_dict['note'] + str(message.strip('\n\r')) + '\n'
+            pushbullet_dict['note'] = pushbullet_dict['note'] + str(push_message.strip('\r').strip('\n')) + '\n'
         if push_now:
             pushbullet_dict['device'].push_note('CSGO AUTO ACCEPT', pushbullet_dict['note'])
             pushbullet_dict['note'] = ''
@@ -603,8 +605,9 @@ while True:
         write('CS:GO GSI Server running..', overwrite='8', color=FgColor.Green)
 
     # TESTING HERE
-    if win32api.GetAsyncKeyState(0x0) & 1:  # UNBOUND, 6f == '\' TEST CODE
+    if win32api.GetAsyncKeyState(0x6f) & 1:  # UNBOUND, 6f == '\' TEST CODE
         truth_table['testing'] = not truth_table['testing']
+        truth_table['test_for_warmup'] = True
         write('TestCode active: %s.' % str(truth_table['testing']), add_time=False, overwrite='testcode')
 
     if time.time() - time_table['console_read'] > 0.2:
@@ -641,7 +644,7 @@ while True:
             playsound('sounds/server_found.wav', block=False)
             truth_table['test_for_success'] = True
         if matchmaking['server_ready']:
-            write('Server found, starting to look for accept button.')
+            # write('Server found, starting to look for accept button.', overwrite='1')
             truth_table['test_for_accept_button'] = True
             csgo_window_status['server_found'] = win32gui.GetWindowPlacement(hwnd)[1]
             win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
@@ -650,7 +653,7 @@ while True:
         img = getScreenShot(hwnd, (1265, 760, 1295, 785))
         accept_avg = color_average(img, [(76, 175, 80), (90, 203, 94)])
         if relate_list(accept_avg, (2, 2, 2)):
-            write('Trying to Accept.', push=pushbullet_dict['urgency'] + 1)
+            # write('Trying to Accept.', push=pushbullet_dict['urgency'] + 1, overwrite='1')
             truth_table['test_for_accept_button'] = False
 
             current_cursor_position = win32api.GetCursorPos()
@@ -666,14 +669,14 @@ while True:
             else:
                 win32api.SetCursorPos(current_cursor_position)
 
-            write('Trying to catch a loading map.')
+            # write('Trying to catch a loading map.', overwrite='1')
             playsound('sounds/accept_found.wav', block=False)
 
     if truth_table['test_for_accept_button'] or truth_table['test_for_success']:
         if str_in_list(['Match confirmed'], matchmaking['msg']):
-            write('All Players accepted.', add_time=False, overwrite='11', color=FgColor.Green)
-            write('Took {} since trying to find a match.'.format(timedelta(time_table['search_started'])), add_time=False, push=pushbullet_dict['urgency'] + 1)
-            write('Match has started.', push=pushbullet_dict['urgency'] + 2, push_now=True)
+            write('All Players accepted - Match has started - Took {} since start'.format(timedelta(time_table['search_started'])), add_time=False, push=pushbullet_dict['urgency'] + 2, overwrite='11', color=FgColor.Green)
+            # write('Took {} since trying to find a match.'.format(timedelta(time_table['search_started'])), add_time=False, push=pushbullet_dict['urgency'] + 1)
+            # write('Match has started.', push=pushbullet_dict['urgency'] + 2, push_now=True, color=FgColor.Green)
             truth_table['test_for_warmup'] = True
             truth_table['first_game_over'], truth_table['game_over'] = True, False
             truth_table['disconnected_form_last'] = False
@@ -689,18 +692,18 @@ while True:
             afk_dict['time'] = time.time()
             afk_dict['start_time'] = time.time()
 
+        for i in matchmaking['players_accepted']:
+            i = i.split('/')
+            players_accepted = str(int(i[1]) - int(i[0]))
+            write('{} Players of {} already accepted.'.format(players_accepted, i[1]), add_time=False, overwrite='11')
+
         if str_in_list(['Other players failed to connect', 'Failed to ready up'], matchmaking['msg']):
-            write('Match has not started! Continuing to search for a Server!', push=pushbullet_dict['urgency'] + 1, push_now=True)
+            write('Match has not started! Continuing to search for a Server!', push=pushbullet_dict['urgency'] + 1, push_now=True, overwrite='11', color=FgColor.Red)
             playsound('sounds/back_to_testing.wav', block=False)
             mute_csgo(1)
             truth_table['test_for_server'] = True
             truth_table['test_for_accept_button'] = False
             truth_table['test_for_success'] = False
-
-        for i in matchmaking['players_accepted']:
-            i = i.split('/')
-            players_accepted = str(int(i[1]) - int(i[0]))
-            write('{} Players of {} already accepted.'.format(players_accepted, i[1]), add_time=False, overwrite='11')
 
     if truth_table['players_still_connecting']:
         lobby_data = ''.join(matchmaking['lobby_data'])
@@ -708,13 +711,13 @@ while True:
         lobby_data = [(info, int(num.strip("'\n"))) for info, num in lobby_info]
         for i in lobby_data:
             if i[0] == 'Players':
-                write('{} players joined.'.format(i[1]), add_time=False, overwrite='11')
+                write('{} players joined.'.format(i[1]), add_time=False, overwrite='12')
             if i[0] == 'TSlotsFree' and i[1] == 0:
                 join_dict['t_full'] = True
             if i[0] == 'CTSlotsFree' and i[1] == 0:
                 join_dict['ct_full'] = True
             if join_dict['t_full'] and join_dict['ct_full']:
-                write('Server full, All Players connected. Took {} since match start.'.format(timedelta(time_table['warmup_started'])), overwrite='11')
+                write('Server full, All Players connected. Took {} since match start.'.format(timedelta(time_table['warmup_started'])), overwrite='12')
                 playsound('sounds/minute_warning.wav', block=True)
                 truth_table['players_still_connecting'] = False
                 join_dict['t_full'], join_dict['ct_full'] = False, False
@@ -723,7 +726,7 @@ while True:
     try:
         if 'Disconnect' in matchmaking['server_abandon'][-1]:
             # time_table['match_started'], time_table['match_accepted'] = time.time(), time.time()
-            write('Server disconnected', color=FgColor.Red)
+            write('Server disconnected')
             truth_table['disconnected_form_last'] = True
             afk_dict['time'] = time.time()
     except IndexError:
@@ -746,35 +749,29 @@ while True:
                 scoreboard['c4'] = ' - Bomb Carrier!' if 'weapon_c4' in [i for _, i in scoreboard['weapons']] else ''
                 scoreboard['total_score'] = scoreboard['CT'] + scoreboard['T']
 
-                try:
-                    scoreboard['opposing_team'] = 'T' if scoreboard['team'] == 'CT' else 'CT'
-                except KeyError:
-                    scoreboard['team'] = scoreboard['player']['team']
-                    scoreboard['opposing_team'] = 'T' if scoreboard['team'] == 'CT' else 'CT'
+                scoreboard['team'] = red('T') if scoreboard['player']['team'] == 'T' else cyan('CT')
+                scoreboard['opposing_team'] = cyan('CT') if uncolorize(scoreboard['team']) == 'T' else red('T')
 
                 try:
                     scoreboard['last_round_key'] = list(scoreboard['last_round_info'].keys())[-1]
                     scoreboard['last_round_info'] = scoreboard['last_round_info'][scoreboard['last_round_key']].split('_')[0].upper()
-                    scoreboard['last_round_info'] = 'You ({}) won the last round'.format(scoreboard['team']) if scoreboard['team'] == scoreboard['last_round_info'] else 'The Enemy ({}) won the last round'.format(
+                    scoreboard['last_round_info'] = 'You ({}) won the last round'.format(scoreboard['team']) if uncolorize(scoreboard['team']) == scoreboard['last_round_info'] else 'The Enemy ({}) won the last round'.format(
                         scoreboard['opposing_team'])
                 except AttributeError:
                     scoreboard['last_round_info'] = 'You ({}), no info on the last round'.format(scoreboard['team'])
 
-                scoreboard['team'] = scoreboard['player']['team']
-                scoreboard['opposing_team'] = 'T' if scoreboard['team'] == 'CT' else 'CT'
-
                 if scoreboard['total_score'] == 14:
-                    scoreboard['extra_round_info'] = ' - Last round of first half!'
+                    scoreboard['extra_round_info'] = yellow(' - Last round of first half!')
                 elif scoreboard['CT'] == 15 or scoreboard['T'] == 15:
-                    scoreboard['extra_round_info'] = ' - Match Point'
+                    scoreboard['extra_round_info'] = yellow(' - Match Point')
                 else:
                     scoreboard['extra_round_info'] = ''
 
-                write('Freeze Time - {} - {:02d}:{:02d}{}{}'.format(scoreboard['last_round_info'], scoreboard[scoreboard['team']], scoreboard[scoreboard['opposing_team']], scoreboard['extra_round_info'], scoreboard['c4']), overwrite='7')
+                write('Freeze Time - {} - {:02d}:{:02d}{}{}'.format(scoreboard['last_round_info'], scoreboard[uncolorize(scoreboard['team'])], scoreboard[uncolorize(scoreboard['opposing_team'])], scoreboard['extra_round_info'], scoreboard['c4']), overwrite='7')
                 if win32gui.GetWindowPlacement(hwnd)[1] == 2:
                     truth_table['is_not_ingame_round_start'] = True
                     playsound('sounds/ready_up.wav', block=True)
-                if 'Last round' in scoreboard['extra_round_info']:
+                if 'Last round' in uncolorize(scoreboard['extra_round_info']):
                     playsound('sounds/ding.wav', block=True)
 
         elif game_state['map_phase'] == 'live' and game_state['round_phase'] != 'freezetime':
@@ -785,9 +782,16 @@ while True:
 
         if truth_table['is_not_ingame_round_start']:
             truth_table['is_not_ingame_round_start'] = True if win32gui.GetWindowPlacement(hwnd)[1] == 2 else False
+
+            if game_state['round_phase'] == 'freezetime':
+                time_str = green(timedelta(then=time_table['freezetime_started']))
+            elif time.time() - time_table['freezetime_started'] > 35:
+                time_str = red(timedelta(then=time_table['freezetime_started']))
+            else:
+                time_str = yellow(timedelta(then=time_table['freezetime_started']))
+
             write('Freeze Time - {} - {:02d}:{:02d}{}{} - {}'.format(
-                scoreboard['last_round_info'], scoreboard[scoreboard['team']], scoreboard[scoreboard['opposing_team']], scoreboard['extra_round_info'], scoreboard['c4'], timedelta(then=time_table['freezetime_started'])),
-                overwrite='7')
+                scoreboard['last_round_info'], scoreboard[uncolorize(scoreboard['team'])], scoreboard[uncolorize(scoreboard['opposing_team'])], scoreboard['extra_round_info'], scoreboard['c4'], time_str), overwrite='7')
 
         if game_state['round_phase'] == 'freezetime' and truth_table['c4_round_first']:
             scoreboard['c_weapons'] = [inner for outer in gsi_server.get_info('player', 'weapons').values() for inner in outer.items()]
@@ -799,7 +803,8 @@ while True:
         if truth_table['still_in_warmup']:
             if game_state['map_phase'] != 'warmup':
                 truth_table['still_in_warmup'] = False
-                write('Warmup is over! Team: {}, Map: {}'.format(gsi_server.get_info('player', 'team'), gsi_server.get_info('map', 'name')), push=pushbullet_dict['urgency'] + 2, push_now=True, overwrite='7')
+                team = red('T') if gsi_server.get_info('player', 'team') == 'T' else cyan('CT')
+                write('Warmup is over! Team: {}, Map: {}'.format(team, gsi_server.get_info('map', 'name')), push=pushbullet_dict['urgency'] + 2, push_now=True, overwrite='7')
                 write('Took {} since the match started.'.format(timedelta(time_table['warmup_started'])), add_time=False)
                 time_table['match_started'] = time.time()
                 time_table['freezetime_started'] = time.time()
@@ -838,11 +843,15 @@ while True:
             truth_table['game_over'] = True
 
         if truth_table['game_over'] and truth_table['first_game_over']:
+            team = str(gsi_server.get_info('player', 'team')), 'CT' if gsi_server.get_info('player', 'team') == 'T' else 'T'
+            score = {'CT': gsi_server.get_info('map', 'team_ct')['score'], 'T': gsi_server.get_info('map', 'team_t')['score']}
+            write('The match is over! - {:02d}:{:02d}'.format(score[team[0]], score[team[1]]), color=FgColor.Red)
+
+            write('Match duration: {}'.format(timedelta(time_table['match_started'])), add_time=False)
+            write('Search-time:    {}'.format(timedelta(seconds=time_table['match_accepted'] - time_table['search_started'])), add_time=False)
+            write('Time AFK:       {}, {:.1%} of match duration.'.format(timedelta(seconds=afk_dict['seconds_afk']), afk_dict['seconds_afk'] / (time.time() - time_table['match_started'])), add_time=False)
+
             if gsi_server.get_info('map', 'mode') == 'competitive' and game_state['map_phase'] == 'gameover' and not truth_table['test_for_warmup'] and not truth_table['still_in_warmup']:
-                write('The match is over!')
-                write('Match duration: {}'.format(timedelta(time_table['match_started'])), add_time=False)
-                write('Search-time:    {}'.format(timedelta(seconds=time_table['match_accepted'] - time_table['search_started'])), add_time=False)
-                write('Time AFK:       {}, {:.1%} of match duration.'.format(timedelta(seconds=afk_dict['seconds_afk']), afk_dict['seconds_afk'] / (time.time() - time_table['match_started'])), add_time=False)
                 if truth_table['monitoring_since_start']:
                     with open(path_vars['appdata_path'] + 'game_time_' + accounts[current_account]['steam_id'] + '.txt', 'a') as game_time:
                         game_time.write(str(int(time.time() - time_table['match_started'])) + ', ' + str(int(time_table['match_started'] - time_table['search_started'])) + '\n')
@@ -862,24 +871,23 @@ while True:
                     elif isinstance(val, str):
                         write(game_time_output_strs[i].format(val), add_time=False)
 
-                if game_state['map_phase'] == 'gameover':
-                    time.sleep(5)
-                    new_sharecodes = getNewCSGOSharecodes(getOldSharecodes(-1)[0])
+                time.sleep(5)
+                new_sharecodes = getNewCSGOSharecodes(getOldSharecodes(-1)[0])
 
-                    # HOPEFULLY TEMPORARY CSGOSTATS FIX, HAVE TO ADD GAMES MANUALLY
-                    write(new_sharecodes[-1]['sharecode'], color=FgColor.Magenta)
-                    try:
-                        pyperclip.copy(new_sharecodes[-1]['sharecode'])
-                    except (pyperclip.PyperclipWindowsException, pyperclip.PyperclipTimeoutException):
-                        pass
-                    # DONE HERE
+                # HOPEFULLY TEMPORARY CSGOSTATS FIX, HAVE TO ADD GAMES MANUALLY
+                write(new_sharecodes[-1]['sharecode'], color=FgColor.Magenta)
+                try:
+                    pyperclip.copy(new_sharecodes[-1]['sharecode'])
+                except (pyperclip.PyperclipWindowsException, pyperclip.PyperclipTimeoutException):
+                    pass
+                # DONE HERE
 
-                    try:
-                        for new_code in new_sharecodes:
-                            retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
-                        retryer = UpdateCSGOstats(retryer, get_all_games=True)
-                    except TypeError:
-                        write('ERROR IN GETTING NEW MATCH CODE! TRY PRESSING "F7" to add it manually')
+                try:
+                    for new_code in new_sharecodes:
+                        retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
+                    retryer = UpdateCSGOstats(retryer, get_all_games=True)
+                except TypeError:
+                    write('ERROR IN GETTING NEW MATCH CODE! TRY PRESSING "F7" to add it manually')
 
             truth_table['game_over'] = False
             truth_table['first_game_over'] = False
@@ -902,7 +910,8 @@ while True:
                     write('Warmup detected', overwrite='12')
                     if gsi_server.get_info('player', 'team') is not None:
                         time.sleep(2)
-                        write('You will play as {} in the first half on {}.'.format(gsi_server.get_info('player', 'team'), gsi_server.get_info('map', 'name')), add_time=True, overwrite='12')
+                        team = red(gsi_server.get_info('player', 'team')) if gsi_server.get_info('player', 'team') == 'T' else cyan(gsi_server.get_info('player', 'team'))
+                        write('You will play as {} in the first half on {}.'.format(team, green(gsi_server.get_info('map', 'name'))), add_time=True, overwrite='12')
                         truth_table['still_in_warmup'] = True
                         truth_table['players_still_connecting'] = True
                         time_table['warmup_started'] = time.time()
