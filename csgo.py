@@ -63,7 +63,7 @@ def write(message, add_time: bool = True, push: int = 0, push_now: bool = False,
             ending = console_window['suffix']
             if overwrite_dict['key'] == overwrite:
                 if console_window['isatty']:
-                    print(' ' * int(len(overwrite_dict['msg']) + 1), end=ending)
+                    print(' ' * len(overwrite_dict['msg']), end=ending)
                 message = console_window['prefix'] + message
             else:
                 if overwrite_dict['end'] != '\n':
@@ -73,7 +73,7 @@ def write(message, add_time: bool = True, push: int = 0, push_now: bool = False,
             if overwrite_dict['end'] != '\n':
                 message = '\n' + message
 
-        overwrite_dict = {'key': overwrite, 'msg': message, 'end': ending}
+        overwrite_dict = {'key': overwrite, 'msg': re_pattern['decolor'].sub('', message), 'end': ending}
 
         message = colorize(10, 10, color, message)
         print(message, end=ending)
@@ -456,7 +456,8 @@ re_pattern = {'damage': [re.compile('(Player: (.+?) - Damage Given\n------------
                          re.compile('(Player: (.+?) - Damage Taken\n-------------------------)'),
                          re.compile('(Damage Taken from "(.+?)" - \d+ in \d (hit|hits))]}')],
               'lobby_info': re.compile("(?<!Machines' = '\d''members:num)(C?TSlotsFree|Players)(?:' = ')(\d+'?)"),
-              'steam_path': re.compile('\\t"\d*"\\t\\t"')}
+              'steam_path': re.compile('\\t"\d*"\\t\\t"'),
+              'decolor': re.compile('\033\[[0-9;]+m')}
 
 # ACCOUNT HANDLING, GETTING ACCOUNT NAME, GETTING CSGO PATH, CHECKING AUTOEXEC
 accounts, current_account = [], 0
@@ -711,13 +712,13 @@ while True:
         lobby_data = [(info, int(num.strip("'\n"))) for info, num in lobby_info]
         for i in lobby_data:
             if i[0] == 'Players':
-                write('{} players joined.'.format(i[1]), add_time=False, overwrite='12')
+                write('{} players joined.'.format(i[1]), add_time=False, overwrite='6')
             if i[0] == 'TSlotsFree' and i[1] == 0:
                 join_dict['t_full'] = True
             if i[0] == 'CTSlotsFree' and i[1] == 0:
                 join_dict['ct_full'] = True
             if join_dict['t_full'] and join_dict['ct_full']:
-                write('Server full, All Players connected. Took {} since match start.'.format(timedelta(time_table['warmup_started'])), overwrite='12')
+                write('Server full, All Players connected. Took {} since match start.'.format(timedelta(time_table['warmup_started'])), overwrite='6')
                 playsound('sounds/minute_warning.wav', block=True)
                 truth_table['players_still_connecting'] = False
                 join_dict['t_full'], join_dict['ct_full'] = False, False
@@ -726,7 +727,7 @@ while True:
     try:
         if 'Disconnect' in matchmaking['server_abandon'][-1]:
             # time_table['match_started'], time_table['match_accepted'] = time.time(), time.time()
-            write('Server disconnected')
+            write('Server disconnected', overwrite='1')
             truth_table['disconnected_form_last'] = True
             afk_dict['time'] = time.time()
     except IndexError:
@@ -790,8 +791,13 @@ while True:
             else:
                 time_str = yellow(timedelta(then=time_table['freezetime_started']))
 
-            write('Freeze Time - {} - {:02d}:{:02d}{}{} - {}'.format(
-                scoreboard['last_round_info'], scoreboard[uncolorize(scoreboard['team'])], scoreboard[uncolorize(scoreboard['opposing_team'])], scoreboard['extra_round_info'], scoreboard['c4'], time_str), overwrite='7')
+            write('Freeze Time - {last_round} - {team:02d}:{enemy:02d}{extra_info}{c4_info} - {afk_time}'.format(
+                last_round=scoreboard['last_round_info'],
+                team=scoreboard[uncolorize(scoreboard['team'])],
+                enemy=scoreboard[uncolorize(scoreboard['opposing_team'])],
+                extra_info=scoreboard['extra_round_info'],
+                c4_info=scoreboard['c4'],
+                afk_time=time_str), overwrite='7')
 
         if game_state['round_phase'] == 'freezetime' and truth_table['c4_round_first']:
             scoreboard['c_weapons'] = [inner for outer in gsi_server.get_info('player', 'weapons').values() for inner in outer.items()]
@@ -804,8 +810,7 @@ while True:
             if game_state['map_phase'] != 'warmup':
                 truth_table['still_in_warmup'] = False
                 team = red('T') if gsi_server.get_info('player', 'team') == 'T' else cyan('CT')
-                write('Warmup is over! Team: {}, Map: {}'.format(team, gsi_server.get_info('map', 'name')), push=pushbullet_dict['urgency'] + 2, push_now=True, overwrite='7')
-                write('Took {} since the match started.'.format(timedelta(time_table['warmup_started'])), add_time=False)
+                write('Warmup is over! Team: {}, Map: {}, Took: {}'.format(team, green(gsi_server.get_info('map', 'name')), timedelta(time_table['warmup_started'])), push=pushbullet_dict['urgency'] + 2, push_now=True, overwrite='7')
                 time_table['match_started'] = time.time()
                 time_table['freezetime_started'] = time.time()
                 if win32gui.GetWindowPlacement(hwnd)[1] == 2:
