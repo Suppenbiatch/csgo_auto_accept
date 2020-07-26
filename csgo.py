@@ -605,9 +605,9 @@ while True:
         write('CS:GO GSI Server running..', overwrite='8', color=FgColor.Green)
 
     # TESTING HERE
-    if win32api.GetAsyncKeyState(0x6f) & 1:  # UNBOUND, 6f == '\' TEST CODE
+    if win32api.GetAsyncKeyState(0x00) & 1:  # UNBOUND, 6f == '\' TEST CODE
         truth_table['testing'] = not truth_table['testing']
-        truth_table['test_for_warmup'] = True
+        # truth_table['test_for_warmup'] = True
         write('TestCode active: %s.' % str(truth_table['testing']), add_time=False, overwrite='testcode')
 
     if time.time() - time_table['console_read'] > 0.2:
