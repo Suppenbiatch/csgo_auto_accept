@@ -238,7 +238,7 @@ def getAvgMatchTime(steam_id: str):
     try:
         with open(path_vars['appdata_path'] + 'last_game_' + steam_id + '.csv', 'r', newline='') as f:
             global csv_header
-            data = list(csv.DictReader(f, delimiter=';', fieldnames=csv_header, restval=''))
+            data = list(csv.DictReader(f, delimiter=';', fieldnames=csv_header, restval=''))[1:]
     except FileNotFoundError:
         return None
     match_time = [int(i['match_time']) for i in data if i['match_time']]
@@ -253,7 +253,7 @@ def getOldSharecodes(last_x: int = -1, from_x: str = ''):
     global path_vars, csv_header
     try:
         with open(path_vars['appdata_path'] + 'last_game_' + accounts[current_account]['steam_id'] + '.csv', 'r', newline='') as last_game:
-            game_dict = list(csv.DictReader(last_game, delimiter=';', fieldnames=csv_header, restval=''))
+            game_dict = list(csv.DictReader(last_game, delimiter=';', fieldnames=csv_header, restval=''))[1:]
     except FileNotFoundError:
         with open(path_vars['appdata_path'] + 'last_game_' + accounts[current_account]['steam_id'] + '.csv', 'w') as last_game:
             writer = csv.DictWriter(last_game, fieldnames=csv_header, delimiter=';', lineterminator='\n')
@@ -577,7 +577,6 @@ while True:
     if win32api.GetAsyncKeyState(cfg['end_script']) & 1:  # POS1 (END SCRIPT)
         write('Exiting Script!')
         break
-    getAvgMatchTime('76561199014843546')
     if retryer:
         if time.time() - time_table['csgostats_retry'] > cfg['auto_retry_interval']:
             retryer = UpdateCSGOstats(retryer)
