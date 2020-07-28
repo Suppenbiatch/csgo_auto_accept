@@ -53,7 +53,7 @@ def timedelta(then=None, seconds=None):
 # noinspection PyShadowingNames
 def write(message, add_time: bool = True, push: int = 0, push_now: bool = False, output: bool = True, overwrite: str = '0', color: FgColor = FgColor.Null):  # last overwrite key used: 11
     message = str(message)
-    push_message = message
+    push_message = re_pattern['decolor'].sub('', message)
     if output:
         if add_time:
             message = datetime.datetime.now().strftime('%H:%M:%S') + ': ' + message
@@ -296,7 +296,7 @@ def getNewCSGOSharecodes(game_id: str, played_map: str = '', team_score: str = '
             row_dict = {'sharecode': sharecodes[-1], 'map': played_map, 'team_score': team_score, 'enemy_score': enemy_score, 'match_time': match_time, 'wait_time': wait_time}
             writer.writerow(row_dict)
         del sharecodes[0]  # Strip the old sharecode
-    return [{'sharecode': code, 'queue_pos': None} for code in sharecodes]
+    return [{'sharecode': code, 'queue_pos': None} for code in sharecodes if code]
 
 
 # noinspection PyShadowingNames
@@ -823,6 +823,7 @@ while True:
         if truth_table['still_in_warmup']:
             if game_state['map_phase'] != 'warmup':
                 truth_table['still_in_warmup'] = False
+                truth_table['players_still_connecting'] = False
                 team = red('T') if gsi_server.get_info('player', 'team') == 'T' else cyan('CT')
                 write('Warmup is over! Team: {}, Map: {}, Took: {}'.format(team, green(gsi_server.get_info('map', 'name')), timedelta(time_table['warmup_started'])), push=pushbullet_dict['urgency'] + 2, push_now=True, overwrite='7')
                 time_table['match_started'] = time.time()
