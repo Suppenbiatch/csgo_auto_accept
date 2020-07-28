@@ -1,4 +1,6 @@
 import configparser
+import csv
+import datetime
 import json
 import operator
 import os
@@ -7,7 +9,6 @@ import sys
 import time
 import webbrowser
 import winreg
-import datetime
 from shutil import copyfile
 from typing import List
 
@@ -18,15 +19,16 @@ import win32api
 import win32con
 import win32gui
 from PIL import ImageGrab, Image
+from color import *
 from playsound import playsound
 
 from GSI import server
 
 
 # noinspection PyShadowingNames
-def Avg(lst: list):
+def Avg(lst: list, non_return=None):
     if not lst:
-        return None
+        return non_return
     return sum(lst) / len(lst)
 
 
@@ -49,9 +51,10 @@ def timedelta(then=None, seconds=None):
 
 
 # noinspection PyShadowingNames
-def write(message, add_time: bool = True, push: int = 0, push_now: bool = False, output: bool = True, overwrite: str = '0'):  # last overwrite key used: 11
+def write(message, add_time: bool = True, push: int = 0, push_now: bool = False, output: bool = True, overwrite: str = '0', color: FgColor = FgColor.Null):  # last overwrite key used: 11
+    message = str(message)
+    push_message = re_pattern['decolor'].sub('', message)
     if output:
-        message = str(message)
         if add_time:
             message = datetime.datetime.now().strftime('%H:%M:%S') + ': ' + message
         else:
@@ -61,7 +64,7 @@ def write(message, add_time: bool = True, push: int = 0, push_now: bool = False,
             ending = console_window['suffix']
             if overwrite_dict['key'] == overwrite:
                 if console_window['isatty']:
-                    print(' ' * int(len(overwrite_dict['msg']) + 1), end=ending)
+                    print(' ' * len(overwrite_dict['msg']), end=ending)
                 message = console_window['prefix'] + message
             else:
                 if overwrite_dict['end'] != '\n':
@@ -71,13 +74,15 @@ def write(message, add_time: bool = True, push: int = 0, push_now: bool = False,
             if overwrite_dict['end'] != '\n':
                 message = '\n' + message
 
-        overwrite_dict = {'key': overwrite, 'msg': message, 'end': ending}
+        overwrite_dict = {'key': overwrite, 'msg': re_pattern['decolor'].sub('', message), 'end': ending}
+
+        message = colorize(10, 10, color, message)
         print(message, end=ending)
 
     if push >= 3:
         global pushbullet_dict
         if message:
-            pushbullet_dict['note'] = pushbullet_dict['note'] + str(message.strip('\n\r')) + '\n'
+            pushbullet_dict['note'] = pushbullet_dict['note'] + str(push_message.strip('\r').strip('\n')) + '\n'
         if push_now:
             pushbullet_dict['device'].push_note('CSGO AUTO ACCEPT', pushbullet_dict['note'])
             pushbullet_dict['note'] = ''
@@ -174,7 +179,7 @@ def getAccountsFromCfg():
         truth_table['steam_error'] = True
 
     if truth_table['steam_error']:
-        write('INVAILD STEAM API KEY or INTERNET CONNECTION ERROR, couldnt fetch usernames')
+        write('INVAILD STEAM API KEY or INTERNET CONNECTION ERROR, could not fetch usernames')
         truth_table['steam_error'] = False
         for num, val in enumerate(accounts):
             val['name'] = 'Unknown Name ' + str(num)
@@ -188,12 +193,13 @@ def getCsgoPath():
     with open(steam_path + '\\steamapps\\libraryfolders.vdf', 'r') as library_file:
         library_data = library_file.readlines()
         libraries.extend([re_pattern['steam_path'].sub('', i.rstrip('"\n')) for i in library_data if bool(re_pattern['steam_path'].match(i))])
-
-    csgo_path = [i for i in libraries if os.path.exists(i + '\\appmanifest_730.acf')][0] + '\\common\\Counter-Strike Global Offensive\\csgo\\'
-    if not csgo_path.replace('\\common\\Counter-Strike Global Offensive\\csgo\\', ''):
-        write('DID NOT FIND CSGO PATH', add_time=False)
+    try:
+        csgo_path = [i for i in libraries if os.path.exists(i + '\\appmanifest_730.acf')][0] + '\\common\\Counter-Strike Global Offensive\\csgo\\'
+    except IndexError:
+        write('DID NOT FIND CSGO PATH', add_time=False, color=FgColor.Red)
         global error_level
         error_level += 1
+        csgo_path = ''
     global path_vars
     path_vars['csgo_path'] = csgo_path
     path_vars['steam_path'] = steam_path
@@ -211,13 +217,14 @@ def CheckUserDataAutoExec(steam_id_3: str):
     global path_vars
     userdata_path = path_vars['steam_path'] + '\\userdata\\' + steam_id_3 + '\\730\\local\\cfg\\'
     str_in_autoexec = ['developer 1', 'con_logfile "console_log.log"', 'con_filter_enable "2"', 'con_filter_text_out "Player:"', 'con_filter_text "Damage"', 'log_color General ' + cfg['log_color']]
+    os.makedirs(userdata_path, exist_ok=True)
     with open(userdata_path + 'autoexec.cfg', 'a+') as autoexec:
         autoexec.seek(0)
         lines = autoexec.readlines()
         for autoexec_str in str_in_autoexec:
             if not any(autoexec_str.lower() in line.rstrip('\n').lower() for line in lines):
-                write('Added {} to "autoexec.cfg" file in {}'.format(autoexec_str, userdata_path), add_time=False)
-                write('RESTART Counter-Strike for the script to work', add_time=False)
+                write('Added {} to "autoexec.cfg" file in {}'.format(autoexec_str, userdata_path), add_time=False, color=FgColor.Yellow)
+                write('RESTART Counter-Strike for the script to work', add_time=False, color=FgColor.Red)
                 autoexec.write('\n' + autoexec_str + '\n')
     if os.path.exists(path_vars['csgo_path'] + '\\cfg\\autoexec.cfg'):
         write('YOU HAVE TO DELETE THE "autoexec.cfg" in {} WITH AND MERGE IT WITH THE ONE IN {}'.format(path_vars['csgo_path'] + '\\cfg', userdata_path), add_time=False)
@@ -229,38 +236,29 @@ def CheckUserDataAutoExec(steam_id_3: str):
 # noinspection PyShadowingNames
 def getAvgMatchTime(steam_id: str):
     try:
-        with open(path_vars['appdata_path'] + 'game_time_' + steam_id + '.txt', 'r+') as game_time:
-            all_game_times = game_time.readlines()
-            game_time.seek(0)
-            [game_time.write(i) for i in all_game_times[-10000:]]
-            all_game_times = [i.rstrip('\n').split(',') for i in all_game_times[-10000:]]
-            match_time = [int(i[0]) for i in all_game_times]
-            search_time = [int(i[1]) for i in all_game_times if i[1] != '']
+        data = get_csv_list(path_vars['appdata_path'] + 'last_game_' + steam_id + '.csv')
     except FileNotFoundError:
-        return None, None, None, None
-    return int(Avg(match_time)), int(Avg(search_time)), timedelta(seconds=sum(match_time)), timedelta(seconds=sum(search_time))
+        return None
+    match_time = [int(i['match_time']) for i in data if i['match_time']]
+    search_time = [int(i['wait_time']) for i in data if i['wait_time']]
+    return int(Avg(match_time, 0)), int(Avg(search_time, 0)), timedelta(seconds=sum(match_time)), timedelta(seconds=sum(search_time))
 
 
 # noinspection PyShadowingNames
 def getOldSharecodes(last_x: int = -1, from_x: str = ''):
     if last_x >= 0:
         return []
-    global path_vars
-
+    global path_vars, csv_header
     try:
-        with open(path_vars['appdata_path'] + 'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'r') as last_game:
-            games = last_game.readlines()
+        game_dict = get_csv_list(path_vars['appdata_path'] + 'last_game_' + accounts[current_account]['steam_id'] + '.csv')
     except FileNotFoundError:
-        with open(path_vars['appdata_path'] + 'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'w') as last_game:
-            last_game.write(accounts[current_account]['match_token'] + '\n')
-            games = [accounts[current_account]['match_token']]
+        with open(path_vars['appdata_path'] + 'last_game_' + accounts[current_account]['steam_id'] + '.csv', 'w') as last_game:
+            writer = csv.DictWriter(last_game, fieldnames=csv_header, delimiter=';', lineterminator='\n')
+            writer.writeheader()
+            writer.writerow({'sharecode': accounts[current_account]['match_token']})
+            game_dict = [{'sharecode': accounts[current_account]['match_token']}]
 
-    with open(path_vars['appdata_path'] + 'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'w') as last_game:
-        games = games[-1000:]
-        for i, val in enumerate(games):
-            games[i] = 'CSGO' + val.strip('\n').split('CSGO')[1]
-            last_game.write(games[i] + '\n')
-
+    games = [i['sharecode'] for i in game_dict if i['sharecode']]
     if from_x:
         try:
             return games[(len(games) - games.index(from_x)) * -1:]
@@ -270,7 +268,7 @@ def getOldSharecodes(last_x: int = -1, from_x: str = ''):
 
 
 # noinspection PyShadowingNames
-def getNewCSGOSharecodes(game_id: str):
+def getNewCSGOSharecodes(game_id: str, played_map: str = '', team_score: str = '', enemy_score: str = '', match_time: str = '', wait_time: str = ''):
     sharecodes = [game_id]
     next_code = game_id
     while next_code != 'n/a':
@@ -286,10 +284,19 @@ def getNewCSGOSharecodes(game_id: str):
             if next_code != 'n/a':
                 sharecodes.append(next_code)
                 game_id = next_code
-                with open(path_vars['appdata_path'] + 'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'a') as last_game:
-                    last_game.write(next_code + '\n')
-    sharecodes = sharecodes[1:] if len(sharecodes) > 1 else sharecodes
-    return [{'sharecode': code, 'queue_pos': None} for code in sharecodes]
+    global csv_header
+    if len(sharecodes) > 1:
+        with open(path_vars['appdata_path'] + 'last_game_' + accounts[current_account]['steam_id'] + '.csv', 'a', newline='') as last_game:
+            writer = csv.DictWriter(last_game, fieldnames=csv_header, delimiter=';', lineterminator='\n')
+            for i in sharecodes[1:-1]:  # Add all matches except the newest one without any additional information
+                row_dict = {'sharecode': i, 'map': '', 'team_score': '', 'enemy_score': '', 'match_time': '', 'wait_time': ''}
+                writer.writerow(row_dict)
+
+            # Add the newest match with the given information
+            row_dict = {'sharecode': sharecodes[-1], 'map': played_map, 'team_score': team_score, 'enemy_score': enemy_score, 'match_time': match_time, 'wait_time': wait_time}
+            writer.writerow(row_dict)
+        del sharecodes[0]  # Strip the old sharecode
+    return [{'sharecode': code, 'queue_pos': None} for code in sharecodes if code]
 
 
 # noinspection PyShadowingNames
@@ -311,9 +318,10 @@ def UpdateCSGOstats(repeater=None, get_all_games=False):
 
     else:
         num = -1
+        write('retryer is none, plz report to Suppe', color=FgColor.Red)
         sharecode = getOldSharecodes(num)[0]
         while True:
-            response = requests.post('https://csgostats.gg/match/upload/ajax', data={'sharecode': sharecode, 'index': '0'})
+            response = requests.post('https://csgostats.gg/match/upload/ajax', data={'sharecode': sharecode, 'index': 0})
             try:
                 all_games.append(response.json())
             except json.JSONDecodeError:
@@ -326,7 +334,7 @@ def UpdateCSGOstats(repeater=None, get_all_games=False):
                     break
             else:
                 break
-        temp_games = [{'sharecode': game['data']['sharecode']} for game in all_games if game['status'] != 'complete']
+        temp_games = any({'sharecode': game['data']['sharecode']} for game in all_games if game['status'] != 'complete')
         if temp_games and len(all_games) > 1:
             all_games = all_games[:-1]
 
@@ -383,6 +391,21 @@ def UpdateCSGOstats(repeater=None, get_all_games=False):
     return repeater
 
 
+def get_csv_list(path):
+    global csv_header
+    with open(path, 'r', newline='') as f:
+        data = list(csv.DictReader(f, fieldnames=csv_header, delimiter=';', restval=''))
+    first_element = tuple(data[0].values())
+    if all([head == first_element[i] for i, head in enumerate(csv_header)]):  # File has a valid header
+        del data[0]  # Remove the header
+    else:
+        with open(path, 'w', newline='') as f:  # rewrite file with header
+            writer = csv.DictWriter(f, fieldnames=csv_header, delimiter=';', lineterminator='\n')
+            writer.writeheader()
+            writer.writerows(data)
+    return data  # Return data without the header
+
+
 # noinspection PyShadowingNames
 def str_in_list(compare_strings: List[str], list_of_strings: List[str], replace: bool = False):
     replacement_str = '' if not replace else compare_strings[0]
@@ -434,10 +457,10 @@ except (configparser.NoOptionError, configparser.NoSectionError, ValueError):
     cfg = {'ERROR': None}
     exit('CHECK FOR NEW CONFIG')
 
-
 # BOOLEAN, TIME INITIALIZATION
 truth_table = {'test_for_accept_button': False, 'test_for_warmup': False, 'test_for_success': False, 'first_ocr': True, 'testing': False, 'first_push': True, 'still_in_warmup': False, 'test_for_server': False, 'first_freezetime': True,
-               'gsi_server_running': False, 'game_over': False, 'monitoring_since_start': False, 'players_still_connecting': False, 'first_game_over': True, 'disconnected_form_last': False, 'c4_round_first': True, 'steam_error': False}
+               'gsi_server_running': False, 'game_over': False, 'monitoring_since_start': False, 'players_still_connecting': False, 'first_game_over': True, 'disconnected_form_last': False, 'c4_round_first': True, 'steam_error': False,
+               'is_not_ingame_round_start': False}
 time_table = {'csgostats_retry': time.time(), 'warmup_test_timer': time.time(), 'search_started': time.time(), 'console_read': time.time(), 'timed_execution_time': time.time(), 'match_accepted': time.time(),
               'match_started': time.time(), 'freezetime_started': time.time(), 'join_warmup_time': 0.0}
 matchmaking = {'msg': [], 'update': [], 'players_accepted': [], 'lobby_data': [], 'server_found': False, 'server_ready': False}
@@ -445,15 +468,15 @@ afk_dict = {'time': time.time(), 'still_afk': [], 'start_time': time.time(), 'se
 join_dict = {'t_full': False, 'ct_full': False}
 scoreboard = {'CT': 0, 'T': 0, 'last_round_info': '', 'last_round_key': '0', 'extra_round_info': '', 'player': {}}
 damage = []
+csv_header = ['sharecode', 'map', 'team_score', 'enemy_score', 'match_time', 'wait_time']
 
 re_pattern = {'damage': [re.compile('(Player: (.+?) - Damage Given\n-------------------------)'),
                          re.compile('(Damage Given to "(.+?)" - \d+ in \d (hit|hits))'),
                          re.compile('(Player: (.+?) - Damage Taken\n-------------------------)'),
                          re.compile('(Damage Taken from "(.+?)" - \d+ in \d (hit|hits))]}')],
               'lobby_info': re.compile("(?<!Machines' = '\d''members:num)(C?TSlotsFree|Players)(?:' = ')(\d+'?)"),
-              'steam_path': re.compile('\\t"\d*"\\t\\t"')}
-
-
+              'steam_path': re.compile('\\t"\d*"\\t\\t"'),
+              'decolor': re.compile('\033\[[0-9;]+m')}
 
 # ACCOUNT HANDLING, GETTING ACCOUNT NAME, GETTING CSGO PATH, CHECKING AUTOEXEC
 accounts, current_account = [], 0
@@ -463,10 +486,12 @@ getCsgoPath()
 CheckUserDataAutoExec(accounts[current_account]['steam_id_3'])
 
 if error_level:
-    exit('an error occurred')
+    write('an error occurred', color=FgColor.Red)
+    # exit('FIX ERROR')
 
 with open(path_vars['csgo_path'] + 'console_log.log', 'w', encoding='utf-8') as log:
     log.write('')
+os.makedirs(cfg['debug_path'], exist_ok=True)
 with open(cfg['debug_path'] + '\\console.log', 'w', encoding='utf-8') as debug_log:
     debug_log.write('')
 
@@ -481,18 +506,10 @@ hwnd, hwnd_old = 0, 0
 csgo_window_status = {'server_found': 2, 'new_tab': 2, 'in_game': 0}
 toplist, csgo = [], []
 
-
 # csgostats.gg VAR
 retryer = []
 queue_difference = []
 
-'''
-# WARMUP DETECTION SETUP
-pytesseract.pytesseract.tesseract_cmd = cfg['tesseract_path']
-cfg['stop_warmup_ocr'] = [int(i, 16) for i in cfg['stop_warmup_ocr'].split('-')]
-cfg['stop_warmup_ocr'][1] += 1
-no_text_found = 0
-'''
 # PUSHBULLET VAR
 pushbullet_dict = {'note': '', 'urgency': 0, 'device': 0,
                    'push_info': ('not active', 'only if accepted', 'all game status related information', 'all information (game status/csgostats.gg information)')}
@@ -500,7 +517,7 @@ pushbullet_dict = {'note': '', 'urgency': 0, 'device': 0,
 mute_csgo(0)
 path_vars['appdata_path'] = os.getenv('APPDATA') + '\\CSGO AUTO ACCEPT\\'
 
-write('READY')
+write('READY', color=FgColor.Green)
 while True:
     if win32api.GetAsyncKeyState(cfg['activate_script']) & 1:  # F9 (ACTIVATE / DEACTIVATE SCRIPT)
         truth_table['test_for_server'] = not truth_table['test_for_server']
@@ -529,7 +546,15 @@ while True:
         write('Uploading / Getting status on newest match')
         queue_difference = []
         new_sharecodes = getNewCSGOSharecodes(getOldSharecodes(-1)[0])
-        write(new_sharecodes)
+
+        # HOPEFULLY TEMPORARY CSGOSTATS FIX, HAVE TO ADD GAMES MANUALLY
+        write(new_sharecodes[-1]['sharecode'], color=FgColor.Magenta)
+        try:
+            pyperclip.copy(new_sharecodes[-1]['sharecode'])
+        except (pyperclip.PyperclipWindowsException, pyperclip.PyperclipTimeoutException):
+            pass
+        # DONE HERE
+
         for new_code in new_sharecodes:
             retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
         retryer = UpdateCSGOstats(retryer, get_all_games=True)
@@ -559,7 +584,6 @@ while True:
     if win32api.GetAsyncKeyState(cfg['end_script']) & 1:  # POS1 (END SCRIPT)
         write('Exiting Script!')
         break
-
     if retryer:
         if time.time() - time_table['csgostats_retry'] > cfg['auto_retry_interval']:
             retryer = UpdateCSGOstats(retryer)
@@ -589,22 +613,21 @@ while True:
             playsound('sounds/fail.wav', block=False)
 
     if not truth_table['gsi_server_running']:
-        write('CS:GO GSI Server starting..', overwrite='8')
+        write('CS:GO GSI Server starting..', overwrite='8', color=FgColor.Yellow)
         gsi_server.start_server()
         truth_table['gsi_server_running'] = True
-        write('CS:GO GSI Server running..', overwrite='8')
+        write('CS:GO GSI Server running..', overwrite='8', color=FgColor.Green)
 
     # TESTING HERE
-    if win32api.GetAsyncKeyState(0x0) & 1:  # UNBOUND, 6f == '\' TEST CODE
+    if win32api.GetAsyncKeyState(0x00) & 1:  # UNBOUND, 6f == '\' TEST CODE
         truth_table['testing'] = not truth_table['testing']
-        write('TestCode active: %s.' % str(truth_table['testing']), add_time=False, overwrite='testcode')
+        # truth_table['test_for_warmup'] = True
+        write('TestCode active: %s.' % str(truth_table['testing']), add_time=False, overwrite='test_code')
 
     if time.time() - time_table['console_read'] > 0.2:
         time_table['console_read'] = time.time()
-        with open(path_vars['csgo_path'] + 'console_log.log', 'r+', encoding='utf-8') as log:
+        with open(path_vars['csgo_path'] + 'console_log.log', 'r+', encoding='utf-8', errors='ignore') as log:
             console_lines = [i.strip('\n') for i in log.readlines()]
-            '''for i in console_lines:
-                write(i)'''
             log.seek(0)
             log.truncate()
         with open(cfg['debug_path'] + '\\console.log', 'a', encoding='utf-8') as debug_log:
@@ -635,7 +658,7 @@ while True:
             playsound('sounds/server_found.wav', block=False)
             truth_table['test_for_success'] = True
         if matchmaking['server_ready']:
-            write('Server found, starting to look for accept button.')
+            # write('Server found, starting to look for accept button.', overwrite='1')
             truth_table['test_for_accept_button'] = True
             csgo_window_status['server_found'] = win32gui.GetWindowPlacement(hwnd)[1]
             win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
@@ -644,7 +667,7 @@ while True:
         img = getScreenShot(hwnd, (1265, 760, 1295, 785))
         accept_avg = color_average(img, [(76, 175, 80), (90, 203, 94)])
         if relate_list(accept_avg, (2, 2, 2)):
-            write('Trying to Accept.', push=pushbullet_dict['urgency'] + 1)
+            # write('Trying to Accept.', push=pushbullet_dict['urgency'] + 1, overwrite='1')
             truth_table['test_for_accept_button'] = False
 
             current_cursor_position = win32api.GetCursorPos()
@@ -660,14 +683,14 @@ while True:
             else:
                 win32api.SetCursorPos(current_cursor_position)
 
-            write('Trying to catch a loading map.')
+            # write('Trying to catch a loading map.', overwrite='1')
             playsound('sounds/accept_found.wav', block=False)
 
     if truth_table['test_for_accept_button'] or truth_table['test_for_success']:
         if str_in_list(['Match confirmed'], matchmaking['msg']):
-            write('All Players accepted.', add_time=False, overwrite='11')
-            write('Took {} since trying to find a match.'.format(timedelta(time_table['search_started'])), add_time=False, push=pushbullet_dict['urgency'] + 1)
-            write('Match has started.', push=pushbullet_dict['urgency'] + 2, push_now=True)
+            write('All Players accepted - Match has started - Took {} since start'.format(timedelta(time_table['search_started'])), add_time=False, push=pushbullet_dict['urgency'] + 2, overwrite='11', color=FgColor.Green)
+            # write('Took {} since trying to find a match.'.format(timedelta(time_table['search_started'])), add_time=False, push=pushbullet_dict['urgency'] + 1)
+            # write('Match has started.', push=pushbullet_dict['urgency'] + 2, push_now=True, color=FgColor.Green)
             truth_table['test_for_warmup'] = True
             truth_table['first_game_over'], truth_table['game_over'] = True, False
             truth_table['disconnected_form_last'] = False
@@ -683,18 +706,18 @@ while True:
             afk_dict['time'] = time.time()
             afk_dict['start_time'] = time.time()
 
+        for i in matchmaking['players_accepted']:
+            i = i.split('/')
+            players_accepted = str(int(i[1]) - int(i[0]))
+            write('{} Players of {} already accepted.'.format(players_accepted, i[1]), add_time=False, overwrite='11')
+
         if str_in_list(['Other players failed to connect', 'Failed to ready up'], matchmaking['msg']):
-            write('Match has not started! Continuing to search for a Server!', push=pushbullet_dict['urgency'] + 1, push_now=True)
+            write('Match has not started! Continuing to search for a Server!', push=pushbullet_dict['urgency'] + 1, push_now=True, overwrite='11', color=FgColor.Red)
             playsound('sounds/back_to_testing.wav', block=False)
             mute_csgo(1)
             truth_table['test_for_server'] = True
             truth_table['test_for_accept_button'] = False
             truth_table['test_for_success'] = False
-
-        for i in matchmaking['players_accepted']:
-            i = i.split('/')
-            players_accepted = str(int(i[1]) - int(i[0]))
-            write('{} Players of {} already accepted.'.format(players_accepted, i[1]), add_time=False, overwrite='11')
 
     if truth_table['players_still_connecting']:
         lobby_data = ''.join(matchmaking['lobby_data'])
@@ -702,13 +725,13 @@ while True:
         lobby_data = [(info, int(num.strip("'\n"))) for info, num in lobby_info]
         for i in lobby_data:
             if i[0] == 'Players':
-                write('{} players joined.'.format(i[1]), add_time=False, overwrite='11')
+                write('{} players joined.'.format(i[1]), add_time=False, overwrite='7')
             if i[0] == 'TSlotsFree' and i[1] == 0:
                 join_dict['t_full'] = True
             if i[0] == 'CTSlotsFree' and i[1] == 0:
                 join_dict['ct_full'] = True
             if join_dict['t_full'] and join_dict['ct_full']:
-                write('Server full, All Players connected. Took {} since match start.'.format(timedelta(time_table['warmup_started'])), overwrite='11')
+                write('Server full, All Players connected. Took {} since match start.'.format(timedelta(time_table['warmup_started'])), overwrite='7')
                 playsound('sounds/minute_warning.wav', block=True)
                 truth_table['players_still_connecting'] = False
                 join_dict['t_full'], join_dict['ct_full'] = False, False
@@ -717,13 +740,13 @@ while True:
     try:
         if 'Disconnect' in matchmaking['server_abandon'][-1]:
             # time_table['match_started'], time_table['match_accepted'] = time.time(), time.time()
-            write('Server disconnected')
+            write('Server disconnected', overwrite='1')
             truth_table['disconnected_form_last'] = True
             afk_dict['time'] = time.time()
     except IndexError:
         pass
 
-    if time.time() - time_table['timed_execution_time'] > 2:
+    if time.time() - time_table['timed_execution_time'] > .5:
         time_table['timed_execution_time'] = time.time()
         game_state = {'map_phase': gsi_server.get_info('map', 'phase'), 'round_phase': gsi_server.get_info('round', 'phase')}
 
@@ -739,34 +762,31 @@ while True:
                 scoreboard['weapons'] = [inner for outer in scoreboard['player']['weapons'].values() for inner in outer.items()]
                 scoreboard['c4'] = ' - Bomb Carrier!' if 'weapon_c4' in [i for _, i in scoreboard['weapons']] else ''
                 scoreboard['total_score'] = scoreboard['CT'] + scoreboard['T']
-                try:
-                    scoreboard['opposing_team'] = 'T' if scoreboard['team'] == 'CT' else 'CT'
-                except KeyError:
-                    scoreboard['team'] = scoreboard['player']['team']
-                    scoreboard['opposing_team'] = 'T' if scoreboard['team'] == 'CT' else 'CT'
+
+                scoreboard['team'] = red('T') if scoreboard['player']['team'] == 'T' else cyan('CT')
+                scoreboard['opposing_team'] = cyan('CT') if uncolorize(scoreboard['team']) == 'T' else red('T')
+
                 try:
                     scoreboard['last_round_key'] = list(scoreboard['last_round_info'].keys())[-1]
                     scoreboard['last_round_info'] = scoreboard['last_round_info'][scoreboard['last_round_key']].split('_')[0].upper()
-                    scoreboard['last_round_info'] = ' - You ({}) won the last round'.format(scoreboard['team']) if scoreboard['team'] == scoreboard['last_round_info'] else ' - The Enemy ({}) won the last round'.format(
+                    scoreboard['last_round_info'] = 'You ({}) won the last round'.format(scoreboard['team']) if uncolorize(scoreboard['team']) == scoreboard['last_round_info'] else 'The Enemy ({}) won the last round'.format(
                         scoreboard['opposing_team'])
                 except AttributeError:
-                    scoreboard['last_round_info'] = ' - You ({}), no info on the last round'.format(scoreboard['team'])
-
-                scoreboard['team'] = scoreboard['player']['team']
-                scoreboard['opposing_team'] = 'T' if scoreboard['team'] == 'CT' else 'CT'
+                    scoreboard['last_round_info'] = 'You ({}), no info on the last round'.format(scoreboard['team'])
 
                 if scoreboard['total_score'] == 14:
-                    scoreboard['extra_round_info'] = ' - Last round of first half!'
+                    scoreboard['extra_round_info'] = yellow(' - Last round of first half!')
                 elif scoreboard['CT'] == 15 or scoreboard['T'] == 15:
-                    scoreboard['extra_round_info'] = ' - Match Point'
+                    scoreboard['extra_round_info'] = yellow(' - Match Point')
                 else:
                     scoreboard['extra_round_info'] = ''
 
-                write('Freeze Time' + scoreboard['last_round_info'] + ' - {:02d}:{:02d}'.format(scoreboard[scoreboard['team']], scoreboard[scoreboard['opposing_team']]) + scoreboard['extra_round_info'] + scoreboard[
-                    'c4'], overwrite='7')
+                write('Freeze Time - {} - {:02d}:{:02d}{}{}'.format(scoreboard['last_round_info'], scoreboard[uncolorize(scoreboard['team'])], scoreboard[uncolorize(scoreboard['opposing_team'])], scoreboard['extra_round_info'],
+                                                                    scoreboard['c4']), overwrite='7')
                 if win32gui.GetWindowPlacement(hwnd)[1] == 2:
+                    truth_table['is_not_ingame_round_start'] = True
                     playsound('sounds/ready_up.wav', block=True)
-                if 'Last round' in scoreboard['extra_round_info']:
+                if 'Last round' in uncolorize(scoreboard['extra_round_info']):
                     playsound('sounds/ding.wav', block=True)
 
         elif game_state['map_phase'] == 'live' and game_state['round_phase'] != 'freezetime':
@@ -774,6 +794,24 @@ while True:
             truth_table['c4_round_first'] = True
             if time.time() - time_table['freezetime_started'] >= 20 and win32gui.GetWindowPlacement(hwnd)[1] == 2:
                 playsound('sounds/ready_up.wav', block=False)
+
+        if truth_table['is_not_ingame_round_start']:
+            truth_table['is_not_ingame_round_start'] = True if win32gui.GetWindowPlacement(hwnd)[1] == 2 else False
+
+            if game_state['round_phase'] == 'freezetime':
+                time_str = green(timedelta(seconds=time.time() - (time_table['freezetime_started'] + 15)))  # timedelta(then=time_table['freezetime_started']) + ' - ' +
+            elif time.time() - time_table['freezetime_started'] > 35:
+                time_str = red(timedelta(then=time_table['freezetime_started']))
+            else:
+                time_str = yellow(timedelta(seconds=time.time() - (time_table['freezetime_started'] + 35)))  # timedelta(then=time_table['freezetime_started']) + ' - ' +
+
+            write('Freeze Time - {last_round} - {team:02d}:{enemy:02d}{extra_info}{c4_info} - {afk_time}'.format(
+                last_round=scoreboard['last_round_info'],
+                team=scoreboard[uncolorize(scoreboard['team'])],
+                enemy=scoreboard[uncolorize(scoreboard['opposing_team'])],
+                extra_info=scoreboard['extra_round_info'],
+                c4_info=scoreboard['c4'],
+                afk_time=time_str), overwrite='7')
 
         if game_state['round_phase'] == 'freezetime' and truth_table['c4_round_first']:
             scoreboard['c_weapons'] = [inner for outer in gsi_server.get_info('player', 'weapons').values() for inner in outer.items()]
@@ -785,8 +823,9 @@ while True:
         if truth_table['still_in_warmup']:
             if game_state['map_phase'] != 'warmup':
                 truth_table['still_in_warmup'] = False
-                write('Warmup is over! Team: {}, Map: {}'.format(gsi_server.get_info('player', 'team'), gsi_server.get_info('map', 'name')), push=pushbullet_dict['urgency'] + 2, push_now=True, overwrite='7')
-                write('Took {} since the match started.'.format(timedelta(time_table['warmup_started'])), add_time=False)
+                truth_table['players_still_connecting'] = False
+                team = red('T') if gsi_server.get_info('player', 'team') == 'T' else cyan('CT')
+                write('Warmup is over! Team: {}, Map: {}, Took: {}'.format(team, green(gsi_server.get_info('map', 'name')), timedelta(time_table['warmup_started'])), push=pushbullet_dict['urgency'] + 2, push_now=True, overwrite='7')
                 time_table['match_started'] = time.time()
                 time_table['freezetime_started'] = time.time()
                 if win32gui.GetWindowPlacement(hwnd)[1] == 2:
@@ -824,40 +863,52 @@ while True:
             truth_table['game_over'] = True
 
         if truth_table['game_over'] and truth_table['first_game_over']:
+            time.sleep(2)
+            team = str(gsi_server.get_info('player', 'team')), 'CT' if gsi_server.get_info('player', 'team') == 'T' else 'T'
+            score = {'CT': gsi_server.get_info('map', 'team_ct')['score'], 'T': gsi_server.get_info('map', 'team_t')['score'], 'map': gsi_server.get_info('map', 'name').split('_')[1].capitalize()}
+            write('The match is over! - {:02d}:{:02d}'.format(score[team[0]], score[team[1]]), color=FgColor.Red)
+            write('Match duration: {}'.format(timedelta(time_table['match_started'])), add_time=False)
+            write('Search-time:    {}'.format(timedelta(seconds=time_table['match_accepted'] - time_table['search_started'])), add_time=False)
+            write('Time AFK:       {}, {:.1%} of match duration.'.format(timedelta(seconds=afk_dict['seconds_afk']), afk_dict['seconds_afk'] / (time.time() - time_table['match_started'])), add_time=False)
+
             if gsi_server.get_info('map', 'mode') == 'competitive' and game_state['map_phase'] == 'gameover' and not truth_table['test_for_warmup'] and not truth_table['still_in_warmup']:
-                write('The match is over!')
-                write('Match duration: {}'.format(timedelta(time_table['match_started'])), add_time=False)
-                write('Search-time:    {}'.format(timedelta(seconds=time_table['match_accepted'] - time_table['search_started'])), add_time=False)
-                write('Time AFK:       {}, {:.1%} of match duration.'.format(timedelta(seconds=afk_dict['seconds_afk']), afk_dict['seconds_afk'] / (time.time() - time_table['match_started'])), add_time=False)
                 if truth_table['monitoring_since_start']:
-                    with open(path_vars['appdata_path'] + 'game_time_' + accounts[current_account]['steam_id'] + '.txt', 'a') as game_time:
-                        game_time.write(str(int(time.time() - time_table['match_started'])) + ', ' + str(int(time_table['match_started'] - time_table['search_started'])) + '\n')
+                    match_time = str(int(time.time() - time_table['match_started']))
+                    search_time = str(int(time_table['match_started'] - time_table['search_started']))
+                else:
+                    match_time, search_time = '', ''
 
                 average_match_time = getAvgMatchTime(accounts[current_account]['steam_id'])
                 this_game_time = (time.time() - time_table['match_started'], time_table['match_accepted'] - time_table['search_started'])
-                game_time_output_strs = (('The match was {} longer than the average match with {}', 'The match was {} shorter than the average match with {}'),
-                                         ('The search-time was {} longer than the average search-time with {}', 'The search-time was {} shorter than the average search-time with {}'),
-                                         'Time in competitive matchmaking: {}', 'Time in the searching queue: {}')
+                game_time_output_strings = (('The match was {} longer than the average match with {}', 'The match was {} shorter than the average match with {}'),
+                                            ('The search-time was {} longer than the average search-time with {}', 'The search-time was {} shorter than the average search-time with {}'),
+                                            'Time in competitive matchmaking: {}', 'Time in the searching queue: {}')
                 for i, val in enumerate(average_match_time):
                     if isinstance(val, int):
                         avg_time_difference = this_game_time[i] - val
                         if avg_time_difference >= 0:
-                            write(game_time_output_strs[i][0].format(timedelta(seconds=avg_time_difference), timedelta(seconds=val)), add_time=False)
+                            write(game_time_output_strings[i][0].format(timedelta(seconds=avg_time_difference), timedelta(seconds=val)), add_time=False)
                         else:
-                            write(game_time_output_strs[i][1].format(timedelta(seconds=avg_time_difference), timedelta(seconds=val)), add_time=False)
+                            write(game_time_output_strings[i][1].format(timedelta(seconds=avg_time_difference), timedelta(seconds=val)), add_time=False)
                     elif isinstance(val, str):
-                        write(game_time_output_strs[i].format(val), add_time=False)
+                        write(game_time_output_strings[i].format(val), add_time=False)
 
-                if game_state['map_phase'] == 'gameover':
-                    time.sleep(5)
-                    new_sharecodes = getNewCSGOSharecodes(getOldSharecodes(-1)[0])
-                    write(new_sharecodes)
-                    try:
-                        for new_code in new_sharecodes:
-                            retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
-                        retryer = UpdateCSGOstats(retryer, get_all_games=True)
-                    except TypeError:
-                        write('ERROR IN GETTING NEW MATCH CODE! TRY PRESSING "F6" to add it manually')
+                new_sharecodes = getNewCSGOSharecodes(getOldSharecodes(-1)[0], played_map=score['map'], team_score=score[team[0]], enemy_score=score[team[1]], match_time=match_time, wait_time=search_time)
+
+                # HOPEFULLY TEMPORARY CSGOSTATS FIX, HAVE TO ADD GAMES MANUALLY
+                write(new_sharecodes[-1]['sharecode'], color=FgColor.Magenta)
+                try:
+                    pyperclip.copy(new_sharecodes[-1]['sharecode'])
+                except (pyperclip.PyperclipWindowsException, pyperclip.PyperclipTimeoutException):
+                    pass
+                # DONE HERE
+
+                try:
+                    for new_code in new_sharecodes:
+                        retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
+                    retryer = UpdateCSGOstats(retryer, get_all_games=True)
+                except TypeError:
+                    write('ERROR IN GETTING NEW MATCH CODE! TRY PRESSING "F7" to add it manually')
 
             truth_table['game_over'] = False
             truth_table['first_game_over'] = False
@@ -872,7 +923,6 @@ while True:
         # print('Took: {}'.format(str(datetime.timedelta(milliseconds=int(time.time()*1000 - test_time*1000))))
 
     if truth_table['test_for_warmup']:
-
         time_table['warmup_started'] = time.time()
         while True:
             if time.time() - time_table['warmup_started'] > 1:
@@ -881,7 +931,8 @@ while True:
                     write('Warmup detected', overwrite='12')
                     if gsi_server.get_info('player', 'team') is not None:
                         time.sleep(2)
-                        write('You will play as {} in the first half on {}.'.format(gsi_server.get_info('player', 'team'), gsi_server.get_info('map', 'name')), add_time=True, overwrite='12')
+                        team = red(gsi_server.get_info('player', 'team')) if gsi_server.get_info('player', 'team') == 'T' else cyan(gsi_server.get_info('player', 'team'))
+                        write('You will play as {} in the first half on {}.'.format(team, green(gsi_server.get_info('map', 'name'))), add_time=True, overwrite='12')
                         truth_table['still_in_warmup'] = True
                         truth_table['players_still_connecting'] = True
                         time_table['warmup_started'] = time.time()
