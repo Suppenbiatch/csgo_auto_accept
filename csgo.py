@@ -1,4 +1,5 @@
 import configparser
+import csv
 import datetime
 import json
 import operator
@@ -25,9 +26,9 @@ from GSI import server
 
 
 # noinspection PyShadowingNames
-def Avg(lst: list):
+def Avg(lst: list, non_return=None):
     if not lst:
-        return None
+        return non_return
     return sum(lst) / len(lst)
 
 
@@ -178,7 +179,7 @@ def getAccountsFromCfg():
         truth_table['steam_error'] = True
 
     if truth_table['steam_error']:
-        write('INVAILD STEAM API KEY or INTERNET CONNECTION ERROR, couldnt fetch usernames')
+        write('INVAILD STEAM API KEY or INTERNET CONNECTION ERROR, could not fetch usernames')
         truth_table['steam_error'] = False
         for num, val in enumerate(accounts):
             val['name'] = 'Unknown Name ' + str(num)
@@ -192,12 +193,13 @@ def getCsgoPath():
     with open(steam_path + '\\steamapps\\libraryfolders.vdf', 'r') as library_file:
         library_data = library_file.readlines()
         libraries.extend([re_pattern['steam_path'].sub('', i.rstrip('"\n')) for i in library_data if bool(re_pattern['steam_path'].match(i))])
-
-    csgo_path = [i for i in libraries if os.path.exists(i + '\\appmanifest_730.acf')][0] + '\\common\\Counter-Strike Global Offensive\\csgo\\'
-    if not csgo_path.replace('\\common\\Counter-Strike Global Offensive\\csgo\\', ''):
-        write('DID NOT FIND CSGO PATH', add_time=False)
+    try:
+        csgo_path = [i for i in libraries if os.path.exists(i + '\\appmanifest_730.acf')][0] + '\\common\\Counter-Strike Global Offensive\\csgo\\'
+    except IndexError:
+        write('DID NOT FIND CSGO PATH', add_time=False, color=FgColor.Red)
         global error_level
         error_level += 1
+        csgo_path = ''
     global path_vars
     path_vars['csgo_path'] = csgo_path
     path_vars['steam_path'] = steam_path
@@ -215,13 +217,14 @@ def CheckUserDataAutoExec(steam_id_3: str):
     global path_vars
     userdata_path = path_vars['steam_path'] + '\\userdata\\' + steam_id_3 + '\\730\\local\\cfg\\'
     str_in_autoexec = ['developer 1', 'con_logfile "console_log.log"', 'con_filter_enable "2"', 'con_filter_text_out "Player:"', 'con_filter_text "Damage"', 'log_color General ' + cfg['log_color']]
+    os.makedirs(userdata_path, exist_ok=True)
     with open(userdata_path + 'autoexec.cfg', 'a+') as autoexec:
         autoexec.seek(0)
         lines = autoexec.readlines()
         for autoexec_str in str_in_autoexec:
             if not any(autoexec_str.lower() in line.rstrip('\n').lower() for line in lines):
-                write('Added {} to "autoexec.cfg" file in {}'.format(autoexec_str, userdata_path), add_time=False)
-                write('RESTART Counter-Strike for the script to work', add_time=False)
+                write('Added {} to "autoexec.cfg" file in {}'.format(autoexec_str, userdata_path), add_time=False, color=FgColor.Yellow)
+                write('RESTART Counter-Strike for the script to work', add_time=False, color=FgColor.Red)
                 autoexec.write('\n' + autoexec_str + '\n')
     if os.path.exists(path_vars['csgo_path'] + '\\cfg\\autoexec.cfg'):
         write('YOU HAVE TO DELETE THE "autoexec.cfg" in {} WITH AND MERGE IT WITH THE ONE IN {}'.format(path_vars['csgo_path'] + '\\cfg', userdata_path), add_time=False)
@@ -233,38 +236,32 @@ def CheckUserDataAutoExec(steam_id_3: str):
 # noinspection PyShadowingNames
 def getAvgMatchTime(steam_id: str):
     try:
-        with open(path_vars['appdata_path'] + 'game_time_' + steam_id + '.txt', 'r+') as game_time:
-            all_game_times = game_time.readlines()
-            game_time.seek(0)
-            [game_time.write(i) for i in all_game_times[-10000:]]
-            all_game_times = [i.rstrip('\n').split(',') for i in all_game_times[-10000:]]
-            match_time = [int(i[0]) for i in all_game_times]
-            search_time = [int(i[1]) for i in all_game_times if i[1] != '']
+        with open(path_vars['appdata_path'] + 'last_game_' + steam_id + '.csv', 'r', newline='') as f:
+            global csv_header
+            data = list(csv.DictReader(f, delimiter=';', fieldnames=csv_header, restval=''))
     except FileNotFoundError:
-        return None, None, None, None
-    return int(Avg(match_time)), int(Avg(search_time)), timedelta(seconds=sum(match_time)), timedelta(seconds=sum(search_time))
+        return None
+    match_time = [int(i['match_time']) for i in data if i['match_time']]
+    search_time = [int(i['wait_time']) for i in data if i['wait_time']]
+    return int(Avg(match_time, 0)), int(Avg(search_time, 0)), timedelta(seconds=sum(match_time)), timedelta(seconds=sum(search_time))
 
 
 # noinspection PyShadowingNames
 def getOldSharecodes(last_x: int = -1, from_x: str = ''):
     if last_x >= 0:
         return []
-    global path_vars
-
+    global path_vars, csv_header
     try:
-        with open(path_vars['appdata_path'] + 'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'r') as last_game:
-            games = last_game.readlines()
+        with open(path_vars['appdata_path'] + 'last_game_' + accounts[current_account]['steam_id'] + '.csv', 'r', newline='') as last_game:
+            game_dict = list(csv.DictReader(last_game, delimiter=';', fieldnames=csv_header, restval=''))
     except FileNotFoundError:
-        with open(path_vars['appdata_path'] + 'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'w') as last_game:
-            last_game.write(accounts[current_account]['match_token'] + '\n')
-            games = [accounts[current_account]['match_token']]
+        with open(path_vars['appdata_path'] + 'last_game_' + accounts[current_account]['steam_id'] + '.csv', 'w') as last_game:
+            writer = csv.DictWriter(last_game, fieldnames=csv_header, delimiter=';', lineterminator='\n')
+            writer.writeheader()
+            writer.writerow({'sharecode': accounts[current_account]['match_token']})
+            game_dict = [{'sharecode': accounts[current_account]['match_token']}]
 
-    with open(path_vars['appdata_path'] + 'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'w') as last_game:
-        games = games[-1000:]
-        for i, val in enumerate(games):
-            games[i] = 'CSGO' + val.strip('\n').split('CSGO')[1]
-            last_game.write(games[i] + '\n')
-
+    games = [i['sharecode'] for i in game_dict if i['sharecode']]
     if from_x:
         try:
             return games[(len(games) - games.index(from_x)) * -1:]
@@ -274,7 +271,7 @@ def getOldSharecodes(last_x: int = -1, from_x: str = ''):
 
 
 # noinspection PyShadowingNames
-def getNewCSGOSharecodes(game_id: str):
+def getNewCSGOSharecodes(game_id: str, played_map: str = '', team_score: str = '', enemy_score: str = '', match_time: str = '', wait_time: str = ''):
     sharecodes = [game_id]
     next_code = game_id
     while next_code != 'n/a':
@@ -290,9 +287,23 @@ def getNewCSGOSharecodes(game_id: str):
             if next_code != 'n/a':
                 sharecodes.append(next_code)
                 game_id = next_code
-                with open(path_vars['appdata_path'] + 'last_game_' + accounts[current_account]['steam_id'] + '.txt', 'a') as last_game:
-                    last_game.write(next_code + '\n')
-    sharecodes = sharecodes[1:] if len(sharecodes) > 1 else sharecodes
+    global csv_header
+    '''if len(sharecodes) == 2:
+        with open(path_vars['appdata_path'] + 'last_game_' + accounts[current_account]['steam_id'] + '.csv', 'a', newline='') as last_game:
+            row_dict = {'sharecode': sharecodes[1], 'map': played_map, 'team_score': str(team_score), 'enemy_score': str(enemy_score), 'match_time': match_time, 'wait_time': wait_time}
+            writer = csv.DictWriter(last_game, fieldnames=csv_header, delimiter=';', lineterminator='\n')
+            writer.writerow(row_dict)
+        sharecodes = sharecodes[1:]
+    el'''
+    if len(sharecodes) > 1:
+        with open(path_vars['appdata_path'] + 'last_game_' + accounts[current_account]['steam_id'] + '.csv', 'a', newline='') as last_game:
+            writer = csv.DictWriter(last_game, fieldnames=csv_header, delimiter=';', lineterminator='\n')
+            for i in sharecodes[1:-1]:
+                row_dict = {'sharecode': i, 'map': '', 'team_score': '', 'enemy_score': '', 'match_time': '', 'wait_time': ''}
+                writer.writerow(row_dict)
+            row_dict = {'sharecode': sharecodes[-1], 'map': played_map, 'team_score': team_score, 'enemy_score': enemy_score, 'match_time': match_time, 'wait_time': wait_time}
+            writer.writerow(row_dict)
+        sharecodes = sharecodes[1:]
     return [{'sharecode': code, 'queue_pos': None} for code in sharecodes]
 
 
@@ -315,7 +326,7 @@ def UpdateCSGOstats(repeater=None, get_all_games=False):
 
     else:
         num = -1
-        write('retryer is none, plz report to suppe', color=FgColor.Red)
+        write('retryer is none, plz report to Suppe', color=FgColor.Red)
         sharecode = getOldSharecodes(num)[0]
         while True:
             response = requests.post('https://csgostats.gg/match/upload/ajax', data={'sharecode': sharecode, 'index': 0})
@@ -450,6 +461,7 @@ afk_dict = {'time': time.time(), 'still_afk': [], 'start_time': time.time(), 'se
 join_dict = {'t_full': False, 'ct_full': False}
 scoreboard = {'CT': 0, 'T': 0, 'last_round_info': '', 'last_round_key': '0', 'extra_round_info': '', 'player': {}}
 damage = []
+csv_header = ['sharecode', 'map', 'team_score', 'enemy_score', 'match_time', 'wait_time']
 
 re_pattern = {'damage': [re.compile('(Player: (.+?) - Damage Given\n-------------------------)'),
                          re.compile('(Damage Given to "(.+?)" - \d+ in \d (hit|hits))'),
@@ -467,10 +479,12 @@ getCsgoPath()
 CheckUserDataAutoExec(accounts[current_account]['steam_id_3'])
 
 if error_level:
-    exit('an error occurred')
+    write('an error occurred', color=FgColor.Red)
+    # exit('FIX ERROR')
 
 with open(path_vars['csgo_path'] + 'console_log.log', 'w', encoding='utf-8') as log:
     log.write('')
+os.makedirs(cfg['debug_path'], exist_ok=True)
 with open(cfg['debug_path'] + '\\console.log', 'w', encoding='utf-8') as debug_log:
     debug_log.write('')
 
@@ -489,13 +503,6 @@ toplist, csgo = [], []
 retryer = []
 queue_difference = []
 
-'''
-# WARMUP DETECTION SETUP
-pytesseract.pytesseract.tesseract_cmd = cfg['tesseract_path']
-cfg['stop_warmup_ocr'] = [int(i, 16) for i in cfg['stop_warmup_ocr'].split('-')]
-cfg['stop_warmup_ocr'][1] += 1
-no_text_found = 0
-'''
 # PUSHBULLET VAR
 pushbullet_dict = {'note': '', 'urgency': 0, 'device': 0,
                    'push_info': ('not active', 'only if accepted', 'all game status related information', 'all information (game status/csgostats.gg information)')}
@@ -570,7 +577,7 @@ while True:
     if win32api.GetAsyncKeyState(cfg['end_script']) & 1:  # POS1 (END SCRIPT)
         write('Exiting Script!')
         break
-
+    getAvgMatchTime('76561199014843546')
     if retryer:
         if time.time() - time_table['csgostats_retry'] > cfg['auto_retry_interval']:
             retryer = UpdateCSGOstats(retryer)
@@ -609,7 +616,7 @@ while True:
     if win32api.GetAsyncKeyState(0x00) & 1:  # UNBOUND, 6f == '\' TEST CODE
         truth_table['testing'] = not truth_table['testing']
         # truth_table['test_for_warmup'] = True
-        write('TestCode active: %s.' % str(truth_table['testing']), add_time=False, overwrite='testcode')
+        write('TestCode active: %s.' % str(truth_table['testing']), add_time=False, overwrite='test_code')
 
     if time.time() - time_table['console_read'] > 0.2:
         time_table['console_read'] = time.time()
@@ -712,13 +719,13 @@ while True:
         lobby_data = [(info, int(num.strip("'\n"))) for info, num in lobby_info]
         for i in lobby_data:
             if i[0] == 'Players':
-                write('{} players joined.'.format(i[1]), add_time=False, overwrite='6')
+                write('{} players joined.'.format(i[1]), add_time=False, overwrite='7')
             if i[0] == 'TSlotsFree' and i[1] == 0:
                 join_dict['t_full'] = True
             if i[0] == 'CTSlotsFree' and i[1] == 0:
                 join_dict['ct_full'] = True
             if join_dict['t_full'] and join_dict['ct_full']:
-                write('Server full, All Players connected. Took {} since match start.'.format(timedelta(time_table['warmup_started'])), overwrite='6')
+                write('Server full, All Players connected. Took {} since match start.'.format(timedelta(time_table['warmup_started'])), overwrite='7')
                 playsound('sounds/minute_warning.wav', block=True)
                 truth_table['players_still_connecting'] = False
                 join_dict['t_full'], join_dict['ct_full'] = False, False
@@ -768,7 +775,8 @@ while True:
                 else:
                     scoreboard['extra_round_info'] = ''
 
-                write('Freeze Time - {} - {:02d}:{:02d}{}{}'.format(scoreboard['last_round_info'], scoreboard[uncolorize(scoreboard['team'])], scoreboard[uncolorize(scoreboard['opposing_team'])], scoreboard['extra_round_info'], scoreboard['c4']), overwrite='7')
+                write('Freeze Time - {} - {:02d}:{:02d}{}{}'.format(scoreboard['last_round_info'], scoreboard[uncolorize(scoreboard['team'])], scoreboard[uncolorize(scoreboard['opposing_team'])], scoreboard['extra_round_info'],
+                                                                    scoreboard['c4']), overwrite='7')
                 if win32gui.GetWindowPlacement(hwnd)[1] == 2:
                     truth_table['is_not_ingame_round_start'] = True
                     playsound('sounds/ready_up.wav', block=True)
@@ -785,11 +793,11 @@ while True:
             truth_table['is_not_ingame_round_start'] = True if win32gui.GetWindowPlacement(hwnd)[1] == 2 else False
 
             if game_state['round_phase'] == 'freezetime':
-                time_str = green(timedelta(then=time_table['freezetime_started']))
+                time_str = green(timedelta(seconds=time.time() - (time_table['freezetime_started'] + 15)))  # timedelta(then=time_table['freezetime_started']) + ' - ' +
             elif time.time() - time_table['freezetime_started'] > 35:
                 time_str = red(timedelta(then=time_table['freezetime_started']))
             else:
-                time_str = yellow(timedelta(then=time_table['freezetime_started']))
+                time_str = yellow(timedelta(seconds=time.time() - (time_table['freezetime_started'] + 35)))  # timedelta(then=time_table['freezetime_started']) + ' - ' +
 
             write('Freeze Time - {last_round} - {team:02d}:{enemy:02d}{extra_info}{c4_info} - {afk_time}'.format(
                 last_round=scoreboard['last_round_info'],
@@ -849,7 +857,7 @@ while True:
 
         if truth_table['game_over'] and truth_table['first_game_over']:
             team = str(gsi_server.get_info('player', 'team')), 'CT' if gsi_server.get_info('player', 'team') == 'T' else 'T'
-            score = {'CT': gsi_server.get_info('map', 'team_ct')['score'], 'T': gsi_server.get_info('map', 'team_t')['score']}
+            score = {'CT': gsi_server.get_info('map', 'team_ct')['score'], 'T': gsi_server.get_info('map', 'team_t')['score'], 'map': gsi_server.get_info('map', 'name').split('_')[1].capitalize()}
             write('The match is over! - {:02d}:{:02d}'.format(score[team[0]], score[team[1]]), color=FgColor.Red)
 
             write('Match duration: {}'.format(timedelta(time_table['match_started'])), add_time=False)
@@ -858,26 +866,28 @@ while True:
 
             if gsi_server.get_info('map', 'mode') == 'competitive' and game_state['map_phase'] == 'gameover' and not truth_table['test_for_warmup'] and not truth_table['still_in_warmup']:
                 if truth_table['monitoring_since_start']:
-                    with open(path_vars['appdata_path'] + 'game_time_' + accounts[current_account]['steam_id'] + '.txt', 'a') as game_time:
-                        game_time.write(str(int(time.time() - time_table['match_started'])) + ', ' + str(int(time_table['match_started'] - time_table['search_started'])) + '\n')
+                    match_time = str(int(time.time() - time_table['match_started']))
+                    search_time = str(int(time_table['match_started'] - time_table['search_started']))
+                else:
+                    match_time, search_time = '', ''
 
                 average_match_time = getAvgMatchTime(accounts[current_account]['steam_id'])
                 this_game_time = (time.time() - time_table['match_started'], time_table['match_accepted'] - time_table['search_started'])
-                game_time_output_strs = (('The match was {} longer than the average match with {}', 'The match was {} shorter than the average match with {}'),
-                                         ('The search-time was {} longer than the average search-time with {}', 'The search-time was {} shorter than the average search-time with {}'),
-                                         'Time in competitive matchmaking: {}', 'Time in the searching queue: {}')
+                game_time_output_strings = (('The match was {} longer than the average match with {}', 'The match was {} shorter than the average match with {}'),
+                                            ('The search-time was {} longer than the average search-time with {}', 'The search-time was {} shorter than the average search-time with {}'),
+                                            'Time in competitive matchmaking: {}', 'Time in the searching queue: {}')
                 for i, val in enumerate(average_match_time):
                     if isinstance(val, int):
                         avg_time_difference = this_game_time[i] - val
                         if avg_time_difference >= 0:
-                            write(game_time_output_strs[i][0].format(timedelta(seconds=avg_time_difference), timedelta(seconds=val)), add_time=False)
+                            write(game_time_output_strings[i][0].format(timedelta(seconds=avg_time_difference), timedelta(seconds=val)), add_time=False)
                         else:
-                            write(game_time_output_strs[i][1].format(timedelta(seconds=avg_time_difference), timedelta(seconds=val)), add_time=False)
+                            write(game_time_output_strings[i][1].format(timedelta(seconds=avg_time_difference), timedelta(seconds=val)), add_time=False)
                     elif isinstance(val, str):
-                        write(game_time_output_strs[i].format(val), add_time=False)
+                        write(game_time_output_strings[i].format(val), add_time=False)
 
                 time.sleep(5)
-                new_sharecodes = getNewCSGOSharecodes(getOldSharecodes(-1)[0])
+                new_sharecodes = getNewCSGOSharecodes(getOldSharecodes(-1)[0], played_map=score['map'], team_score=score[team[0]], enemy_score=score[team[1]], match_time=match_time, wait_time=search_time)
 
                 # HOPEFULLY TEMPORARY CSGOSTATS FIX, HAVE TO ADD GAMES MANUALLY
                 write(new_sharecodes[-1]['sharecode'], color=FgColor.Magenta)
