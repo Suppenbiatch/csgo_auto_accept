@@ -236,9 +236,7 @@ def CheckUserDataAutoExec(steam_id_3: str):
 # noinspection PyShadowingNames
 def getAvgMatchTime(steam_id: str):
     try:
-        with open(path_vars['appdata_path'] + 'last_game_' + steam_id + '.csv', 'r', newline='') as f:
-            global csv_header
-            data = list(csv.DictReader(f, delimiter=';', fieldnames=csv_header, restval=''))[1:]
+        data = get_csv_list(path_vars['appdata_path'] + 'last_game_' + steam_id + '.csv')
     except FileNotFoundError:
         return None
     match_time = [int(i['match_time']) for i in data if i['match_time']]
@@ -252,8 +250,7 @@ def getOldSharecodes(last_x: int = -1, from_x: str = ''):
         return []
     global path_vars, csv_header
     try:
-        with open(path_vars['appdata_path'] + 'last_game_' + accounts[current_account]['steam_id'] + '.csv', 'r', newline='') as last_game:
-            game_dict = list(csv.DictReader(last_game, delimiter=';', fieldnames=csv_header, restval=''))[1:]
+        game_dict = get_csv_list(path_vars['appdata_path'] + 'last_game_' + accounts[current_account]['steam_id'] + '.csv')
     except FileNotFoundError:
         with open(path_vars['appdata_path'] + 'last_game_' + accounts[current_account]['steam_id'] + '.csv', 'w') as last_game:
             writer = csv.DictWriter(last_game, fieldnames=csv_header, delimiter=';', lineterminator='\n')
@@ -288,22 +285,17 @@ def getNewCSGOSharecodes(game_id: str, played_map: str = '', team_score: str = '
                 sharecodes.append(next_code)
                 game_id = next_code
     global csv_header
-    '''if len(sharecodes) == 2:
-        with open(path_vars['appdata_path'] + 'last_game_' + accounts[current_account]['steam_id'] + '.csv', 'a', newline='') as last_game:
-            row_dict = {'sharecode': sharecodes[1], 'map': played_map, 'team_score': str(team_score), 'enemy_score': str(enemy_score), 'match_time': match_time, 'wait_time': wait_time}
-            writer = csv.DictWriter(last_game, fieldnames=csv_header, delimiter=';', lineterminator='\n')
-            writer.writerow(row_dict)
-        sharecodes = sharecodes[1:]
-    el'''
     if len(sharecodes) > 1:
         with open(path_vars['appdata_path'] + 'last_game_' + accounts[current_account]['steam_id'] + '.csv', 'a', newline='') as last_game:
             writer = csv.DictWriter(last_game, fieldnames=csv_header, delimiter=';', lineterminator='\n')
-            for i in sharecodes[1:-1]:
+            for i in sharecodes[1:-1]:  # Add all matches except the newest one without any additional information
                 row_dict = {'sharecode': i, 'map': '', 'team_score': '', 'enemy_score': '', 'match_time': '', 'wait_time': ''}
                 writer.writerow(row_dict)
+
+            # Add the newest match with the given information
             row_dict = {'sharecode': sharecodes[-1], 'map': played_map, 'team_score': team_score, 'enemy_score': enemy_score, 'match_time': match_time, 'wait_time': wait_time}
             writer.writerow(row_dict)
-        sharecodes = sharecodes[1:]
+        del sharecodes[0]  # Strip the old sharecode
     return [{'sharecode': code, 'queue_pos': None} for code in sharecodes]
 
 
@@ -397,6 +389,21 @@ def UpdateCSGOstats(repeater=None, get_all_games=False):
                 write('Failed to load URL in to clipboard', add_time=False)
         write(None, add_time=False, push=pushbullet_dict['urgency'], push_now=True, output=False)
     return repeater
+
+
+def get_csv_list(path):
+    global csv_header
+    with open(path, 'r', newline='') as f:
+        data = list(csv.DictReader(f, fieldnames=csv_header, delimiter=';', restval=''))
+    first_element = tuple(data[0].values())
+    if all([head == first_element[i] for i, head in enumerate(csv_header)]):  # File has a valid header
+        del data[0]  # Remove the header
+    else:
+        with open(path, 'w', newline='') as f:  # rewrite file with header
+            writer = csv.DictWriter(f, fieldnames=csv_header, delimiter=';', lineterminator='\n')
+            writer.writeheader()
+            writer.writerows(data)
+    return data  # Return data without the header
 
 
 # noinspection PyShadowingNames
@@ -855,10 +862,10 @@ while True:
             truth_table['game_over'] = True
 
         if truth_table['game_over'] and truth_table['first_game_over']:
+            time.sleep(2)
             team = str(gsi_server.get_info('player', 'team')), 'CT' if gsi_server.get_info('player', 'team') == 'T' else 'T'
             score = {'CT': gsi_server.get_info('map', 'team_ct')['score'], 'T': gsi_server.get_info('map', 'team_t')['score'], 'map': gsi_server.get_info('map', 'name').split('_')[1].capitalize()}
             write('The match is over! - {:02d}:{:02d}'.format(score[team[0]], score[team[1]]), color=FgColor.Red)
-
             write('Match duration: {}'.format(timedelta(time_table['match_started'])), add_time=False)
             write('Search-time:    {}'.format(timedelta(seconds=time_table['match_accepted'] - time_table['search_started'])), add_time=False)
             write('Time AFK:       {}, {:.1%} of match duration.'.format(timedelta(seconds=afk_dict['seconds_afk']), afk_dict['seconds_afk'] / (time.time() - time_table['match_started'])), add_time=False)
@@ -885,7 +892,6 @@ while True:
                     elif isinstance(val, str):
                         write(game_time_output_strings[i].format(val), add_time=False)
 
-                time.sleep(5)
                 new_sharecodes = getNewCSGOSharecodes(getOldSharecodes(-1)[0], played_map=score['map'], team_score=score[team[0]], enemy_score=score[team[1]], match_time=match_time, wait_time=search_time)
 
                 # HOPEFULLY TEMPORARY CSGOSTATS FIX, HAVE TO ADD GAMES MANUALLY
