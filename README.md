@@ -12,6 +12,9 @@ After that you'll need to make changes to the config_clean.ini.
 To use csgostats.gg you'll need to add one of your "Match Token" which will be "CSGO-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX" without '"'
 The Authentication Code is used to make a request to the Steam API which will return the next sharecode. Authentication Code will be something like "XXXX-XXXX-XXXX"
 Both can be found at https://help.steampowered.com/en/wizard/HelpWithGameIssue/?appid=730&issueid=128
+The Script will throw an errror if the API-Key is not set as it will try to get the Username associated with the Steam ID from the API.
+Also be cause of recent changes to csgostats.gg the automatic match additon isn't working anymore :(
+The script will now print the sharecode and copy it into the clipboard
 - Under "Access to Your Match History"
 	- "Create Authentication Code" or
 	- "Authentication Code:"	
@@ -33,23 +36,12 @@ Both can be found at https://help.steampowered.com/en/wizard/HelpWithGameIssue/?
 
 - The HotKeys section:
 	- KeyCodes from https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes can be used
-	- Stop Warmup OCR in the example is "0x70-0x70" which would be all keys from F1 to F1 (0x70-0x75 would be all keys from F1 to F6)
 	
 - The Screenshot section:
 	- Interval is the Interval a screenshot is taken in seconds
 	- Log Color is the color the damage log is shown in the top right of csgo (Standart here is lime green)
-	- FreezeTime Auto On is whether or not the sound should be played or not when the game is minimized and a freezetime is starting
+		- some output is needed here as the script will set developer 1 in the csgo-config
+		- if no specifed filter is specifed then the console output will be mirrored
+		- con_filter could probably be set to some string so it would never output anything but we dicided the damage log is ok
 	- Debug Path currently stores a mirrored console.log
 	
-- The Warmup section:
-	- Tessract can be found https://github.com/UB-Mannheim/tesseract/wiki
-	- Direct download link here: https://digi.bib.uni-mannheim.de/tesseract/tesseract-ocr-w64-setup-v5.0.0-alpha.20200328.exe
-	- Tesseract Path is the full path to the executable without '"'
-	- Test Interval is the interval in seconds that the script tries to read the text on the screenshot
-	- Push Interval is the time in seconds that needs to be left for the Script to push a message
-	- No Text Limit is the number of retries the Script has before it dosent will no longer retry
-	
-	- Warmup Detection will only be activated if Pushing is not 0.
-		- Pushing 1: Pushing when accpet has been pressed and when Warmup is over
-		- Pushing 2: Pushing all gamerelated messages, and at every Push Interval
-		- Pushing 3: Pushing all gamerelated messages, as well as csgostats.gg completed matches
