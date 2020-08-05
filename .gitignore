@@ -2,6 +2,7 @@
 /venv/
 /.idea/
 /__pycache__/
+/convert_sharecodes/
 basics.py
 test.py
 config.ini

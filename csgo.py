@@ -763,6 +763,7 @@ while True:
         if truth_table['first_freezetime']:
             if game_state['map_phase'] == 'live' and game_state['round_phase'] == 'freezetime':
                 truth_table['first_game_over'], truth_table['game_over'] = True, False
+                truth_table['disconnected_form_last'] = False
                 truth_table['first_freezetime'] = False
                 time_table['freezetime_started'] = time.time()
                 scoreboard['CT'] = gsi_server.get_info('map', 'team_ct')['score']
@@ -796,7 +797,7 @@ while True:
                 if win32gui.GetWindowPlacement(hwnd)[1] == 2:
                     truth_table['is_not_ingame_round_start'] = True
                     playsound('sounds/ready_up.wav', block=True)
-                if 'Last round' in uncolorize(scoreboard['extra_round_info']):
+                if 'Half-Time' in uncolorize(scoreboard['extra_round_info']):
                     playsound('sounds/ding.wav', block=True)
 
         elif game_state['map_phase'] == 'live' and game_state['round_phase'] != 'freezetime':
@@ -914,11 +915,11 @@ while True:
                     elif isinstance(val, str):
                         write(game_time_output_strings[i].format(val), add_time=False)
 
-                new_sharecodes = getNewCSGOSharecodes(getOldSharecodes(-1)[0], 
-                                                      played_map=score['map'], 
-                                                      team_score=score[team[0]], 
-                                                      enemy_score=score[team[1]], 
-                                                      match_time=match_time, 
+                new_sharecodes = getNewCSGOSharecodes(getOldSharecodes(-1)[0],
+                                                      played_map=score['map'],
+                                                      team_score=score[team[0]],
+                                                      enemy_score=score[team[1]],
+                                                      match_time=match_time,
                                                       wait_time=search_time,
                                                       afk_time=afk_time)
 
@@ -967,7 +968,7 @@ while True:
                     # write('Warmup detected', overwrite='12')
                     if gsi_server.get_info('player', 'team') is not None:
                         team = red(gsi_server.get_info('player', 'team')) if gsi_server.get_info('player', 'team') == 'T' else cyan(gsi_server.get_info('player', 'team'))
-                        write('You will  on {map} as {team} in the first half.'.format(team=team, map=green(saved_map.split('_')[1].capitalize())), add_time=True, overwrite='12')
+                        write('You will play on {map} as {team} in the first half.'.format(team=team, map=green(saved_map.split('_')[1].capitalize())), add_time=True, overwrite='12')
                         truth_table['still_in_warmup'] = True
                         truth_table['players_still_connecting'] = True
                         time_table['warmup_started'] = time.time()
