@@ -12,6 +12,7 @@ import winreg
 from shutil import copyfile
 from typing import List
 
+import cloudscraper
 import pushbullet
 import pyperclip
 import requests
@@ -19,7 +20,7 @@ import win32api
 import win32con
 import win32gui
 from PIL import ImageGrab, Image
-from color import *
+from color import colorize, uncolorize, FgColor, red, green, yellow, blue, magenta, cyan
 from playsound import playsound
 
 from GSI import server
@@ -278,13 +279,13 @@ def getNewCSGOSharecodes(game_id: str, played_map: str = '', team_score: str = '
         try:
             next_code = (requests.get(steam_url, timeout=2).json()['result']['nextcode'])
         except (KeyError, requests.exceptions.ConnectionError, requests.exceptions.Timeout, json.decoder.JSONDecodeError):
-            write('WRONG Match Token, Authentication Code or Steam ID!')
+            write('CONNECTION ERROR TO THE STEAM API!', color=FgColor.Red)
             break
 
-        if next_code:
-            if next_code != 'n/a':
-                sharecodes.append(next_code)
-                game_id = next_code
+        if next_code != 'n/a':
+            sharecodes.append(next_code)
+            game_id = next_code
+
     global csv_header
     if len(sharecodes) > 1:
         with open(path_vars['appdata_path'] + 'last_game_' + accounts[current_account]['steam_id'] + '.csv', 'a', newline='') as last_game:
@@ -297,47 +298,20 @@ def getNewCSGOSharecodes(game_id: str, played_map: str = '', team_score: str = '
             row_dict = {'sharecode': sharecodes[-1], 'map': played_map, 'team_score': team_score, 'enemy_score': enemy_score, 'match_time': match_time, 'wait_time': wait_time, 'afk_time': afk_time}
             writer.writerow(row_dict)
         del sharecodes[0]  # Strip the old sharecode
-    return [{'sharecode': code, 'queue_pos': None} for code in sharecodes if code]
+    return [{'sharecode': code, 'queue_pos': None} for code in sharecodes]
 
 
 # noinspection PyShadowingNames
-def UpdateCSGOstats(repeater=None, get_all_games=False):
-    all_games, completed_games, not_completed_games, = [], [], []
-    global queue_difference, time_table
-    if repeater is None:
-        repeater = []
+def UpdateCSGOstats(new_codes, auto_call: bool = True):
+    global queue_difference, time_table, scraper, cfg
 
-    if repeater:
-        if get_all_games:
-            sharecodes = [getOldSharecodes(from_x=code['sharecode']) for code in repeater]
-            sharecodes = max(sharecodes, key=len)
-        else:
-            sharecodes = [code['sharecode'] for code in repeater]
-
-        responses = [requests.post('https://csgostats.gg/match/upload/ajax', data={'sharecode': sharecode, 'index': 0}) for sharecode in sharecodes]
-        all_games = [r.json() for r in responses if r.status_code == requests.codes.ok]
-
-    else:
-        num = -1
-        write('retryer is none, plz report to Suppe', color=FgColor.Red)
-        sharecode = getOldSharecodes(num)[0]
-        while True:
-            response = requests.post('https://csgostats.gg/match/upload/ajax', data={'sharecode': sharecode, 'index': 0})
-            try:
-                all_games.append(response.json())
-            except json.JSONDecodeError:
-                return [{'sharecode': sharecode, 'queue_pos': None}]
-            if response.json()['status'] != 'complete':
-                num -= 1
-                try:
-                    sharecode = getOldSharecodes(num)[num]
-                except IndexError:
-                    break
-            else:
-                break
-        temp_games = any({'sharecode': game['data']['sharecode']} for game in all_games if game['status'] != 'complete')
-        if temp_games and len(all_games) > 1:
-            all_games = all_games[:-1]
+    sharecodes = [code['sharecode'] for code in new_codes]
+    responses = [scraper.post('https://csgostats.gg/match/upload/ajax', data={'sharecode': sharecode, 'index': 0}) for sharecode in sharecodes]
+    all_games = [r.json() for r in responses if r.status_code == requests.codes.ok]
+    riped_games = [r.status_code for r in responses if r.status_code != requests.codes.ok]
+    if riped_games:
+        write(str(len(sharecodes)) + '   ' + str(riped_games))
+    completed_games, not_completed_games, = [], []
 
     for game in all_games:
         if game['status'] == 'complete':
@@ -350,46 +324,48 @@ def UpdateCSGOstats(repeater=None, get_all_games=False):
 
     if queued_games:
         temp_string = ''
-        for i, val in enumerate(queued_games):
-            temp_string += '#' + str(i + 1) + ': in Queue #' + str(val['queue_pos']) + ' - '
+        for i, val in enumerate(queued_games, start=1):
+            temp_string += '#' + str(i) + ': in Queue #' + str(val['queue_pos']) + ' - '
 
-        if repeater:
-            current_queue_difference = Avg([last_game['queue_pos'] - game['queue_pos'] for game in queued_games for last_game in repeater if last_game['sharecode'] == game['sharecode'] and last_game['queue_pos'] is not None])
-            if current_queue_difference:
-                if current_queue_difference >= 0.0:
-                    queue_difference.append(current_queue_difference / ((time.time() - time_table['csgostats_retry']) / 60))
-                    queue_difference = queue_difference[-10:]
-                    matches_per_min = round(Avg(queue_difference), 1)
-                    if matches_per_min != 0.0:
-                        time_till_done = timedelta(seconds=(queued_games[0]['queue_pos'] / matches_per_min) * 60)
-                    else:
-                        time_till_done = '∞:∞:∞'
-                    temp_string += str(matches_per_min) + ' matches/min - #1 done in ' + time_till_done
+        current_queue_difference = Avg([last_game['queue_pos'] - game['queue_pos'] for game in queued_games for last_game in new_codes if last_game['sharecode'] == game['sharecode'] and last_game['queue_pos'] is not None])
+        if current_queue_difference is not None:
+            if current_queue_difference >= 0.0:
+                queue_difference.append(current_queue_difference / ((time.time() - time_table['csgostats_retry']) / 60))
+                queue_difference = queue_difference[-10:]
+                matches_per_min = round(Avg(queue_difference), 1)
+                if matches_per_min != 0.0:
+                    time_till_done = timedelta(seconds=(queued_games[0]['queue_pos'] / matches_per_min) * 60)
+                else:
+                    time_till_done = '∞:∞:∞'
+                temp_string += str(matches_per_min) + ' matches/min - #1 done in ' + time_till_done
         temp_string = temp_string.rstrip(' - ')
         write(temp_string, add_time=False, overwrite='4')
 
     time_table['csgostats_retry'] = time.time()
-    repeater = [game for game in queued_games if game['queue_pos'] < cfg['max_queue_position']]
-    repeater.extend([game for game in corrupt_games])
+    new_codes = [game for game in queued_games if game['queue_pos'] < cfg['max_queue_position']]
+    new_codes.extend([game for game in corrupt_games])
 
     if corrupt_games:
-        write('An error occurred in {} game[s].'.format(len(corrupt_games)), overwrite='5')
+        corrupt_games_string = 'An error occurred in one game' if len(corrupt_games) == 1 else 'An error occurred in {} games'.format(len(corrupt_games))
+        write(corrupt_games_string, overwrite='5')
 
     if completed_games:
-        global pushbullet_dict
-        for i in completed_games:
-            sharecode = i['data']['sharecode']
-            game_url = i['data']['url']
-            info = ' '.join(i['data']['msg'].replace('-', '').replace('<br />', '. ').split('<')[0].rstrip(' ').split())
-            write('Sharecode: {}'.format(sharecode), add_time=False, push=pushbullet_dict['urgency'])
-            write('URL: {}'.format(game_url), add_time=False, push=pushbullet_dict['urgency'])
-            write('Status: {}'.format(info), add_time=True, push=pushbullet_dict['urgency'])
+        global pushbullet_dict, accounts, current_account, discord_output
+        for i, responses in enumerate(completed_games):
+            game_url = responses['data']['url']
+            sharecode = responses['data']['sharecode']
+            match_id = game_url.rpartition('/')[2]
+
+            write('URL: {}'.format(game_url), add_time=True, push=pushbullet_dict['urgency'], color=FgColor.Green)
+            discord_string = add_match_id(sharecode, match_id, path_vars['appdata_path'] + 'last_game_' + accounts[current_account]['steam_id'] + '.csv', highlighting='prolog')
+            if discord_output:
+                send_discord_msg(discord_string, cfg['discord_url'], 'Auto Acceptor - {user}'.format(user=accounts[current_account]['name']))
             try:
                 pyperclip.copy(game_url)
             except (pyperclip.PyperclipWindowsException, pyperclip.PyperclipTimeoutException):
                 write('Failed to load URL in to clipboard', add_time=False)
         write(None, add_time=False, push=pushbullet_dict['urgency'], push_now=True, output=False)
-    return repeater
+    return new_codes
 
 
 def get_csv_list(path):
@@ -431,12 +407,12 @@ def read_console():
         console_lines = [i.strip('\n') for i in log.readlines()]
         log.seek(0)
         log.truncate()
-    with open(cfg['debug_path'] + '\\console.log', 'a', encoding='utf-8') as debug_log:
+    with open(path_vars['appdata_path'] + '\\console.log', 'a', encoding='utf-8') as debug_log:
         [debug_log.write(i + '\n') for i in console_lines]
     return {'msg': str_in_list(['Matchmaking message: '], console_lines, replace=True), 'update': str_in_list(['Matchmaking update: '], console_lines, replace=True),
             'players_accepted': str_in_list(['Server reservation2 is awaiting '], console_lines, replace=True), 'lobby_data': str_in_list(["LobbySetData: "], console_lines, replace=True),
             'server_found': str_in_list(['Matchmaking reservation confirmed: '], console_lines), 'server_ready': str_in_list(['ready-up!'], console_lines),
-            'server_abandon': str_in_list(['Closing Steam Net Connection to ='], console_lines, replace=True), 'map': str_in_list(['Map: '], console_lines, replace=True)}
+            'server_abandon': str_in_list(['Closing Steam Net Connection to =', 'Kicked by Console'], console_lines, replace=True), 'map': str_in_list(['Map: '], console_lines, replace=True)}
 
 
 def restart_gsi_server():
@@ -445,6 +421,58 @@ def restart_gsi_server():
         gsi_server.shutdown()
     gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
     gsi_server.start_server()
+
+
+def send_discord_msg(content: str, webhook_url: str, username: str = 'Auto Acceptor'):
+    discord_data = {'username': username, 'content': content}
+    r = requests.post(webhook_url, data=json.dumps(discord_data), headers={"Content-Type": "application/json"})
+    remaining_requests = int(r.headers['x-ratelimit-remaining'])
+    if remaining_requests == 0:
+        ratelimit_wait = abs(int(r.headers['x-ratelimit-reset']) - time.time() + 0.2)
+        time.sleep(ratelimit_wait)
+
+
+def find_dict(lst: list, key: str, value):
+    for i, dic in enumerate(lst):
+        if dic[key] == value:
+            return i
+    return None
+
+
+# noinspection PyShadowingNames
+def generate_table(game_info, highlighting: str = 'hs'):
+    discord_string = '''```{type}\n╔══════════════════════════╗
+║{map_name}║\n╠════════════════╦════╦════╣
+║ Score          ║ {t_score:02d} ║ {e_score:02d} ║\n╠════════════════╬════╩════╣
+║ Match Duration ║ {match_time} ║\n╠════════════════╬═════════╣
+║ Search Time    ║ {search_time} ║\n╠════════════════╬═════════╣
+║ AFK Time       ║ {afk_time} ║\n╚════════════════╩═════════╝```[Match URL]({url})'''
+    map_name = game_info['map'] if game_info['map'] else 'None'
+    team_score = int(game_info['team_score']) if game_info['team_score'] else 0
+    enemy_score = int(game_info['enemy_score']) if game_info['enemy_score'] else 0
+    match_time = game_info['match_time'] if game_info['match_time'] else '0'
+    search_time = game_info['wait_time'] if game_info['wait_time'] else '0'
+    afk_time = game_info['afk_time'] if game_info['afk_time'] else '0'
+    match_time = timedelta(seconds=match_time)
+    search_time = timedelta(seconds=search_time)
+    afk_time = timedelta(seconds=afk_time)
+    url = 'https://csgostats.gg/match/' + game_info['match_id']
+    column_length = 26
+    start_at = (int(column_length / 2) - int(len(map_name) / 2)) - 1
+    map_name = ' ' * start_at + map_name + ' ' * (column_length - (start_at + len(map_name)))
+    return discord_string.format(map_name=map_name, t_score=team_score, e_score=enemy_score, match_time=match_time, search_time=search_time, afk_time=afk_time, url=url, type=highlighting)
+
+
+def add_match_id(sharecode: str, match_id: str, csv_path, highlighting: str = 'hs'):
+    data = get_csv_list(csv_path)
+    match_index = find_dict(data, 'sharecode', sharecode)
+    data[match_index]['match_id'] = match_id
+    global csv_header
+    with open(csv_path, 'w', newline='') as last_game:
+        writer = csv.DictWriter(last_game, fieldnames=csv_header, delimiter=';', lineterminator='\n')
+        writer.writeheader()
+        writer.writerows(data)
+    return generate_table(data[match_index], highlighting)
 
 
 error_level = 0
@@ -469,11 +497,11 @@ try:
     cfg = {'activate_script': int(config.get('HotKeys', 'Activate Script'), 16), 'activate_push_notification': int(config.get('HotKeys', 'Activate Push Notification'), 16),
            'info_newest_match': int(config.get('HotKeys', 'Get Info on newest Match'), 16), 'mute_csgo_toggle': int(config.get('HotKeys', 'Mute CSGO'), 16),
            'open_live_tab': int(config.get('HotKeys', 'Live Tab Key'), 16), 'switch_accounts': int(config.get('HotKeys', 'Switch accounts for csgostats.gg'), 16),
-           'end_script': int(config.get('HotKeys', 'End Script'), 16),
-           'screenshot_interval': float(config.get('Screenshot', 'Interval')), 'debug_path': config.get('Screenshot', 'Debug Path'), 'steam_api_key': config.get('csgostats.gg', 'API Key'),
+           'end_script': int(config.get('HotKeys', 'End Script'), 16), 'discord_key': int(config.get('HotKeys', 'Discord Toggle'), 16),
+           'screenshot_interval': float(config.get('Screenshot', 'Interval')), 'steam_api_key': config.get('csgostats.gg', 'API Key'),
            'max_queue_position': config.getint('csgostats.gg', 'Auto-Retrying for queue position below'), 'log_color': config.get('Screenshot', 'Log Color').lower(),
            'auto_retry_interval': config.getint('csgostats.gg', 'Auto-Retrying-Interval'), 'pushbullet_device_name': config.get('Pushbullet', 'Device Name'), 'pushbullet_api_key': config.get('Pushbullet', 'API Key'),
-           'forbidden_programs': config.get('Screenshot', 'Forbidden Programs')}
+           'forbidden_programs': config.get('Screenshot', 'Forbidden Programs'), 'discord_url': config.get('csgostats.gg', 'Discord Webhook URL')}
 except (configparser.NoOptionError, configparser.NoSectionError, ValueError):
     write('ERROR IN CONFIG')
     cfg = {'ERROR': None}
@@ -489,14 +517,9 @@ matchmaking = {'msg': [], 'update': [], 'players_accepted': [], 'lobby_data': []
 afk_dict = {'time': time.time(), 'still_afk': [], 'start_time': time.time(), 'seconds_afk': 0, 'player_info': {'steamid': 0, 'state': {}}}
 join_dict = {'t_full': False, 'ct_full': False}
 scoreboard = {'CT': 0, 'T': 0, 'last_round_info': '', 'last_round_key': '0', 'extra_round_info': '', 'player': {}}
-damage = []
-csv_header = ['sharecode', 'map', 'team_score', 'enemy_score', 'match_time', 'wait_time', 'afk_time']
+csv_header = ['sharecode', 'map', 'team_score', 'enemy_score', 'match_time', 'wait_time', 'afk_time', 'match_id']
 
-re_pattern = {'damage': [re.compile('(Player: (.+?) - Damage Given\n-------------------------)'),
-                         re.compile('(Damage Given to "(.+?)" - \d+ in \d (hit|hits))'),
-                         re.compile('(Player: (.+?) - Damage Taken\n-------------------------)'),
-                         re.compile('(Damage Taken from "(.+?)" - \d+ in \d (hit|hits))]}')],
-              'lobby_info': re.compile("(?<!Machines' = '\d''members:num)(C?TSlotsFree|Players)(?:' = ')(\d+'?)"),
+re_pattern = {'lobby_info': re.compile("(?<!Machines' = '\d''members:num)(C?TSlotsFree|Players)(?:' = ')(\d+'?)"),
               'steam_path': re.compile('\\t"\d*"\\t\\t"'),
               'decolor': re.compile('\033\[[0-9;]+m')}
 
@@ -504,7 +527,7 @@ re_pattern = {'damage': [re.compile('(Player: (.+?) - Damage Given\n------------
 accounts, current_account = [], 0
 getAccountsFromCfg()
 getCsgoPath()
-CheckUserDataAutoExec(accounts[current_account]['steam_id_3'])
+# CheckUserDataAutoExec(accounts[current_account]['steam_id_3'])
 
 if error_level:
     write('an error occurred', color=FgColor.Red)
@@ -512,13 +535,13 @@ if error_level:
 
 with open(path_vars['csgo_path'] + 'console_log.log', 'w', encoding='utf-8') as log:
     log.write('')
-os.makedirs(cfg['debug_path'], exist_ok=True)
-with open(cfg['debug_path'] + '\\console.log', 'w', encoding='utf-8') as debug_log:
+with open(path_vars['appdata_path'] + '\\console.log', 'w', encoding='utf-8') as debug_log:
     debug_log.write('')
 
 if not os.path.exists(path_vars['csgo_path'] + 'cfg\\gamestate_integration_GSI.cfg'):
     copyfile(os.path.join(os.getcwd(), 'GSI') + '\\gamestate_integration_GSI.cfg', path_vars['csgo_path'] + 'cfg\\gamestate_integration_GSI.cfg')
     write('Added GSI CONFIG to cfg folder. Counter-Strike needs to be restarted if running!')
+
 gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
 # INITIALIZATION FOR getScreenShot
 screen_size = (win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1))
@@ -529,6 +552,9 @@ toplist, csgo = [], []
 # csgostats.gg VAR
 retryer = []
 queue_difference = []
+discord_output = False
+scraper = cloudscraper.create_scraper()
+
 
 game_state = {'map_phase': []}
 
@@ -537,8 +563,9 @@ pushbullet_dict = {'note': '', 'urgency': 0, 'device': 0,
                    'push_info': ('not active', 'only if accepted', 'all game status related information', 'all information (game status/csgostats.gg information)')}
 
 mute_csgo(0)
-
+blue(), magenta()
 write('READY', color=FgColor.Green)
+
 while True:
     if win32api.GetAsyncKeyState(cfg['activate_script']) & 1 and not game_state['map_phase'] in ['live', 'warmup']:  # F9 (ACTIVATE / DEACTIVATE SCRIPT)
         truth_table['test_for_server'] = not truth_table['test_for_server']
@@ -556,7 +583,7 @@ while True:
             try:
                 pushbullet_dict['device'] = pushbullet.PushBullet(cfg['pushbullet_api_key']).get_device(cfg['pushbullet_device_name'])
             except (pushbullet.errors.PushbulletError, pushbullet.errors.InvalidKeyError):
-                write('Pushbullet is wrongly configured.\nWrong API Key or DeviceName in config.ini\n Restart Script if changes to config.ini were made.')
+                write('Pushbullet is wrongly configured.\nWrong API Key or DeviceName in config.ini\nRestart Script if changes to config.ini were made.')
         if pushbullet_dict['device']:
             pushbullet_dict['urgency'] += 1
             if pushbullet_dict['urgency'] > len(pushbullet_dict['push_info']) - 1:
@@ -568,19 +595,19 @@ while True:
         queue_difference = []
         new_sharecodes = getNewCSGOSharecodes(getOldSharecodes(-1)[0])
 
-        # HOPEFULLY TEMPORARY CSGOSTATS FIX, HAVE TO ADD GAMES MANUALLY
+        '''# HOPEFULLY TEMPORARY CSGOSTATS FIX, HAVE TO ADD GAMES MANUALLY
         write(new_sharecodes[-1]['sharecode'], color=FgColor.Magenta)
         try:
             pyperclip.copy(new_sharecodes[-1]['sharecode'])
         except (pyperclip.PyperclipWindowsException, pyperclip.PyperclipTimeoutException):
             pass
-        # DONE HERE
+        # DONE HERE'''
 
         for new_code in new_sharecodes:
             retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
-        retryer = UpdateCSGOstats(retryer, get_all_games=True)
+        retryer = UpdateCSGOstats(retryer, auto_call=False)
 
-    if win32api.GetAsyncKeyState(cfg['open_live_tab']) & 1:  # F13 Key (OPEN WEB BROWSER ON LIVE GAME TAB)
+    if win32api.GetAsyncKeyState(cfg['open_live_tab']) & 1:  # F17 Key (OPEN WEB BROWSER ON LIVE GAME TAB)
         if hwnd:
             csgo_window_status['new_tab'] = win32gui.GetWindowPlacement(hwnd)[1]
         if csgo_window_status['new_tab'] != 2:
@@ -591,7 +618,7 @@ while True:
             time.sleep(0.5)
             win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
 
-    if win32api.GetAsyncKeyState(cfg['switch_accounts']) & 1:  # F15 (SWITCH ACCOUNTS)
+    if win32api.GetAsyncKeyState(cfg['switch_accounts']) & 1:  # F16 (SWITCH ACCOUNTS)
         current_account += 1
         if current_account > len(accounts) - 1:
             current_account = 0
@@ -602,12 +629,24 @@ while True:
         write('Mute toggled!', add_time=False)
         mute_csgo(2)
 
-    if win32api.GetAsyncKeyState(cfg['end_script']) & 1:  # POS1 (END SCRIPT)
+    if win32api.GetAsyncKeyState(cfg['end_script']) & 1:  # UNBOUND (END SCRIPT)
         write('Exiting Script!')
         break
+
+    if win32api.GetAsyncKeyState(cfg['discord_key']) & 1:  # F15 (DISCORD TOGGLE)
+        if cfg['discord_url']:
+            discord_output = not discord_output
+            if discord_output:
+                write('Discord output activated', add_time=False, color=FgColor.Green, overwrite='13')
+            else:
+                write('Discord output deactivated', add_time=False, color=FgColor.Red, overwrite='13')
+        else:
+            write('Discord Webhook URL not set in config', color=FgColor.Yellow)
+
     if retryer:
         if time.time() - time_table['csgostats_retry'] > cfg['auto_retry_interval']:
             retryer = UpdateCSGOstats(retryer)
+
     winlist = []
     win32gui.EnumWindows(enum_cb, toplist)
     csgo = [(hwnd, title) for hwnd, title in winlist if 'counter-strike: global offensive' == title.lower()]
@@ -697,7 +736,7 @@ while True:
 
     if truth_table['test_for_accept_button'] or truth_table['test_for_success']:
         if str_in_list(['Match confirmed'], matchmaking['msg']):
-            write('All Players accepted - Match has started - Took {} since start'.format(timedelta(time_table['search_started'])), add_time=False, push=pushbullet_dict['urgency'] + 2, overwrite='11', color=FgColor.Green)
+            write('All Players accepted - Match has started - Took {} since start'.format(timedelta(time_table['search_started'])), add_time=False, overwrite='11', color=FgColor.Green)
             # write('Took {} since trying to find a match.'.format(timedelta(time_table['search_started'])), add_time=False, push=pushbullet_dict['urgency'] + 1)
             # write('Match has started.', push=pushbullet_dict['urgency'] + 2, push_now=True, color=FgColor.Green)
             truth_table['test_for_warmup'] = True
@@ -740,21 +779,19 @@ while True:
             if i[0] == 'CTSlotsFree' and i[1] == 0:
                 join_dict['ct_full'] = True
             if join_dict['t_full'] and join_dict['ct_full']:
-                write('Server full, All Players connected. Took {} since match start.'.format(timedelta(time_table['warmup_started'])), overwrite='7')
+                write('Server full, All Players connected. Took {} since match start.'.format(timedelta(time_table['warmup_started'])), push=pushbullet_dict['urgency'] + 2, push_now=True, overwrite='7')
                 playsound('sounds/minute_warning.wav', block=True)
                 truth_table['players_still_connecting'] = False
                 join_dict['t_full'], join_dict['ct_full'] = False, False
                 break
 
-    try:
-        if 'Disconnect' in matchmaking['server_abandon'][-1]:
-            # time_table['match_started'], time_table['match_accepted'] = time.time(), time.time()
+    if any(True for i in matchmaking['server_abandon'] if 'Disconnect' in i):
+        # time_table['match_started'], time_table['match_accepted'] = time.time(), time.time()
+        if not truth_table['game_over']:
             write('Server disconnected', overwrite='1')
-            restart_gsi_server()
-            truth_table['disconnected_form_last'] = True
-            afk_dict['time'] = time.time()
-    except IndexError:
-        pass
+        restart_gsi_server()
+        truth_table['disconnected_form_last'] = True
+        afk_dict['time'] = time.time()
 
     if time.time() - time_table['timed_execution_time'] > .5:
         time_table['timed_execution_time'] = time.time()
@@ -849,6 +886,7 @@ while True:
                 if win32gui.GetWindowPlacement(hwnd)[1] == 2:
                     playsound('sounds/ready_up_warmup.wav', block=False)
             if game_state['map_phase'] is None:
+                truth_table['still_in_warmup'] = False
                 playsound('sounds/fail.wav', block=True)
                 write('Match did not start', overwrite='1', color=FgColor.Red)
         if game_state['map_phase'] in ['live', 'warmup'] and not truth_table['game_over'] and not truth_table['disconnected_form_last']:
@@ -923,18 +961,18 @@ while True:
                                                       wait_time=search_time,
                                                       afk_time=afk_time)
 
-                # HOPEFULLY TEMPORARY CSGOSTATS FIX, HAVE TO ADD GAMES MANUALLY
+                '''# HOPEFULLY TEMPORARY CSGOSTATS FIX, HAVE TO ADD GAMES MANUALLY
                 [write(i['sharecode'], add_time=False, color=FgColor.Magenta) for i in new_sharecodes]
                 try:
                     pyperclip.copy(new_sharecodes[-1]['sharecode'])
                 except (pyperclip.PyperclipWindowsException, pyperclip.PyperclipTimeoutException):
                     pass
-                # DONE HERE
+                # DONE HERE'''
 
                 try:
                     for new_code in new_sharecodes:
                         retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
-                    retryer = UpdateCSGOstats(retryer, get_all_games=True)
+                    retryer = UpdateCSGOstats(retryer)
                 except TypeError:
                     write('ERROR IN GETTING NEW MATCH CODE! TRY PRESSING "F7" to add it manually')
 
@@ -968,7 +1006,7 @@ while True:
                     # write('Warmup detected', overwrite='12')
                     if gsi_server.get_info('player', 'team') is not None:
                         team = red(gsi_server.get_info('player', 'team')) if gsi_server.get_info('player', 'team') == 'T' else cyan(gsi_server.get_info('player', 'team'))
-                        write('You will play on {map} as {team} in the first half.'.format(team=team, map=green(saved_map.split('_')[1].capitalize())), add_time=True, overwrite='12')
+                        write('You will play on {map} as {team} in the first half.'.format(team=team, map=green(saved_map.split('_')[1].capitalize())), add_time=True, push=pushbullet_dict['urgency'] + 2, push_now=True, overwrite='12')
                         truth_table['still_in_warmup'] = True
                         truth_table['players_still_connecting'] = True
                         time_table['warmup_started'] = time.time()
