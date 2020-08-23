@@ -186,12 +186,12 @@ def getAccountsFromCfg():
         for num, val in enumerate(accounts):
             val['name'] = 'Unknown Name ' + str(num)
 
-    two_part_colors = ['ff{:02x}00', 'ff00{:02x}', '{:02x}ff00', '00ff{:02x}', '{:02x}00ff', '00{:02x}ff']
+    two_part_colors = ['00{:02x}ff', '00ff{:02x}', '{:02x}00ff', '{:02x}00ff', 'ff00{:02x}', 'ff{:02x}00']
     numbers = list(set([int(pattern.format(i), 16) for i in range(256) for pattern in two_part_colors]))
 
     for account in accounts:
-        random.seed(account['name'], version=2)
-        account['color'] = numbers[random.randint(0, 1530)]
+        random.seed(f'{account["name"]}_{account["steam_id"]}', version=2)
+        account['color'] = numbers[random.randint(0, len(numbers))]
 
 
 # noinspection PyShadowingNames
@@ -1053,6 +1053,13 @@ while True:
                         break
                 elif saved_map:
                     write(f'You will play on {green(saved_map.split("_")[1].capitalize())}', overwrite='12')
+                    game_mode = gsi_server.get_info('map', 'mode')
+                    if game_mode not in ['competitive', 'wingman', None]:
+                        write(f'{game_mode} is not supported', color=FgColor.Yellow, overwrite='1')
+                        truth_table['test_for_warmup'] = False
+                        truth_table['first_game_over'] = False
+                        break
+
 
 if console_window['isatty']:
     if overwrite_dict['end'] != '\n':
