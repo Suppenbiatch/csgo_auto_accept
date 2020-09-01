@@ -172,9 +172,11 @@ def getAccountsFromCfg():
         profiles = requests.get('http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=' + cfg['steam_api_key'] + '&steamids=' + steam_ids)
         if profiles.status_code == requests.status_codes.codes.ok:
             profiles = profiles.json()['response']['players']
-            name_list = [online_data['personaname'] for local_acc in accounts for online_data in profiles if online_data['steamid'] == local_acc['steam_id']]
+            name_list = [(online_data['personaname'], online_data['avatarhash']) for local_acc in accounts for online_data in profiles if online_data['steamid'] == local_acc['steam_id']]
+
             for num, val in enumerate(accounts):
-                val['name'] = name_list[num]
+                val['name'] = name_list[num][0]
+                val['avatar_hash'] = name_list[num][1]
         else:
             truth_table['steam_error'] = True
     except TimeoutError:
@@ -185,12 +187,17 @@ def getAccountsFromCfg():
         truth_table['steam_error'] = False
         for num, val in enumerate(accounts):
             val['name'] = 'Unknown Name ' + str(num)
+            val['avatar_hash'] = 'Unknown Avatar ' + str(num)
 
-    two_part_colors = ['00{:02x}ff', '00ff{:02x}', '{:02x}00ff', '{:02x}00ff', 'ff00{:02x}', 'ff{:02x}00']
-    numbers = list(set([int(pattern.format(i), 16) for i in range(256) for pattern in two_part_colors]))
+    colors_1 = ['00{:02x}ff', '00ff{:02x}', '{:02x}00ff', '{:02x}00ff', 'ff00{:02x}', 'ff{:02x}00']
+    colors_2 = ['{:02x}ffff', 'ff{:02x}ff', 'ffff{:02x}']
+    two_part_numbers = list(dict.fromkeys(int(pattern.format(i), 16) for pattern in colors_1 for i in range(256)))
+    single_part_numbers = list(dict.fromkeys(int(pattern.format(i), 16) for pattern in colors_2 for i in range(177)))
+    numbers = list(dict.fromkeys(two_part_numbers + single_part_numbers))
 
     for account in accounts:
-        random.seed(f'{account["name"]}_{account["steam_id"]}', version=2)
+        random.seed(f'{account["name"]}_{account["steam_id"]}_{account["avatar_hash"]}', version=2)
+        # random.seed(f'{account["name"]}_{account["steam_id"]}', version=2) #  Should the avatar influence discord color?
         account['color'] = numbers[random.randint(0, len(numbers))]
 
 
@@ -376,8 +383,7 @@ def UpdateCSGOstats(new_codes: List[dict]):
             match_id = game_url.rpartition('/')[2]
 
             write(f'URL: {game_url}', add_time=True, push=pushbullet_dict['urgency'], color=FgColor.Green)
-            discord_obj = add_match_id(sharecode, match_id, path_vars['appdata_path'] + 'last_game_' + accounts[current_account]['steam_id'] + '.csv')
-            discord_obj['embeds'][0]['title'] = discord_obj['embeds'][0]['title'].format(name=accounts[current_account]["name"])
+            discord_obj = add_match_id(sharecode, match_id=match_id)
             if truth_table['discord_output']:
                 send_discord_msg(discord_obj, cfg['discord_url'], 'Auto Acceptor')
             try:
@@ -447,6 +453,7 @@ def restart_gsi_server():
 def generate_table(game_info):
     global accounts, current_account
     color = accounts[current_account]['color']
+    name = accounts[current_account]['name']
 
     team_score = int(game_info['team_score']) if game_info['team_score'] else 0
     enemy_score = int(game_info['enemy_score']) if game_info['enemy_score'] else 0
@@ -469,18 +476,21 @@ def generate_table(game_info):
                     ('Kills', kills, True), ('Assists', assists, True), ('Deaths', deaths, True),
                     ('MVPs', mvps, True), ('Points', points, True), ('\u200B', '\u200B', True)]
 
-    return {'embeds': [{'title': 'Match Stats - {name}', 'url': url, 'color': color, 'fields': [create_field(i) for i in field_values]}]}
+    return {'embeds': [{'title': f'Match Stats - {name}', 'url': url, 'color': color, 'fields': [create_field(i) for i in field_values]}]}
 
 
-def add_match_id(sharecode: str, match_id: str, csv_path):
+def add_match_id(sharecode: str, match_id=None):
+    global path_vars, accounts, current_account
+    csv_path = f'{path_vars["appdata_path"]}last_game_{accounts[current_account]["steam_id"]}.csv'
     data = get_csv_list(csv_path)
     match_index = find_dict(data, 'sharecode', sharecode)
-    data[match_index]['match_id'] = match_id
-    global csv_header
-    with open(csv_path, 'w', newline='') as last_game:
-        writer = csv.DictWriter(last_game, fieldnames=csv_header, delimiter=';', lineterminator='\n')
-        writer.writeheader()
-        writer.writerows(data)
+    if match_id is not None:
+        data[match_index]['match_id'] = match_id
+        global csv_header
+        with open(csv_path, 'w', newline='') as last_game:
+            writer = csv.DictWriter(last_game, fieldnames=csv_header, delimiter=';', lineterminator='\n')
+            writer.writeheader()
+            writer.writerows(data)
     return generate_table(data[match_index])
 
 

@@ -5,8 +5,10 @@
 /convert_sharecodes/
 basics.py
 test.py
+discord_msg.py
 config.ini
 *.pyc
 *.lnk
 *.ps1
-auto_responder.py
+cs.py
+test2.py
