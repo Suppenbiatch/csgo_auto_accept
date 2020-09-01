@@ -307,7 +307,7 @@ def getNewCSGOSharecodes(game_id: str, played_map: str = '', team_score: str = '
         with open(path_vars['appdata_path'] + 'last_game_' + accounts[current_account]['steam_id'] + '.csv', 'a', newline='') as last_game:
             writer = csv.DictWriter(last_game, fieldnames=csv_header, delimiter=';', lineterminator='\n')
             for i in sharecodes[1:-1]:  # Add all matches except the newest one without any additional information
-                row_dict = {'sharecode': i, 'map': '', 'team_score': '', 'enemy_score': '', 'match_time': '', 'wait_time': '', 'afk_time': '', 'kills': 0, 'assists': 0, 'deaths': 0, 'mvps': 0, 'points': 0}
+                row_dict = {'sharecode': i, 'match_id': '', 'map': '', 'team_score': '', 'enemy_score': '', 'wait_time': '', 'afk_time': '', 'mvps': 0, 'points': 0, 'kills': 0, 'assists': 0, 'deaths': 0}
                 writer.writerow(row_dict)
 
             # Add the newest match with the given information
@@ -316,7 +316,7 @@ def getNewCSGOSharecodes(game_id: str, played_map: str = '', team_score: str = '
 
             row_dict = {'sharecode': sharecodes[-1], 'map': played_map, 'team_score': team_score, 'enemy_score': enemy_score,
                         'match_time': match_time, 'wait_time': wait_time, 'afk_time': afk_time,
-                        'kills': player_stats['kills'], 'assists': player_stats['assists'], 'deaths': player_stats['deaths'], 'mvps': player_stats['mvps'], 'points': player_stats['score']}
+                        'mvps': player_stats['mvps'], 'points': player_stats['score'], 'kills': player_stats['kills'], 'assists': player_stats['assists'], 'deaths': player_stats['deaths']}
             writer.writerow(row_dict)
         del sharecodes[0]  # Strip the old sharecode
     return [{'sharecode': code, 'queue_pos': None} for code in sharecodes]
@@ -383,7 +383,8 @@ def UpdateCSGOstats(new_codes: List[dict]):
             match_id = game_url.rpartition('/')[2]
 
             write(f'URL: {game_url}', add_time=True, push=pushbullet_dict['urgency'], color=FgColor.Green)
-            discord_obj = add_match_id(sharecode, match_id=match_id)
+            match_infos = get_match_infos(scraper, match_id, accounts[current_account]['steam_id'])
+            discord_obj = add_match_id(sharecode, match_infos)
             if truth_table['discord_output']:
                 send_discord_msg(discord_obj, cfg['discord_url'], 'Auto Acceptor')
             try:
@@ -399,16 +400,27 @@ def get_csv_list(path):
     with open(path, 'r', newline='') as f:
         data = list(csv.DictReader(f, fieldnames=csv_header, delimiter=';', restval=''))
     first_element = tuple(data[0].values())
-    if all([head == first_element[i] for i, head in enumerate(csv_header)]):  # File has a valid header
+    if all(head == first_element[i] for i, head in enumerate(csv_header)):  # File has a valid header
         del data[0]  # Remove the header
-    else:
-        if any([head == first_element[i] for i, head in enumerate(csv_header)]):  # File has an outdated header
-            del data[0]
-        with open(path, 'w', newline='') as f:  # rewrite file with header
-            writer = csv.DictWriter(f, fieldnames=csv_header, delimiter=';', lineterminator='\n')
-            writer.writeheader()
-            writer.writerows(data)
-    return data  # Return data without the header
+        return data
+
+    # rewrite file with the new header and reuse all the old values
+    with open(path, 'r', newline='') as f:
+        data = list(csv.DictReader(f, delimiter=';', restval=''))
+    rows = []
+    for i in data:
+        row_dict = {}
+        for key in csv_header:
+            try:
+                row_dict[key] = i[key]
+            except KeyError:
+                row_dict[key] = ''
+        rows.append(row_dict)
+    with open(path, 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=csv_header, delimiter=';', lineterminator='\n')
+        writer.writeheader()
+        writer.writerows(rows)
+    return rows
 
 
 # noinspection PyShadowingNames
@@ -449,64 +461,16 @@ def restart_gsi_server():
     gsi_server.start_server()
 
 
-# noinspection PyShadowingNames
-def generate_table(game_info):
-    global accounts, current_account
-    color = accounts[current_account]['color']
-    name = accounts[current_account]['name']
-
-    team_score = int(game_info['team_score']) if game_info['team_score'] else 0
-    enemy_score = int(game_info['enemy_score']) if game_info['enemy_score'] else 0
-
-    match_time = timedelta(seconds=game_info['match_time'] if game_info['match_time'] else 0)
-    search_time = timedelta(seconds=game_info['wait_time'] if game_info['wait_time'] else 0)
-    afk_time = timedelta(seconds=game_info['afk_time'] if game_info['afk_time'] else 0)
-
-    url = 'https://csgostats.gg/match/' + game_info['match_id']
-    map_name = game_info['map'] if game_info['map'] else 'None'
-
-    kills = game_info['kills'] if game_info['kills'] else '0'
-    assists = game_info['assists'] if game_info['assists'] else '0'
-    deaths = game_info['deaths'] if game_info['deaths'] else '0'
-    mvps = game_info['mvps'] if game_info['mvps'] else '0'
-    points = game_info['points'] if game_info['points'] else '0'
-
-    field_values = [('Map', map_name, False), ('Score', f'{team_score:02d} **:** {enemy_score:02d}', False),
-                    ('Match Duration', match_time, True), ('Search Time', search_time, True), ('AFK Time', afk_time, True),
-                    ('Kills', kills, True), ('Assists', assists, True), ('Deaths', deaths, True),
-                    ('MVPs', mvps, True), ('Points', points, True), ('\u200B', '\u200B', True)]
-
-    return {'embeds': [{'title': f'Match Stats - {name}', 'url': url, 'color': color, 'fields': [create_field(i) for i in field_values]}]}
-
-
-def add_match_id(sharecode: str, match_id=None):
-    global path_vars, accounts, current_account
-    csv_path = f'{path_vars["appdata_path"]}last_game_{accounts[current_account]["steam_id"]}.csv'
-    data = get_csv_list(csv_path)
-    match_index = find_dict(data, 'sharecode', sharecode)
-    if match_id is not None:
-        data[match_index]['match_id'] = match_id
-        global csv_header
-        with open(csv_path, 'w', newline='') as last_game:
-            writer = csv.DictWriter(last_game, fieldnames=csv_header, delimiter=';', lineterminator='\n')
-            writer.writeheader()
-            writer.writerows(data)
-    return generate_table(data[match_index])
-
-
-def send_discord_msg(discord_data, webhook_url: str, username: str = 'Auto Acceptor'):
-    discord_data['username'] = username
-    r = requests.post(webhook_url, data=json.dumps(discord_data), headers={"Content-Type": "application/json"})
-    if int(r.headers['x-ratelimit-remaining']) == 0:
-        ratelimit_wait = abs(int(r.headers['x-ratelimit-reset']) - time.time() + 0.2)
-        write('sleeping ' + str(ratelimit_wait) + ' because of discord ratelimit', add_time=False)
-        time.sleep(ratelimit_wait)
+def remove_indices(lst: list, index: list):
+    for i in sorted(index, reverse=True):
+        del lst[i]
+    return lst
 
 
 def create_field(field: tuple):
     return {
         'name': field[0],
-        'value': field[1],
+        'value': str(field[1]),
         'inline': field[2]
     }
 
@@ -516,6 +480,127 @@ def find_dict(lst: list, key: str, value):
         if dic[key] == value:
             return i
     return None
+
+
+# noinspection PyShadowingNames
+def generate_table(match, avatar_url: str = ''):
+    global accounts, current_account
+    color = accounts[current_account]['color']
+
+    match_time = timedelta(seconds=match['match_time'] if match['match_time'] else 0)
+    search_time = timedelta(seconds=match['wait_time'] if match['wait_time'] else 0)
+    afk_time = timedelta(seconds=match['afk_time'] if match['afk_time'] else 0)
+    mvps = match['mvps'] if match['mvps'] else '0'
+    points = match['points'] if match['points'] else '0'
+
+    url = 'https://csgostats.gg/match/' + match['match_id']
+    field_values = [('Map', match['map'], True), ('Score', '{:02d} **:** {:02d}'.format(int(match['team_score']), int(match['enemy_score'])), True), ('Username', match['username'], True),
+                    ('Kills', match['kills'], True), ('Assists', match['assists'], True), ('Deaths', match['deaths'], True),
+                    ('MVPs', mvps, True), ('Points', points, True), ('\u200B', '\u200B', True),
+                    ('K/D', f'{float(match["K/D"]) / 100:.2f}', True), ('ADR', match['ADR'], True), ('HS%', f'{match["HS%"]}%', True),
+                    ('5k', match['5k'], True), ('4k', match['4k'], True), ('3k', match['3k'], True),
+                    ('2k', match['2k'], True), ('1k', match['1k'], True), ('\u200B', '\u200B', True),
+                    ('HLTV-Rating', f'{float(match["HLTV"]) / 100:.2f}', True), ('Rank', match['rank'], True), ('\u200B', '\u200B', True),
+                    ('Match Duration', match_time, True), ('Search Time', search_time, True), ('AFK Time', afk_time, True)
+                    ]
+
+    return {'embeds': [{'title': 'Match Stats', 'url': url, 'color': color, 'fields': [create_field(i) for i in field_values]}], 'avatar_url': avatar_url}
+
+
+def get_player_info(raw_players: list):
+    players = []
+    stat_keys = ['K', 'D', 'A', '+/-', 'K/D', 'ADR', 'HS', 'FK', 'FD', 'Trade_K', 'Trade_D', 'Trade_FK', 'Trade_FD', '1v5', '1v4', '1v3', '1v2', '1v1', '5k', '4k', '3k', '2k', '1k', 'KAST', 'HLTV']
+    for player in raw_players:
+        info = re.search('(?:img src=")(.+?)(?:".+?<a href="/player/)(\d+)(?:".+?;">)(.+?)(?:</span>)', player)
+        try:
+            rank = re.search('(?:ranks/)(\d+)(?:\.png)', player).group(1)
+        except AttributeError:
+            rank = '0'
+        try:
+            rank_change = re.search('(?:glyphicon glyphicon-chevron-)(up|down)', player).group(1)
+            if rank_change == 'up':
+                rank += '+'
+            else:
+                rank += '-'
+        except AttributeError:
+            pass
+        stat_values = remove_indices(re.findall('(?:"> *)([\d.\-%]*)(?: *</td>)', player), [9, 10, 11, 12, 17, 18, 19, 20])
+        stats = dict(zip(stat_keys, stat_values))
+        players.append({'steam_id': info.group(2), 'username': info.group(3), 'rank': rank, 'avatar_url': info.group(1), 'stats': stats})
+    return players
+
+
+# noinspection PyShadowingNames
+def get_match_infos(scraper_obj: cloudscraper.CloudScraper, match_id: str, steam_id: str):
+    url = 'https://csgostats.gg/match/{id}'.format(id=match_id)
+    r = scraper_obj.get(url)
+    if r.status_code != requests.status_codes.codes.ok:
+        return match_id
+    formatted_html = r.text.replace('\n', '').replace('\t', '').replace('<tr class="">', '\n').replace('</tbody>', '\n').split('\n')
+    players = get_player_info(remove_indices(formatted_html[1:13], [5, 6]))
+    played_map = re.search('(?:<div style="font-weight:500;">.+?_)([a-zA-Z]+)(?:</div>)', formatted_html[0]).group(1).capitalize()
+    score = re.findall('(?:<span style="letter-spacing:-0.05em;">)(\d+)(?:</span>)', formatted_html[0])
+    searched_player = None
+    for i, player in enumerate(players):
+        if player['steam_id'] == steam_id:
+            searched_player = player
+            if i <= 4:
+                score = (score[0], score[1])
+            else:
+                score = (score[1], score[0])
+            break
+    return {'match_id': match_id, 'map': played_map, 'score': score, 'player': searched_player, 'players': players}
+
+
+def add_match_id(sharecode: str, match: dict):
+    global path_vars
+    csv_path = f'{path_vars["appdata_path"]}last_game_{match["player"]["steam_id"]}.csv'
+    data = get_csv_list(csv_path)
+    m_index = find_dict(data, 'sharecode', sharecode)
+    if isinstance(match, str):  # request wasn't successful
+        data[m_index]['match_id'] = match
+        avatar_url = ''
+    else:
+        data[m_index]['match_id'] = match['match_id']
+        data[m_index]['map'] = match['map']
+        data[m_index]['team_score'] = match['score'][0]
+        data[m_index]['enemy_score'] = match['score'][1]
+        data[m_index]['kills'] = match['player']['stats']['K']
+        data[m_index]['assists'] = match['player']['stats']['A']
+        data[m_index]['deaths'] = match['player']['stats']['D']
+        data[m_index]['5k'] = match['player']['stats']['5k']
+        data[m_index]['4k'] = match['player']['stats']['4k']
+        data[m_index]['3k'] = match['player']['stats']['3k']
+        data[m_index]['2k'] = match['player']['stats']['2k']
+        data[m_index]['1k'] = match['player']['stats']['1k']
+        # data[m_index]['K/D'] = round(float(match['player']['stats']['K/D']) * 100) #  except ValueError, could be '' if 0 deaths
+        data[m_index]['ADR'] = match['player']['stats']['ADR']
+        data[m_index]['HS%'] = re.sub('\D', '', match['player']['stats']['HS'])
+        data[m_index]['HLTV'] = round(float(match['player']['stats']['HLTV']) * 100)
+        data[m_index]['rank'] = match['player']['rank']
+        data[m_index]['username'] = match['player']['username']
+        avatar_url = match['player']['avatar_url']
+        try:
+            data[m_index]['K/D'] = round((float(match['player']['stats']['K']) / float(match['player']['stats']['D'])) * 100)
+        except (ZeroDivisionError, ValueError):
+            data[m_index]['K/D'] = '∞'
+
+    global csv_header
+    with open(csv_path, 'w', newline='') as last_game:
+        writer = csv.DictWriter(last_game, fieldnames=csv_header, delimiter=';', lineterminator='\n')
+        writer.writeheader()
+        writer.writerows(data)
+    return generate_table(data[m_index], avatar_url)
+
+
+def send_discord_msg(discord_data, webhook_url: str, username: str = 'Auto Acceptor'):
+    discord_data['username'] = username
+    r = requests.post(webhook_url, data=json.dumps(discord_data), headers={"Content-Type": "application/json"})
+    remaining_requests = int(r.headers['x-ratelimit-remaining'])
+    if remaining_requests == 0:
+        ratelimit_wait = abs(int(r.headers['x-ratelimit-reset']) - time.time() + 0.2)
+        print('sleeping', ratelimit_wait)
+        time.sleep(ratelimit_wait)
 
 
 error_level = 0
@@ -561,7 +646,7 @@ afk_dict = {'time': time.time(), 'still_afk': [], 'start_time': time.time(), 'se
 join_dict = {'t_full': False, 'ct_full': False}
 scoreboard = {'CT': 0, 'T': 0, 'last_round_info': '', 'last_round_key': '0', 'extra_round_info': '', 'player': {}}
 player_stats = {}
-csv_header = ['sharecode', 'map', 'team_score', 'enemy_score', 'match_time', 'wait_time', 'afk_time', 'match_id', 'kills', 'assists', 'deaths', 'mvps', 'points']
+csv_header = ['sharecode', 'match_id', 'map', 'team_score', 'enemy_score', 'match_time', 'wait_time', 'afk_time', 'mvps', 'points', 'kills', 'assists', 'deaths', '5k', '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'HLTV', 'rank', 'username']
 
 re_pattern = {'lobby_info': re.compile("(?<!Machines' = '\d''members:num)(C?TSlotsFree|Players)(?:' = ')(\d+'?)"),
               'steam_path': re.compile('\\t"\d*"\\t\\t"'),
@@ -1074,4 +1159,6 @@ while True:
 if console_window['isatty']:
     if overwrite_dict['end'] != '\n':
         print('')
+if gsi_server.running:
+    gsi_server.shutdown()
 exit('ENDED BY USER')
