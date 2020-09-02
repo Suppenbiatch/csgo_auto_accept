@@ -74,7 +74,7 @@ def write(message, add_time: bool = True, push: int = 0, push_now: bool = False,
         print(message, end=ending)
 
     if push >= 3:
-        global pushbullet_dict
+        # global pushbullet_dict
         if message:
             pushbullet_dict['note'] = pushbullet_dict['note'] + str(push_message.strip('\r').strip('\n')) + '\n'
         if push_now:
@@ -368,7 +368,8 @@ def UpdateCSGOstats(new_codes: List[dict], discord_output: bool = False):
         write(corrupt_games_string, overwrite='5')
 
     if completed_games:
-        global pushbullet_dict, account
+        # global pushbullet_dict
+        global account
         for i, responses in enumerate(completed_games):
             game_url = responses['data']['url']
             sharecode = responses['data']['sharecode']
