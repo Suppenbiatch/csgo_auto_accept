@@ -379,7 +379,7 @@ def UpdateCSGOstats(new_codes: List[dict], discord_output: bool = False):
             match_infos = get_match_infos(scraper, match_id, steam_id)
             discord_obj = add_match_id(sharecode, match_infos)
             if discord_output:
-                send_discord_msg(discord_obj, cfg['discord_url'], 'Auto Acceptor')
+                send_discord_msg(discord_obj, cfg['discord_url'], f'{account["name"]} - Match Stats')
             try:
                 pyperclip.copy(game_url)
             except (pyperclip.PyperclipWindowsException, pyperclip.PyperclipTimeoutException):
@@ -486,14 +486,14 @@ def generate_table(match, avatar_url: str = ''):
                     ('Match Duration', match_time, True), ('Search Time', search_time, True), ('AFK Time', afk_time, True)
                     ]
 
-    return {'embeds': [{'title': 'Match Stats', 'url': url, 'color': account["color"], 'fields': [create_field(i) for i in field_values]}], 'avatar_url': avatar_url}
+    return {'embeds': [{'title': 'csgostats.gg link', 'url': url, 'color': account["color"], 'fields': [create_field(i) for i in field_values]}], 'avatar_url': avatar_url}
 
 
 def get_player_info(raw_players: list):
     players = []
     stat_keys = ['K', 'D', 'A', '+/-', 'K/D', 'ADR', 'HS', 'FK', 'FD', 'Trade_K', 'Trade_D', 'Trade_FK', 'Trade_FD', '1v5', '1v4', '1v3', '1v2', '1v1', '5k', '4k', '3k', '2k', '1k', 'KAST', 'HLTV']
     for player in raw_players:
-        info = re.search('(?:img src=")(.+?)(?:".+?<a href="/player/)(\d+)(?:".+?;">)(.+?)(?:</span>)', player)
+        info = re.search('(?:img src=")(.+?)(?:".+?<a href="/player/)(\d+)(?:".+?;">)(.*?)(?:</span>)', player)
         try:
             rank = re.search('(?:ranks/)(\d+)(?:\.png)', player).group(1)
         except AttributeError:
@@ -612,6 +612,10 @@ if not sys.stdout.isatty():
 else:
     console_window = {'prefix': '', 'suffix': '\r', 'isatty': True}
 
+pushbullet_dict: Dict[str, Union[str, int, pushbullet.pushbullet.Device, Tuple[str, str, str, str]]] = \
+    {'note': '', 'urgency': 0, 'device': None, 'push_info': ('not active', 'on if accepted', 'all game status related information', 'all information (game status/csgostats.gg information)')}
+
+
 # CONFIG HANDLING
 config = configparser.ConfigParser()
 config.read('config.ini')
@@ -634,8 +638,6 @@ re_pattern = {'lobby_info': re.compile("(?<!Machines' = '\d''members:num)(C?TSlo
               'steam_path': re.compile('\\t"\d*"\\t\\t"'),
               'decolor': re.compile('\033\[[0-9;]+m')}
 
-pushbullet_dict: Dict[str, Union[str, int, pushbullet.pushbullet.Device, Tuple[str, str, str, str]]] = \
-    {'note': '', 'urgency': 0, 'device': 0, 'push_info': ('not active', 'on if accepted', 'all game status related information', 'all information (game status/csgostats.gg information)')}
 
 csv_header = ['sharecode', 'match_id', 'map', 'team_score', 'enemy_score', 'match_time', 'wait_time', 'afk_time', 'mvps', 'points', 'kills', 'assists', 'deaths', '5k', '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'HLTV', 'rank', 'username']
 accounts = []
