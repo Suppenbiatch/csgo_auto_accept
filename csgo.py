@@ -52,6 +52,7 @@ cs.mute_csgo(0)
 blue(), magenta()
 write('READY', color=FgColor.Green)
 
+
 while True:
     if win32api.GetAsyncKeyState(cs.cfg['activate_script']) & 1 and not game_state['map_phase'] in ['live', 'warmup']:  # F9 (ACTIVATE / DEACTIVATE SCRIPT)
         truth_table['test_for_server'] = not truth_table['test_for_server']
@@ -411,12 +412,13 @@ while True:
             time.sleep(2)
             team = str(gsi_server.get_info('player', 'team')), 'CT' if gsi_server.get_info('player', 'team') == 'T' else 'T'
             score = {'CT': gsi_server.get_info('map', 'team_ct')['score'], 'T': gsi_server.get_info('map', 'team_t')['score'], 'map': gsi_server.get_info('map', 'name').split('_')[1].capitalize()}
+            afk_dict['per_round'] = int(afk_dict['seconds_afk'] / (int(score['CT']) + int(score['T'])))
             if gsi_server.get_info('player', 'steamid') == cs.steam_id:
                 player_stats = gsi_server.get_info('player', 'match_stats')
             write(f'The match is over! - {score[team[0]]:02d}:{score[team[1]]:02d}', color=FgColor.Red)
             write(f'Match duration: {cs.timedelta(time_table["match_started"])}', add_time=False)
             write(f'Search-time:    {cs.timedelta(seconds=time_table["match_accepted"] - time_table["search_started"])}', add_time=False)
-            write('Time AFK:       {}, {:.1%} of match duration.'.format(cs.timedelta(seconds=afk_dict['seconds_afk']), afk_dict['seconds_afk'] / (time.time() - time_table['match_started'])), add_time=False)
+            write('Time AFK:       {}, {}s per round, {:.1%} of match duration.'.format(cs.timedelta(seconds=afk_dict['seconds_afk']), afk_dict['per_round'], afk_dict['seconds_afk'] / (time.time() - time_table['match_started'])), add_time=False)
 
             if gsi_server.get_info('map', 'mode') == 'competitive' and game_state['map_phase'] == 'gameover' and not truth_table['test_for_warmup'] and not truth_table['still_in_warmup']:
                 if truth_table['monitoring_since_start']:
@@ -427,10 +429,11 @@ while True:
                     match_time, search_time, afk_time = '', '', ''
 
                 average_match_time = cs.getAvgMatchTime(cs.steam_id)
-                this_game_time = (time.time() - time_table['match_started'], time_table['match_accepted'] - time_table['search_started'], afk_dict['seconds_afk'])
+                this_game_time = (time.time() - time_table['match_started'], time_table['match_accepted'] - time_table['search_started'], afk_dict['seconds_afk'], afk_dict['per_round'])
                 game_time_output_strings = (('The match was {} ' + red('longer') + ' than the average match with {}', 'The match was {} ' + green('shorter') + ' than the average match with {}'),
                                             ('The search-time was {} ' + red('longer') + ' than the average search-time with {}', 'The search-time was {} ' + green('shorter') + ' than the average search-time with {}'),
                                             ('The time afk was {} ' + red('longer') + ' than the average time afk with {}', 'The time afk was {} ' + green('shorter') + ' than the average time afk with {}'),
+                                            ('The time afk per round was {} ' + red('longer') + ' than the average time afk per round with {}', 'The time afk per round was {} ' + green('shorter') + ' than the average time afk per round with {}'),
                                             'Time in competitive matchmaking: {}', 'Time in the searching queue: {}', 'Time afk while being ingame: {}')
                 for i, val in enumerate(average_match_time):
                     if isinstance(val, int):
