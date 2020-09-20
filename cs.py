@@ -252,7 +252,8 @@ def getAvgMatchTime(steam_id: str):
     match_time = [int(i['match_time']) for i in data if i['match_time']]
     search_time = [int(i['wait_time']) for i in data if i['wait_time']]
     afk_time = [int(i['afk_time']) for i in data if i['afk_time']]
-    return int(Avg(match_time, 0)), int(Avg(search_time, 0)), int(Avg(afk_time, 0)), timedelta(seconds=sum(match_time)), timedelta(seconds=sum(search_time)), timedelta(seconds=sum(afk_time))
+    afk_time_per_round = [int(i['afk_time']) / (int(i['team_score']) + int(i['enemy_score'])) for i in data if i['afk_time'] and i['team_score'] and i['enemy_score']]
+    return int(Avg(match_time, 0)), int(Avg(search_time, 0)), int(Avg(afk_time, 0)), int(Avg(afk_time_per_round, 0)), timedelta(seconds=sum(match_time)), timedelta(seconds=sum(search_time)), timedelta(seconds=sum(afk_time))
 
 
 # noinspection PyShadowingNames
@@ -324,8 +325,8 @@ def UpdateCSGOstats(new_codes: List[dict], discord_output: bool = False):
         try:
             response = scraper.post('https://csgostats.gg/match/upload/ajax', data={'sharecode': sharecode, 'index': 0})
             responses.append(response)
-        except cloudscraper.exceptions.CloudflareCode1020:
-            write('Cloudflare blocked us!, try again later?', color=FgColor.Red)
+        except (cloudscraper.exceptions.CloudflareCode1020, requests.exceptions.ConnectionError):
+            write('Cloudflare blocked or csgostats is not reachable!', color=FgColor.Red)
             cloudflare_blocked.append({'sharecode': sharecode, 'queue_pos': None})
     all_games = [r.json() for r in responses if r.status_code == requests.codes.ok]
     completed_games, not_completed_games, = [], []
