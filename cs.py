@@ -297,7 +297,7 @@ def getNewCSGOSharecodes(game_id: str, played_map: str = '', team_score: str = '
 
     global csv_header
     if len(sharecodes) > 1:
-        with open(os.path.join(path_vars['appdata_path'], f'last_game_{steam_id}.csv'), 'a', newline='') as last_game:
+        with open(os.path.join(path_vars['appdata_path'], f'last_game_{steam_id}.csv'), 'a', newline='', encoding='utf-8') as last_game:
             writer = csv.DictWriter(last_game, fieldnames=csv_header, delimiter=';', lineterminator='\n')
             for i in sharecodes[1:-1]:  # Add all matches except the newest one without any additional information
                 row_dict = {'sharecode': i, 'match_id': '', 'map': '', 'team_score': '', 'enemy_score': '', 'wait_time': '', 'afk_time': '', 'mvps': 0, 'points': 0, 'kills': 0, 'assists': 0, 'deaths': 0}
@@ -391,7 +391,7 @@ def UpdateCSGOstats(new_codes: List[dict], discord_output: bool = False):
 
 def get_csv_list(path):
     global csv_header
-    with open(path, 'r', newline='') as f:
+    with open(path, 'r', newline='', encoding='utf-8') as f:
         data = list(csv.DictReader(f, fieldnames=csv_header, delimiter=';', restval=''))
     first_element = tuple(data[0].values())
     if all(head == first_element[i] for i, head in enumerate(csv_header)):  # File has a valid header
@@ -399,7 +399,7 @@ def get_csv_list(path):
         return data
 
     # rewrite file with the new header and reuse all the old values
-    with open(path, 'r', newline='') as f:
+    with open(path, 'r', newline='', encoding='utf-8') as f:
         data = list(csv.DictReader(f, delimiter=';', restval=''))
     rows = []
     for i in data:
@@ -410,7 +410,7 @@ def get_csv_list(path):
             except KeyError:
                 row_dict[key] = ''
         rows.append(row_dict)
-    with open(path, 'w', newline='') as f:
+    with open(path, 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=csv_header, delimiter=';', lineterminator='\n')
         writer.writeheader()
         writer.writerows(rows)
@@ -491,47 +491,61 @@ def generate_table(match, avatar_url: str = ''):
 
 
 def get_player_info(raw_players: list):
-    players = []
+    players: List[List[Dict[str, Union[str, Dict[str, str]]]]] = [[], []]
     stat_keys = ['K', 'D', 'A', '+/-', 'K/D', 'ADR', 'HS', 'FK', 'FD', 'Trade_K', 'Trade_D', 'Trade_FK', 'Trade_FD', '1v5', '1v4', '1v3', '1v2', '1v1', '5k', '4k', '3k', '2k', '1k', 'KAST', 'HLTV']
+    pattern = {
+        'info': re.compile('(?:img src=")(.+?)(?:".+?<a href="/player/)(\d+)(?:".+?;">)(.*?)(?:</span>)'),
+        'rank': re.compile('(?:ranks/)(\d+)(?:\.png)'),
+        'rank_change': re.compile('(?:glyphicon glyphicon-chevron-)(up|down)'),
+        'stats': re.compile('(?:"> *)([\d.\-%]*)(?: *</td>)'),
+        'team': re.compile('</tr> +</tbody> +<tbody>')
+    }
+    team = 0
     for player in raw_players:
-        info = re.search('(?:img src=")(.+?)(?:".+?<a href="/player/)(\d+)(?:".+?;">)(.*?)(?:</span>)', player)
+        # info = re.search('(?:img src=")(.+?)(?:".+?<a href="/player/)(\d+)(?:".+?;">)(.*?)(?:</span>)', player)
+        info = pattern['info'].search(player)
         try:
-            rank = re.search('(?:ranks/)(\d+)(?:\.png)', player).group(1)
+            # rank = re.search('(?:ranks/)(\d+)(?:\.png)', player).group(1)
+            rank = pattern['rank'].search(player).group(1)
         except AttributeError:
             rank = '0'
         try:
-            rank_change = re.search('(?:glyphicon glyphicon-chevron-)(up|down)', player).group(1)
+            # rank_change = re.search('(?:glyphicon glyphicon-chevron-)(up|down)', player).group(1)
+            rank_change = pattern['rank_change'].search(player).group(1)
             if rank_change == 'up':
                 rank += '+'
             else:
                 rank += '-'
         except AttributeError:
             pass
-        stat_values = remove_indices(re.findall('(?:"> *)([\d.\-%]*)(?: *</td>)', player), [9, 10, 11, 12, 17, 18, 19, 20])
+        # stat_values = remove_indices(re.findall('(?:"> *)([\d.\-%]*)(?: *</td>)', player), [9, 10, 11, 12, 17, 18, 19, 20])
+        stat_values: List[str] = remove_indices(pattern['stats'].findall(player), [9, 10, 11, 12, 17, 18, 19, 20])
         stats = dict(zip(stat_keys, stat_values))
-        players.append({'steam_id': info.group(2), 'username': info.group(3), 'rank': rank, 'avatar_url': info.group(1), 'stats': stats})
+        players[team].append({'steam_id': info.group(2), 'username': info.group(3), 'rank': rank, 'avatar_url': info.group(1), 'stats': stats})
+        if not team:
+            team = 1 if pattern['team'].search(player) is not None else 0
     return players
 
 
 # noinspection PyShadowingNames
 def get_match_infos(scraper_obj: cloudscraper.CloudScraper, match_id: str, steam_id: str):
-    url = 'https://csgostats.gg/match/{id}'.format(id=match_id)
+    url = f'https://csgostats.gg/match/{match_id}'
     r = scraper_obj.get(url)
     if r.status_code != requests.status_codes.codes.ok:
         return match_id
-    formatted_html = r.text.replace('\n', '').replace('\t', '').replace('<tr class="">', '\n').replace('</tbody>', '\n').split('\n')
-    players = get_player_info(remove_indices(formatted_html[1:13], [5, 6]))
-    played_map = re.search('(?:<div style="font-weight:500;">.+?_)([a-zA-Z]+)(?:</div>)', formatted_html[0]).group(1).capitalize()
-    score = re.findall('(?:<span style="letter-spacing:-0.05em;">)(\d+)(?:</span>)', formatted_html[0])
-    searched_player = None
-    for i, player in enumerate(players):
-        if player['steam_id'] == steam_id:
-            searched_player = player
-            if i <= 4:
-                score = (score[0], score[1])
-            else:
-                score = (score[1], score[0])
-            break
+    formatted_html = r.text.replace('\n', '').replace('\t', '')
+    all_info = formatted_html.replace('<tr class="">', '\r\n').replace('<tr class="has-banned">', '\r\n').replace('<div id="match-rounds" class="content-tab">', '\r\n').split('\r\n')
+    players = get_player_info(all_info[1:-1])
+    played_map: str = re.search('(?:<div style="font-weight:500;">.+?_)([a-zA-Z0-9]+)(?:</div>)', all_info[0]).group(1).capitalize()
+    score: Union[list, tuple] = re.findall('(?:<span style="letter-spacing:-0.05em;">)(\d+)(?:</span>)', all_info[0])
+    searched_player: Dict[str, Union[str, Dict[str]]] = {}
+    for i, team in enumerate(players):
+        for player in team:
+            if player['steam_id'] == steam_id:
+                searched_player = player
+                score = (score[0], score[1]) if i == 0 else (score[1], score[0])
+                score = tuple(map(str, score))
+                break
     return {'match_id': match_id, 'map': played_map, 'score': score, 'player': searched_player, 'players': players}
 
 
@@ -569,7 +583,7 @@ def add_match_id(sharecode: str, match: dict):
             data[m_index]['K/D'] = '∞'
 
     global csv_header
-    with open(csv_path, 'w', newline='') as last_game:
+    with open(csv_path, 'w', newline='', encoding='utf-8') as last_game:
         writer = csv.DictWriter(last_game, fieldnames=csv_header, delimiter=';', lineterminator='\n')
         writer.writeheader()
         writer.writerows(data)
