@@ -165,11 +165,12 @@ def getAccountsFromCfg():
         profiles = requests.get('http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=' + cfg['steam_api_key'] + '&steamids=' + steam_ids)
         if profiles.status_code == requests.status_codes.codes.ok:
             profiles = profiles.json()['response']['players']
-            name_list = [(online_data['personaname'], online_data['avatarhash']) for local_acc in accounts for online_data in profiles if online_data['steamid'] == local_acc['steam_id']]
+            name_list = [(online_data['personaname'], online_data['avatarhash'], online_data['avatarfull']) for local_acc in accounts for online_data in profiles if online_data['steamid'] == local_acc['steam_id']]
 
             for num, val in enumerate(accounts):
                 val['name'] = name_list[num][0]
                 val['avatar_hash'] = name_list[num][1]
+                val['avatar_url'] = name_list[num][2]
         else:
             steam_api_error = True
     except TimeoutError:
@@ -178,8 +179,9 @@ def getAccountsFromCfg():
     if steam_api_error:
         write('INVAILD STEAM API KEY or INTERNET CONNECTION ERROR, could not fetch usernames', color=FgColor.Red)
         for num, val in enumerate(accounts):
-            val['name'] = 'Unknown Name ' + str(num)
-            val['avatar_hash'] = 'Unknown Avatar ' + str(num)
+            val['name'] = f'Unknown Name {num}'
+            val['avatar_hash'] = f'Unknown Avatar {num}'
+            val['avatar_url'] = 'https://i.imgur.com/MhAf20U.png'
 
     colors_1 = ['00{:02x}ff', '00ff{:02x}', '{:02x}00ff', '{:02x}00ff', 'ff00{:02x}', 'ff{:02x}00']
     colors_2 = ['{:02x}ffff', 'ff{:02x}ff', 'ffff{:02x}']
@@ -318,6 +320,7 @@ def getNewCSGOSharecodes(game_id: str, played_map: str = '', team_score: str = '
 # noinspection PyShadowingNames
 def UpdateCSGOstats(new_codes: List[dict], discord_output: bool = False):
     global queue_difference, csgostats_retry, scraper, cfg
+    test_for = ['map', 'team_score', 'enemy_score', 'kills', 'assists', 'deaths', '5k', '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'HLTV', 'rank', 'username']
 
     sharecodes = [code['sharecode'] for code in new_codes]
     responses, cloudflare_blocked = [], []
@@ -377,8 +380,19 @@ def UpdateCSGOstats(new_codes: List[dict], discord_output: bool = False):
             match_id = game_url.rpartition('/')[2]
 
             write(f'URL: {game_url}', add_time=True, push=pushbullet_dict['urgency'], color=FgColor.Green)
-            match_infos = get_match_infos(scraper, match_id, steam_id)
-            discord_obj = add_match_id(sharecode, match_infos)
+            data = get_csv_list(os.path.join(path_vars['appdata_path'], f'last_game_{steam_id}.csv'))
+            match_index = find_dict(data, 'sharecode', sharecode)
+            if match_index is not None:
+                for item in data[match_index].items():
+                    if item[0] in test_for and not item[1]:
+                        match_infos = get_match_infos(scraper, match_id, steam_id)
+                        discord_obj = add_match_id(sharecode, match_infos)
+                        break
+                else:
+                    discord_obj = generate_table(data[match_index], account['avatar_url'])
+            else:
+                match_infos = get_match_infos(scraper, match_id, steam_id)
+                discord_obj = add_match_id(sharecode, match_infos)
             if discord_output:
                 send_discord_msg(discord_obj, cfg['discord_url'], f'{account["name"]} - Match Stats')
             try:
@@ -477,10 +491,15 @@ def generate_table(match, avatar_url: str = ''):
     points = match['points'] if match['points'] else '0'
 
     url = 'https://csgostats.gg/match/' + match['match_id']
+    try:
+        match_kd = f'{float(match["K/D"]) / 100:.2f}'
+    except ValueError:
+        match_kd = match["K/D"]
+
     field_values = [('Map', match['map'], True), ('Score', '{:02d} **:** {:02d}'.format(int(match['team_score']), int(match['enemy_score'])), True), ('Username', match['username'], True),
                     ('Kills', match['kills'], True), ('Assists', match['assists'], True), ('Deaths', match['deaths'], True),
                     ('MVPs', mvps, True), ('Points', points, True), ('\u200B', '\u200B', True),
-                    ('K/D', f'{float(match["K/D"]) / 100:.2f}', True), ('ADR', match['ADR'], True), ('HS%', f'{match["HS%"]}%', True),
+                    ('K/D', match_kd, True), ('ADR', match['ADR'], True), ('HS%', f'{match["HS%"]}%', True),
                     ('5k', match['5k'], True), ('4k', match['4k'], True), ('3k', match['3k'], True),
                     ('2k', match['2k'], True), ('1k', match['1k'], True), ('\u200B', '\u200B', True),
                     ('HLTV-Rating', f'{float(match["HLTV"]) / 100:.2f}', True), ('Rank', match['rank'], True), ('\u200B', '\u200B', True),

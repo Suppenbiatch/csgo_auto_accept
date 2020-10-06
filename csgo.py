@@ -27,8 +27,9 @@ def restart_gsi_server():
 
 # BOOLEAN, TIME INITIALIZATION
 truth_table = {'test_for_accept_button': False, 'test_for_warmup': False, 'test_for_success': False, 'first_ocr': True, 'testing': False, 'first_push': True, 'still_in_warmup': False, 'test_for_server': False, 'first_freezetime': True,
-               'gsi_server_running': False, 'game_over': False, 'monitoring_since_start': False, 'players_still_connecting': False, 'first_game_over': True, 'disconnected_form_last': False, 'c4_round_first': True, 'steam_error': False,
+               'game_over': False, 'monitoring_since_start': False, 'players_still_connecting': False, 'first_game_over': True, 'disconnected_form_last': False, 'c4_round_first': True, 'steam_error': False,
                'is_not_ingame_round_start': False, 'discord_output': True}
+# 'gsi_server_running': False,
 time_table = {'csgostats_retry': time.time(), 'warmup_test_timer': time.time(), 'search_started': time.time(), 'console_read': time.time(), 'timed_execution_time': time.time(), 'match_accepted': time.time(),
               'match_started': time.time(), 'freezetime_started': time.time(), 'join_warmup_time': 0.0}
 matchmaking = {'msg': [], 'update': [], 'players_accepted': [], 'lobby_data': [], 'server_found': False, 'server_ready': False}
@@ -50,6 +51,7 @@ game_state = {'map_phase': []}
 cs.mute_csgo(0)
 
 blue(), magenta()
+
 write('READY', color=FgColor.Green)
 
 
@@ -154,11 +156,11 @@ while True:
             write('A forbidden program is still running...', add_time=False)
             playsound('sounds/fail.wav', block=False)
 
-    if not truth_table['gsi_server_running']:
         write('CS:GO GSI Server starting..', overwrite='8', color=FgColor.Yellow)
         restart_gsi_server()
-        truth_table['gsi_server_running'] = True
+        # truth_table['gsi_server_running'] = True
         write('CS:GO GSI Server running..', overwrite='8', color=FgColor.Green)
+
 
     # TESTING HERE
     if win32api.GetAsyncKeyState(0x00) & 1:  # UNBOUND, 6f == '\' TEST CODE
