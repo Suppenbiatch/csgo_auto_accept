@@ -21,6 +21,7 @@ import win32con
 import win32gui
 from PIL import ImageGrab, Image
 from color import colorize, FgColor
+from color import green, red, yellow
 
 
 # noinspection PyShadowingNames
@@ -255,7 +256,12 @@ def getAvgMatchTime(steam_id: str):
     search_time = [int(i['wait_time']) for i in data if i['wait_time']]
     afk_time = [int(i['afk_time']) for i in data if i['afk_time']]
     afk_time_per_round = [int(i['afk_time']) / (int(i['team_score']) + int(i['enemy_score'])) for i in data if i['afk_time'] and i['team_score'] and i['enemy_score']]
-    return int(Avg(match_time, 0)), int(Avg(search_time, 0)), int(Avg(afk_time, 0)), int(Avg(afk_time_per_round, 0)), timedelta(seconds=sum(match_time)), timedelta(seconds=sum(search_time)), timedelta(seconds=sum(afk_time))
+    return {
+        'match_time': (int(Avg(match_time, 0)), sum(match_time)),
+        'search_time': (int(Avg(search_time, 0)), sum(search_time)),
+        'afk_time': (int(Avg(afk_time, 0)), sum(afk_time), int(Avg(afk_time_per_round, 0)))
+            }
+    # return int(Avg(match_time, 0)), int(Avg(search_time, 0)), int(Avg(afk_time, 0)), int(Avg(afk_time_per_round, 0)), timedelta(seconds=sum(match_time)), timedelta(seconds=sum(search_time)), timedelta(seconds=sum(afk_time))
 
 
 # noinspection PyShadowingNames
@@ -297,7 +303,7 @@ def getNewCSGOSharecodes(game_id: str, played_map: str = '', team_score: str = '
             sharecodes.append(next_code)
             game_id = next_code
 
-    global csv_header
+    global csv_header, csgo_stats_test_for
     if len(sharecodes) > 1:
         with open(os.path.join(path_vars['appdata_path'], f'last_game_{steam_id}.csv'), 'a', newline='', encoding='utf-8') as last_game:
             writer = csv.DictWriter(last_game, fieldnames=csv_header, delimiter=';', lineterminator='\n')
@@ -313,14 +319,22 @@ def getNewCSGOSharecodes(game_id: str, played_map: str = '', team_score: str = '
                         'match_time': match_time, 'wait_time': wait_time, 'afk_time': afk_time,
                         'mvps': player_stats['mvps'], 'points': player_stats['score'], 'kills': player_stats['kills'], 'assists': player_stats['assists'], 'deaths': player_stats['deaths']}
             writer.writerow(row_dict)
-        del sharecodes[0]  # Strip the old sharecode
+
+        # Test if the last track match has missing info
+        data = get_csv_list(os.path.join(path_vars['appdata_path'], f'last_game_{steam_id}.csv'))
+        match_index = find_dict(data, 'sharecode', sharecodes[0])
+        if match_index is not None:
+            for item in data[match_index].items():
+                if item[0] in csgo_stats_test_for and not item[1]:
+                    break
+            else:
+                del sharecodes[0]  # Strip the old sharecode
     return [{'sharecode': code, 'queue_pos': None} for code in sharecodes]
 
 
 # noinspection PyShadowingNames
 def UpdateCSGOstats(new_codes: List[dict], discord_output: bool = False):
-    global queue_difference, csgostats_retry, scraper, cfg
-    test_for = ['map', 'team_score', 'enemy_score', 'kills', 'assists', 'deaths', '5k', '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'HLTV', 'rank', 'username']
+    global queue_difference, csgostats_retry, scraper, cfg, csgo_stats_test_for
 
     sharecodes = [code['sharecode'] for code in new_codes]
     responses, cloudflare_blocked = [], []
@@ -384,7 +398,7 @@ def UpdateCSGOstats(new_codes: List[dict], discord_output: bool = False):
             match_index = find_dict(data, 'sharecode', sharecode)
             if match_index is not None:
                 for item in data[match_index].items():
-                    if item[0] in test_for and not item[1]:
+                    if item[0] in csgo_stats_test_for and not item[1]:
                         match_infos = get_match_infos(scraper, match_id, steam_id)
                         discord_obj = add_match_id(sharecode, match_infos)
                         break
@@ -633,7 +647,36 @@ def activate_pushbullet():
         write(f'Pushing: {pushbullet_dict["push_info"][pushbullet_dict["urgency"]]}', overwrite='2')
 
 
+def round_start_msg(msg: str, round_phase: str, freezetime_start: float, old_window_status: bool, current_window_status: bool, overwrite_key: str = '7'):
+    if old_window_status:
+        if current_window_status:
+            timer_stopped = ''
+        else:
+            old_window_status = False
+            timer_stopped = ' - ' + green('stopped')
+
+        if round_phase == 'freezetime':
+            time_str = green(timedelta(seconds=time.time() - (freezetime_start + 15)))
+        elif time.time() - freezetime_start > 35:
+            time_str = red(timedelta(then=freezetime_start))
+        else:
+            time_str = yellow(timedelta(seconds=time.time() - (freezetime_start + 35)))
+
+        msg += f' - {time_str}{timer_stopped}'
+        write(msg, overwrite=overwrite_key)
+    return old_window_status
+
+
+def time_output(current: int, average: int):
+    difference = abs(current - average)
+    if current <= average:
+        return f'{timedelta(seconds=current)}, {timedelta(seconds=difference)} {green("shorter")} than average of {timedelta(seconds=average)}'
+    else:
+        return f'{timedelta(seconds=current)}, {timedelta(seconds=difference)} {red("longer")}  than average of {timedelta(seconds=average)}'
+
+
 path_vars = {'appdata_path': os.path.join(os.getenv('APPDATA'), 'CSGO AUTO ACCEPT\\'), 'mute_csgo_path': f'"{os.path.join(os.getcwd(), "sounds", "nircmdc.exe")}" muteappvolume csgo.exe '}
+
 
 try:
     os.mkdir(path_vars['appdata_path'])
@@ -674,6 +717,8 @@ re_pattern = {'lobby_info': re.compile("(?<!Machines' = '\d''members:num)(C?TSlo
 
 
 csv_header = ['sharecode', 'match_id', 'map', 'team_score', 'enemy_score', 'match_time', 'wait_time', 'afk_time', 'mvps', 'points', 'kills', 'assists', 'deaths', '5k', '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'HLTV', 'rank', 'username']
+csgo_stats_test_for = ['map', 'team_score', 'enemy_score', 'kills', 'assists', 'deaths', '5k', '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'HLTV', 'rank', 'username']
+
 accounts = []
 getAccountsFromCfg()
 getCsgoPath()

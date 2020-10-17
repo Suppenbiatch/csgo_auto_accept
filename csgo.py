@@ -17,25 +17,38 @@ def enum_cb(hwnd, results):
     winlist.append((hwnd, win32gui.GetWindowText(hwnd)))
 
 
-def restart_gsi_server():
+def restart_gsi_server(timeout: int = 20, output: bool = False):
     global gsi_server
     if gsi_server.running:
         gsi_server.shutdown()
     gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
+    if output:
+        write('CS:GO GSI Server starting..', overwrite='8', color=FgColor.Yellow)
+    start_time = time.time()
     gsi_server.start_server()
+    while time.time() - start_time < timeout:
+        if gsi_server.running:
+            if output:
+                write('CS:GO GSI Server running..', overwrite='8', color=FgColor.Green)
+            break
+    else:
+        if not gsi_server.running:
+            write(f'CS:GO GSI Server failed to start within {timeout}s..', overwrite='8', color=FgColor.Red)
+            truth_table['failed_to_start_gsi'] = True
 
 
 # BOOLEAN, TIME INITIALIZATION
 truth_table = {'test_for_accept_button': False, 'test_for_warmup': False, 'test_for_success': False, 'first_ocr': True, 'testing': False, 'first_push': True, 'still_in_warmup': False, 'test_for_server': False, 'first_freezetime': True,
                'game_over': False, 'monitoring_since_start': False, 'players_still_connecting': False, 'first_game_over': True, 'disconnected_form_last': False, 'c4_round_first': True, 'steam_error': False,
-               'is_not_ingame_round_start': False, 'discord_output': True}
-# 'gsi_server_running': False,
+               'game_minimized_freezetime': False, 'game_minimized_warmup': False, 'discord_output': True, 'failed_to_start_gsi': False}
+
 time_table = {'csgostats_retry': time.time(), 'warmup_test_timer': time.time(), 'search_started': time.time(), 'console_read': time.time(), 'timed_execution_time': time.time(), 'match_accepted': time.time(),
               'match_started': time.time(), 'freezetime_started': time.time(), 'join_warmup_time': 0.0}
 matchmaking = {'msg': [], 'update': [], 'players_accepted': [], 'lobby_data': [], 'server_found': False, 'server_ready': False}
 afk_dict = {'time': time.time(), 'still_afk': [], 'start_time': time.time(), 'seconds_afk': 0, 'player_info': {'steamid': 0, 'state': {}}}
 join_dict = {'t_full': False, 'ct_full': False}
 scoreboard = {'CT': 0, 'T': 0, 'last_round_info': '', 'last_round_key': '0', 'extra_round_info': '', 'player': {}}
+team = yellow('Unknown')
 player_stats = {}
 
 gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
@@ -51,9 +64,7 @@ game_state = {'map_phase': []}
 cs.mute_csgo(0)
 
 blue(), magenta()
-
 write('READY', color=FgColor.Green)
-
 
 while True:
     if win32api.GetAsyncKeyState(cs.cfg['activate_script']) & 1 and not game_state['map_phase'] in ['live', 'warmup']:  # F9 (ACTIVATE / DEACTIVATE SCRIPT)
@@ -156,11 +167,11 @@ while True:
             write('A forbidden program is still running...', add_time=False)
             playsound('sounds/fail.wav', block=False)
 
-        write('CS:GO GSI Server starting..', overwrite='8', color=FgColor.Yellow)
-        restart_gsi_server()
-        # truth_table['gsi_server_running'] = True
-        write('CS:GO GSI Server running..', overwrite='8', color=FgColor.Green)
+        restart_gsi_server(output=True)
 
+    if truth_table['failed_to_start_gsi'] and gsi_server.running:
+        write('GSI Server is now up and running', overwrite='8', color=FgColor.Green)
+        truth_table['failed_to_start_gsi'] = False
 
     # TESTING HERE
     if win32api.GetAsyncKeyState(0x00) & 1:  # UNBOUND, 6f == '\' TEST CODE
@@ -235,6 +246,7 @@ while True:
             time_table['match_accepted'] = time.time()
             afk_dict['time'] = time.time()
             afk_dict['start_time'] = time.time()
+            afk_dict['seconds_afk'] = 0
 
         for i in matchmaking['players_accepted']:
             i = i.split('/')
@@ -316,10 +328,11 @@ while True:
                 else:
                     scoreboard['extra_round_info'] = ''
 
-                write('Freeze Time - {} - {:02d}:{:02d}{}{}'.format(scoreboard['last_round_info'], scoreboard[uncolorize(scoreboard['team'])], scoreboard[uncolorize(scoreboard['opposing_team'])], scoreboard['extra_round_info'],
-                                                                    scoreboard['c4']), overwrite='7')
+                write(f'Freeze Time - {scoreboard["last_round_info"]} - {scoreboard[uncolorize(scoreboard["team"])]:02d}:{scoreboard[uncolorize(scoreboard["opposing_team"])]:02d}{scoreboard["extra_round_info"]}{scoreboard["c4"]}',
+                      overwrite='7')
+
                 if win32gui.GetWindowPlacement(hwnd)[1] == 2:
-                    truth_table['is_not_ingame_round_start'] = True
+                    truth_table['game_minimized_freezetime'] = True
                     playsound('sounds/ready_up.wav', block=True)
                 if 'Half-Time' in uncolorize(scoreboard['extra_round_info']):
                     playsound('sounds/ding.wav', block=True)
@@ -333,28 +346,12 @@ while True:
             if time.time() - time_table['freezetime_started'] >= 20 and win32gui.GetWindowPlacement(hwnd)[1] == 2:
                 playsound('sounds/ready_up.wav', block=False)
 
-        if truth_table['is_not_ingame_round_start']:
-            if win32gui.GetWindowPlacement(hwnd)[1] == 2:
-                timer_stopped = ''
-            else:
-                truth_table['is_not_ingame_round_start'] = False
-                timer_stopped = ' - ' + green('stopped')
-
-            if game_state['round_phase'] == 'freezetime':
-                time_str = green(cs.timedelta(seconds=time.time() - (time_table['freezetime_started'] + 15)))  # cs.timedelta(then=time_table['freezetime_started']) + ' - ' +
-            elif time.time() - time_table['freezetime_started'] > 35:
-                time_str = red(cs.timedelta(then=time_table['freezetime_started']))
-            else:
-                time_str = yellow(cs.timedelta(seconds=time.time() - (time_table['freezetime_started'] + 35)))  # cs.timedelta(then=time_table['freezetime_started']) + ' - ' +
-
-            write('Freeze Time - {last_round} - {team:02d}:{enemy:02d}{extra_info}{c4_info} - {afk_time}{timer}'.format(
-                last_round=scoreboard['last_round_info'],
-                team=scoreboard[uncolorize(scoreboard['team'])],
-                enemy=scoreboard[uncolorize(scoreboard['opposing_team'])],
-                extra_info=scoreboard['extra_round_info'],
-                c4_info=scoreboard['c4'],
-                afk_time=time_str,
-                timer=timer_stopped), overwrite='7')
+        if truth_table['game_minimized_freezetime']:
+            message = f'Freeze Time - {scoreboard["last_round_info"]} - {scoreboard[uncolorize(scoreboard["team"])]:02d}:{scoreboard[uncolorize(scoreboard["opposing_team"])]:02d}{scoreboard["extra_round_info"]}{scoreboard["c4"]}'
+            truth_table['game_minimized_freezetime'] = cs.round_start_msg(message, game_state['round_phase'], time_table['freezetime_started'], truth_table['game_minimized_freezetime'], win32gui.GetWindowPlacement(hwnd)[1] == 2)
+        elif truth_table['game_minimized_warmup']:
+            message = f'Warmup is over! Map: {green(gsi_server.get_info("map", "name").split("_")[1].capitalize())}, Team: {team}, Took: {cs.timedelta(time_table["warmup_started"])}'
+            truth_table['game_minimized_warmup'] = cs.round_start_msg(message, game_state['round_phase'], time_table['freezetime_started'], truth_table['game_minimized_warmup'], win32gui.GetWindowPlacement(hwnd)[1] == 2)
 
         if game_state['round_phase'] == 'freezetime' and truth_table['c4_round_first']:
             scoreboard['c_weapons'] = [inner for outer in gsi_server.get_info('player', 'weapons').values() for inner in outer.items()]
@@ -370,9 +367,11 @@ while True:
                 team = red('T') if gsi_server.get_info('player', 'team') == 'T' else cyan('CT')
                 write('Warmup is over! Map: {map}, Team: {team}, Took: {time}'.format(team=team, map=green(gsi_server.get_info('map', 'name').split('_')[1].capitalize()), time=cs.timedelta(time_table['warmup_started'])),
                       push=cs.pushbullet_dict['urgency'] + 2, push_now=True, overwrite='7')
+
                 time_table['match_started'] = time.time()
                 time_table['freezetime_started'] = time.time()
                 if win32gui.GetWindowPlacement(hwnd)[1] == 2:
+                    truth_table['game_minimized_warmup'] = True
                     playsound('sounds/ready_up_warmup.wav', block=False)
             if game_state['map_phase'] is None:
                 truth_table['still_in_warmup'] = False
@@ -417,10 +416,17 @@ while True:
             afk_dict['per_round'] = int(afk_dict['seconds_afk'] / (int(score['CT']) + int(score['T'])))
             if gsi_server.get_info('player', 'steamid') == cs.steam_id:
                 player_stats = gsi_server.get_info('player', 'match_stats')
+
+            average = cs.getAvgMatchTime(cs.steam_id)
+            timings = {'match': time.time() - time_table['match_started'], 'search': time_table['match_accepted'] - time_table['search_started'], 'afk': afk_dict['seconds_afk'], 'afk_round': afk_dict['per_round']}
+
             write(f'The match is over! - {score[team[0]]:02d}:{score[team[1]]:02d}', color=FgColor.Red)
-            write(f'Match duration: {cs.timedelta(time_table["match_started"])}', add_time=False)
-            write(f'Search-time:    {cs.timedelta(seconds=time_table["match_accepted"] - time_table["search_started"])}', add_time=False)
-            write('Time AFK:       {}, {}s per round, {:.1%} of match duration.'.format(cs.timedelta(seconds=afk_dict['seconds_afk']), afk_dict['per_round'], afk_dict['seconds_afk'] / (time.time() - time_table['match_started'])), add_time=False)
+
+            write(f'Match duration: {cs.time_output(timings["match"], average["match_time"][0])}', add_time=False)
+            write(f'Search-time:    {cs.time_output(timings["search"], average["search_time"][0])}', add_time=False)
+            write(f'AFK-time:       {cs.time_output(timings["afk"], average["afk_time"][0])}', add_time=False)
+            write(f'AFK per Round:  {cs.time_output(timings["afk_round"], average["afk_time"][2])}', add_time=False)
+            write(f'                {(timings["afk"] / timings["match"]):.1%} of match duration', add_time=False)
 
             if gsi_server.get_info('map', 'mode') == 'competitive' and game_state['map_phase'] == 'gameover' and not truth_table['test_for_warmup'] and not truth_table['still_in_warmup']:
                 if truth_table['monitoring_since_start']:
@@ -430,22 +436,11 @@ while True:
                 else:
                     match_time, search_time, afk_time = '', '', ''
 
-                average_match_time = cs.getAvgMatchTime(cs.steam_id)
-                this_game_time = (time.time() - time_table['match_started'], time_table['match_accepted'] - time_table['search_started'], afk_dict['seconds_afk'], afk_dict['per_round'])
-                game_time_output_strings = (('The match was {} ' + red('longer') + ' than the average match with {}', 'The match was {} ' + green('shorter') + ' than the average match with {}'),
-                                            ('The search-time was {} ' + red('longer') + ' than the average search-time with {}', 'The search-time was {} ' + green('shorter') + ' than the average search-time with {}'),
-                                            ('The time afk was {} ' + red('longer') + ' than the average time afk with {}', 'The time afk was {} ' + green('shorter') + ' than the average time afk with {}'),
-                                            ('The time afk per round was {} ' + red('longer') + ' than the average time afk per round with {}', 'The time afk per round was {} ' + green('shorter') + ' than the average time afk per round with {}'),
-                                            'Time in competitive matchmaking: {}', 'Time in the searching queue: {}', 'Time afk while being ingame: {}')
-                for i, val in enumerate(average_match_time):
-                    if isinstance(val, int):
-                        avg_time_difference = this_game_time[i] - val
-                        if avg_time_difference >= 0:
-                            write(game_time_output_strings[i][0].format(cs.timedelta(seconds=avg_time_difference), cs.timedelta(seconds=val)), add_time=False)
-                        else:
-                            write(game_time_output_strings[i][1].format(cs.timedelta(seconds=avg_time_difference), cs.timedelta(seconds=val)), add_time=False)
-                    elif isinstance(val, str):
-                        write(game_time_output_strings[i].format(val), add_time=False)
+                total_time = (f'Time in competitive matchmaking: {cs.timedelta(seconds=average["match_time"][1])}',
+                              f'Time in the searching queue: {cs.timedelta(seconds=average["search_time"][1])}',
+                              f'Time afk while being ingame: {cs.timedelta(seconds=average["afk_time"][1])}')
+                for time_str in total_time:
+                    write(time_str, add_time=False)
 
                 new_sharecodes = cs.getNewCSGOSharecodes(cs.getOldSharecodes(-1)[0],
                                                          played_map=score['map'],

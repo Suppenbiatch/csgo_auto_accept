@@ -2,7 +2,6 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from operator import attrgetter
 from threading import Thread
 import json
-from time import time
 
 from GSI import gamestate
 from GSI import payloadparser
@@ -18,18 +17,11 @@ class GSIServer(HTTPServer):
 
         self.running = False
 
-    def start_server(self, timeout: int = 20):
-        start = time()
+    def start_server(self):
         try:
             thread = Thread(target=self.serve_forever)
             thread.start()
             # first_time = True
-            while not self.running:
-                if time() - start > timeout and not self.running:
-                    print('Failed to start server')
-                    break
-                elif self.running:
-                    break
         except:
             print("\nCould not start server.")
 

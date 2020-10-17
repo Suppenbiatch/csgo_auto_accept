@@ -1,8 +1,8 @@
 Pillow>=7.2.0
 playsound>=1.2.2
 pushbullet.py>=0.11.0
-pyperclip>=1.8.0
+pyperclip>=1.8.1
 pywin32>=228
 requests>=2.24.0
 color>=0.1
-cloudscraper>=1.2.46
+cloudscraper>=1.2.48
