@@ -19,6 +19,7 @@ def enum_cb(hwnd, results):
 
 def restart_gsi_server(timeout: int = 20, output: bool = False):
     global gsi_server
+    truth_table['failed_to_start_gsi'] = False
     if gsi_server.running:
         gsi_server.shutdown()
     gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
