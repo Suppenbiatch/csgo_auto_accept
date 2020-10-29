@@ -393,21 +393,26 @@ def UpdateCSGOstats(new_codes: List[dict], discord_output: bool = False):
             sharecode = responses['data']['sharecode']
             match_id = game_url.rpartition('/')[2]
 
+            discord_obj = None
+
             write(f'URL: {game_url}', add_time=True, push=pushbullet_dict['urgency'], color=FgColor.Green)
             data = get_csv_list(os.path.join(path_vars['appdata_path'], f'last_game_{steam_id}.csv'))
             match_index = find_dict(data, 'sharecode', sharecode)
             if match_index is not None:
                 for item in data[match_index].items():
-                    if item[0] in csgo_stats_test_for and not item[1]:
+                    if item[0] in csgo_stats_test_for and not item[1]:  # Match has missing info in csv
                         match_infos = get_match_infos(scraper, match_id, steam_id)
-                        discord_obj = add_match_id(sharecode, match_infos)
+                        if match_infos is not None:  # None is return if error in csgostats request
+                            discord_obj = add_match_id(sharecode, match_infos)
                         break
                 else:
-                    discord_obj = generate_table(data[match_index], account['avatar_url'])
+                    discord_obj = generate_table(data[match_index], account['avatar_url'])  # Match has no missing info (was already done)
             else:
-                match_infos = get_match_infos(scraper, match_id, steam_id)
-                discord_obj = add_match_id(sharecode, match_infos)
-            if discord_output:
+                match_infos = get_match_infos(scraper, match_id, steam_id)  # Match is completely new, no info in csv
+                if match_infos is not None:  # None is return if error in csgostats request
+                    discord_obj = add_match_id(sharecode, match_infos)
+
+            if discord_output and discord_obj is not None:
                 send_discord_msg(discord_obj, cfg['discord_url'], f'{account["name"]} - Match Stats')
             try:
                 pyperclip.copy(game_url)
@@ -565,7 +570,8 @@ def get_match_infos(scraper_obj: cloudscraper.CloudScraper, match_id: str, steam
     url = f'https://csgostats.gg/match/{match_id}'
     r = scraper_obj.get(url)
     if r.status_code != requests.status_codes.codes.ok:
-        return match_id
+        write(f'Failed to retrieve match data with code {r.status_code}', color=FgColor.Red, add_time=False)
+        return None
     formatted_html = r.text.replace('\n', '').replace('\t', '')
     all_info = formatted_html.replace('<tr class="">', '\r\n').replace('<tr class="has-banned">', '\r\n').replace('<div id="match-rounds" class="content-tab">', '\r\n').split('\r\n')
     players = get_player_info(all_info[1:-1])

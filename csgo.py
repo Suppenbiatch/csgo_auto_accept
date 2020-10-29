@@ -12,6 +12,7 @@ from GSI import server
 from cs import write
 
 
+
 # noinspection PyShadowingNames,PyUnusedLocal
 def enum_cb(hwnd, results):
     winlist.append((hwnd, win32gui.GetWindowText(hwnd)))
@@ -44,7 +45,7 @@ truth_table = {'test_for_accept_button': False, 'test_for_warmup': False, 'test_
                'game_minimized_freezetime': False, 'game_minimized_warmup': False, 'discord_output': True, 'failed_to_start_gsi': False}
 
 time_table = {'csgostats_retry': time.time(), 'warmup_test_timer': time.time(), 'search_started': time.time(), 'console_read': time.time(), 'timed_execution_time': time.time(), 'match_accepted': time.time(),
-              'match_started': time.time(), 'freezetime_started': time.time(), 'join_warmup_time': 0.0}
+              'match_started': time.time(), 'freezetime_started': time.time(), 'join_warmup_time': 0.0, 'warmup_seconds': 0}
 matchmaking = {'msg': [], 'update': [], 'players_accepted': [], 'lobby_data': [], 'server_found': False, 'server_ready': False}
 afk_dict = {'time': time.time(), 'still_afk': [], 'start_time': time.time(), 'seconds_afk': 0, 'player_info': {'steamid': 0, 'state': {}}}
 join_dict = {'t_full': False, 'ct_full': False}
@@ -102,7 +103,11 @@ while True:
 
     if win32api.GetAsyncKeyState(cs.cfg['open_live_tab']) & 1:  # F17 Key (OPEN WEB BROWSER ON LIVE GAME TAB)
         if hwnd:
-            csgo_window_status['new_tab'] = win32gui.GetWindowPlacement(hwnd)[1]
+            try:
+                csgo_window_status['new_tab'] = win32gui.GetWindowPlacement(hwnd)[1]
+            except BaseException as e:
+                if e.args[1] == 'GetWindowPlacement':
+                    csgo_window_status['new_tab'] = 2
         if csgo_window_status['new_tab'] != 2:
             win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
         webbrowser.open_new_tab(f'https://csgostats.gg/player/{cs.steam_id}#/live')
@@ -351,7 +356,7 @@ while True:
             message = f'Freeze Time - {scoreboard["last_round_info"]} - {scoreboard[uncolorize(scoreboard["team"])]:02d}:{scoreboard[uncolorize(scoreboard["opposing_team"])]:02d}{scoreboard["extra_round_info"]}{scoreboard["c4"]}'
             truth_table['game_minimized_freezetime'] = cs.round_start_msg(message, game_state['round_phase'], time_table['freezetime_started'], truth_table['game_minimized_freezetime'], win32gui.GetWindowPlacement(hwnd)[1] == 2)
         elif truth_table['game_minimized_warmup']:
-            message = f'Warmup is over! Map: {green(gsi_server.get_info("map", "name").split("_")[1].capitalize())}, Team: {team}, Took: {cs.timedelta(time_table["warmup_started"])}'
+            message = f'Warmup is over! Map: {green(gsi_server.get_info("map", "name").split("_")[1].capitalize())}, Team: {team}, Took: {cs.timedelta(seconds=time_table["warmup_seconds"])}'
             truth_table['game_minimized_warmup'] = cs.round_start_msg(message, game_state['round_phase'], time_table['freezetime_started'], truth_table['game_minimized_warmup'], win32gui.GetWindowPlacement(hwnd)[1] == 2)
 
         if game_state['round_phase'] == 'freezetime' and truth_table['c4_round_first']:
@@ -366,9 +371,9 @@ while True:
                 truth_table['still_in_warmup'] = False
                 truth_table['players_still_connecting'] = False
                 team = red('T') if gsi_server.get_info('player', 'team') == 'T' else cyan('CT')
-                write('Warmup is over! Map: {map}, Team: {team}, Took: {time}'.format(team=team, map=green(gsi_server.get_info('map', 'name').split('_')[1].capitalize()), time=cs.timedelta(time_table['warmup_started'])),
+                time_table['warmup_seconds'] = int(time.time() - time_table['warmup_started'])
+                write('Warmup is over! Map: {map}, Team: {team}, Took: {time}'.format(team=team, map=green(gsi_server.get_info('map', 'name').split('_')[1].capitalize()), time=cs.timedelta(seconds=time_table['warmup_seconds'])),
                       push=cs.pushbullet_dict['urgency'] + 2, push_now=True, overwrite='7')
-
                 time_table['match_started'] = time.time()
                 time_table['freezetime_started'] = time.time()
                 if win32gui.GetWindowPlacement(hwnd)[1] == 2:
@@ -377,7 +382,7 @@ while True:
             if game_state['map_phase'] is None:
                 truth_table['still_in_warmup'] = False
                 playsound('sounds/fail.wav', block=True)
-                write('Match did not start', overwrite='1', color=FgColor.Red)
+                write('Match did not start', overwrite='1', color=FgColor.Red, push=cs.pushbullet_dict['urgency'] + 2, push_now=True)
 
         if game_state['map_phase'] in ['live', 'warmup'] and not truth_table['game_over'] and not truth_table['disconnected_form_last']:
             csgo_window_status['in_game'] = win32gui.GetWindowPlacement(hwnd)[1]
@@ -392,7 +397,7 @@ while True:
                     afk_dict['round_phase'] = gsi_server.get_info('round', 'phase')
                     if afk_dict['round_phase'] is None:
                         afk_dict['round_phase'] = 'warmup'
-                    if afk_dict['player_info']['steamid'] == cs.steam_id and afk_dict['player_info']['state']['health'] > 0 and afk_dict['round_phase'] != 'freezetime':
+                    if afk_dict['player_info']['steamid'] == cs.steam_id and afk_dict['player_info']['state']['health'] > 0 and afk_dict['round_phase'] not in ['freezetime', None]:
                         write('Ran Anti-Afk Script.', overwrite='10')
                         cs.anti_afk(hwnd)
                         break
