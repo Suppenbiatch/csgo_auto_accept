@@ -27,7 +27,7 @@ path = os.path.join(os.getenv('APPDATA'), 'CSGO AUTO ACCEPT')
 (_, _, filenames) = next(os.walk(path))
 files = [(os.path.join(path, file) , file) for file in filenames if file.endswith('.csv')]
 
-new_header = ['sharecode', 'match_id', 'map', 'team_score', 'enemy_score', 'match_time', 'wait_time', 'afk_time', 'mvps', 'points', 'kills', 'assists', 'deaths', '5k', '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'HLTV', 'rank', 'username']
+new_header = ['sharecode', 'match_id', 'map', 'team_score', 'enemy_score', 'match_time', 'wait_time', 'afk_time', 'mvps', 'points', 'kills', 'assists', 'deaths', '5k', '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'HLTV', 'rank', 'username', 'server']
 
 for path, filename in files:
     print(f'Updating {filename} at {path}')

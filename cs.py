@@ -509,11 +509,27 @@ def generate_table(match, avatar_url: str = ''):
     mvps = match['mvps'] if match['mvps'] else '0'
     points = match['points'] if match['points'] else '0'
 
-    url = 'https://csgostats.gg/match/' + match['match_id']
+    rank_names = ['None',
+                  'S1', 'S2', 'S3', 'S4', 'SE', 'SEM',
+                  'GN1', 'GN2', 'GN3', 'GNM',
+                  'MG1', 'MG2', 'MGE', 'DMG',
+                  'LE', 'LEM', 'SMFC', 'GE']
+
+    rank_integer = int(re.sub('\D', '', match['rank']))
+    rank_changed = re.sub('[\d ]', '', match['rank'])
+    if '+' in rank_changed:
+        rank_changed = 'up-ranked'
+    elif '-' in rank_changed:
+        rank_changed = 'de-ranked'
+
+    rank_name = f'{rank_names[rank_integer]} ({rank_changed})' if rank_changed else rank_names[rank_integer]
+
     try:
         match_kd = f'{float(match["K/D"]) / 100:.2f}'
     except ValueError:
         match_kd = match["K/D"]
+
+    url = 'https://csgostats.gg/match/' + match['match_id']
 
     field_values = [('Map', match['map'], True), ('Score', '{:02d} **:** {:02d}'.format(int(match['team_score']), int(match['enemy_score'])), True), ('Username', match['username'], True),
                     ('Kills', match['kills'], True), ('Assists', match['assists'], True), ('Deaths', match['deaths'], True),
@@ -521,7 +537,7 @@ def generate_table(match, avatar_url: str = ''):
                     ('K/D', match_kd, True), ('ADR', match['ADR'], True), ('HS%', f'{match["HS%"]}%', True),
                     ('5k', match['5k'], True), ('4k', match['4k'], True), ('3k', match['3k'], True),
                     ('2k', match['2k'], True), ('1k', match['1k'], True), ('\u200B', '\u200B', True),
-                    ('HLTV-Rating', f'{float(match["HLTV"]) / 100:.2f}', True), ('Rank', match['rank'], True), ('\u200B', '\u200B', True),
+                    ('HLTV-Rating', f'{float(match["HLTV"]) / 100:.2f}', True), ('Rank', rank_name, True), ('Server', match['server'], True),
                     ('Match Duration', match_time, True), ('Search Time', search_time, True), ('AFK Time', afk_time, True)
                     ]
 
@@ -577,6 +593,11 @@ def get_match_infos(scraper_obj: cloudscraper.CloudScraper, match_id: str, steam
     players = get_player_info(all_info[1:-1])
     played_map: str = re.search('(?:<div style="font-weight:500;">.+?_)([a-zA-Z0-9]+)(?:</div>)', all_info[0]).group(1).capitalize()
     score: Union[list, tuple] = re.findall('(?:<span style="letter-spacing:-0.05em;">)(\d+)(?:</span>)', all_info[0])
+    played_server = re.search('(?:<div style="font-weight:500;">)([A-Za-z ]+Server)(?:</div>)', all_info[0])
+    if played_server is not None:
+        played_server = played_server.group(1)
+    else:
+        played_server = 'undetected'
     searched_player: Dict[str, Union[str, Dict[str]]] = {}
     for i, team in enumerate(players):
         for player in team:
@@ -585,7 +606,7 @@ def get_match_infos(scraper_obj: cloudscraper.CloudScraper, match_id: str, steam
                 score = (score[0], score[1]) if i == 0 else (score[1], score[0])
                 score = tuple(map(str, score))
                 break
-    return {'match_id': match_id, 'map': played_map, 'score': score, 'player': searched_player, 'players': players}
+    return {'match_id': match_id, 'map': played_map, 'score': score, 'server': played_server, 'player': searched_player, 'players': players}
 
 
 def add_match_id(sharecode: str, match: dict):
@@ -599,6 +620,7 @@ def add_match_id(sharecode: str, match: dict):
     else:
         data[m_index]['match_id'] = match['match_id']
         data[m_index]['map'] = match['map']
+        data[m_index]['server'] = match['server']
         data[m_index]['team_score'] = match['score'][0]
         data[m_index]['enemy_score'] = match['score'][1]
         data[m_index]['kills'] = match['player']['stats']['K']
@@ -722,8 +744,8 @@ re_pattern = {'lobby_info': re.compile("(?<!Machines' = '\d''members:num)(C?TSlo
               'decolor': re.compile('\033\[[0-9;]+m')}
 
 
-csv_header = ['sharecode', 'match_id', 'map', 'team_score', 'enemy_score', 'match_time', 'wait_time', 'afk_time', 'mvps', 'points', 'kills', 'assists', 'deaths', '5k', '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'HLTV', 'rank', 'username']
-csgo_stats_test_for = ['map', 'team_score', 'enemy_score', 'kills', 'assists', 'deaths', '5k', '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'HLTV', 'rank', 'username']
+csv_header = ['sharecode', 'match_id', 'map', 'team_score', 'enemy_score', 'match_time', 'wait_time', 'afk_time', 'mvps', 'points', 'kills', 'assists', 'deaths', '5k', '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'HLTV', 'rank', 'username', 'server']
+csgo_stats_test_for = ['map', 'team_score', 'enemy_score', 'kills', 'assists', 'deaths', '5k', '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'HLTV', 'rank', 'username', 'server']
 
 accounts = []
 getAccountsFromCfg()
