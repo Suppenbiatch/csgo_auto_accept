@@ -12,7 +12,6 @@ from GSI import server
 from cs import write
 
 
-
 # noinspection PyShadowingNames,PyUnusedLocal
 def enum_cb(hwnd, results):
     winlist.append((hwnd, win32gui.GetWindowText(hwnd)))

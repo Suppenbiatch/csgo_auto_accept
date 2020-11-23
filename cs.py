@@ -342,8 +342,8 @@ def UpdateCSGOstats(new_codes: List[dict], discord_output: bool = False):
         try:
             response = scraper.post('https://csgostats.gg/match/upload/ajax', data={'sharecode': sharecode, 'index': 0})
             responses.append(response)
-        except (cloudscraper.exceptions.CloudflareCode1020, requests.exceptions.ConnectionError):
-            write('Cloudflare blocked or csgostats is not reachable!', color=FgColor.Red)
+        except (cloudscraper.exceptions.CloudflareCode1020, requests.exceptions.ConnectionError, cloudscraper.exceptions.CaptchaException, cloudscraper.exceptions.CloudflareChallengeError) as e:
+            write(f'"{e}", match added to queue', color=FgColor.Red)
             cloudflare_blocked.append({'sharecode': sharecode, 'queue_pos': None})
     all_games = [r.json() for r in responses if r.status_code == requests.codes.ok]
     completed_games, not_completed_games, = [], []
@@ -386,7 +386,7 @@ def UpdateCSGOstats(new_codes: List[dict], discord_output: bool = False):
         write(corrupt_games_string, overwrite='5')
 
     if completed_games:
-        # global pushbullet_dict
+        time.sleep(2.5)  # idk if this helps to give csgostats some time
         global account
         for i, responses in enumerate(completed_games):
             game_url = responses['data']['url']
@@ -401,14 +401,14 @@ def UpdateCSGOstats(new_codes: List[dict], discord_output: bool = False):
             if match_index is not None:
                 for item in data[match_index].items():
                     if item[0] in csgo_stats_test_for and not item[1]:  # Match has missing info in csv
-                        match_infos = get_match_infos(scraper, match_id, steam_id)
+                        match_infos = get_match_infos(match_id, steam_id)
                         if match_infos is not None:  # None is return if error in csgostats request
                             discord_obj = add_match_id(sharecode, match_infos)
                         break
                 else:
                     discord_obj = generate_table(data[match_index], account['avatar_url'])  # Match has no missing info (was already done)
             else:
-                match_infos = get_match_infos(scraper, match_id, steam_id)  # Match is completely new, no info in csv
+                match_infos = get_match_infos(match_id, steam_id)  # Match is completely new, no info in csv
                 if match_infos is not None:  # None is return if error in csgostats request
                     discord_obj = add_match_id(sharecode, match_infos)
 
@@ -582,9 +582,13 @@ def get_player_info(raw_players: list):
 
 
 # noinspection PyShadowingNames
-def get_match_infos(scraper_obj: cloudscraper.CloudScraper, match_id: str, steam_id: str):
+def get_match_infos(match_id: str, steam_id: str):
     url = f'https://csgostats.gg/match/{match_id}'
-    r = scraper_obj.get(url)
+    try:
+        r = scraper.get(url)
+    except (cloudscraper.exceptions.CaptchaException, cloudscraper.exceptions.CloudflareChallengeError):
+        write('Failed to get match data because of cloudflare captcha', color=FgColor.Red, add_time=False)
+        return None
     if r.status_code != requests.status_codes.codes.ok:
         write(f'Failed to retrieve match data with code {r.status_code}', color=FgColor.Red, add_time=False)
         return None
@@ -654,7 +658,11 @@ def add_match_id(sharecode: str, match: dict):
 def send_discord_msg(discord_data, webhook_url: str, username: str = 'Auto Acceptor'):
     discord_data['username'] = username
     r = requests.post(webhook_url, data=json.dumps(discord_data), headers={"Content-Type": "application/json"})
-    remaining_requests = int(r.headers['x-ratelimit-remaining'])
+    try:
+        remaining_requests = int(r.headers['x-ratelimit-remaining'])
+    except KeyError:
+        write(f'Keyerror with status code {r.status_code}')
+        remaining_requests = 1
     if remaining_requests == 0:
         ratelimit_wait = abs(int(r.headers['x-ratelimit-reset']) - time.time() + 0.2)
         print('sleeping', ratelimit_wait)

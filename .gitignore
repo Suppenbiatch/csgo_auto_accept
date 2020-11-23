@@ -12,3 +12,4 @@ config.ini
 *.ps1
 convert_csv.py
 fix_kd_error.py
+match_fixer.py
