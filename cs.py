@@ -506,6 +506,7 @@ def generate_table(match, avatar_url: str = ''):
     match_time = timedelta(seconds=match['match_time'] if match['match_time'] else 0)
     search_time = timedelta(seconds=match['wait_time'] if match['wait_time'] else 0)
     afk_time = timedelta(seconds=match['afk_time'] if match['afk_time'] else 0)
+    afk_per_round = timedelta(seconds=int(int(match['afk_time']) / (int(match['team_score']) + int(match['enemy_score']))) if match['afk_time'] else 0)
     mvps = match['mvps'] if match['mvps'] else '0'
     points = match['points'] if match['points'] else '0'
 
@@ -536,8 +537,8 @@ def generate_table(match, avatar_url: str = ''):
                     ('MVPs', mvps, True), ('Points', points, True), ('\u200B', '\u200B', True),
                     ('K/D', match_kd, True), ('ADR', match['ADR'], True), ('HS%', f'{match["HS%"]}%', True),
                     ('5k', match['5k'], True), ('4k', match['4k'], True), ('3k', match['3k'], True),
-                    ('2k', match['2k'], True), ('1k', match['1k'], True), ('\u200B', '\u200B', True),
-                    ('HLTV-Rating', f'{float(match["HLTV"]) / 100:.2f}', True), ('Rank', rank_name, True), ('Server', match['server'], True),
+                    ('2k', match['2k'], True), ('1k', match['1k'], True), ('HLTV-Rating', f'{float(match["HLTV"]) / 100:.2f}', True),
+                    ('Rank', rank_name, True), ('Server', match['server'], True), ('AFK per round', afk_per_round, True),
                     ('Match Duration', match_time, True), ('Search Time', search_time, True), ('AFK Time', afk_time, True)
                     ]
 
@@ -728,6 +729,9 @@ else:
 pushbullet_dict: Dict[str, Union[str, int, pushbullet.pushbullet.Device, Tuple[str, str, str, str]]] = \
     {'note': '', 'urgency': 0, 'device': None, 'push_info': ('not active', 'on if accepted', 'all game status related information', 'all information (game status/csgostats.gg information)')}
 
+re_pattern = {'lobby_info': re.compile("(?<!Machines' = '\d''members:num)(C?TSlotsFree|Players)(?:' = ')(\d+'?)"),
+              'steam_path': re.compile('\\t"\d*"\\t\\t"'),
+              'decolor': re.compile('\033\[[0-9;]+m')}
 
 # CONFIG HANDLING
 config = configparser.ConfigParser()
@@ -746,10 +750,6 @@ except (configparser.NoOptionError, configparser.NoSectionError, ValueError):
     write('ERROR IN CONFIG')
     cfg = {'ERROR': None}
     exit('CHECK FOR NEW CONFIG')
-
-re_pattern = {'lobby_info': re.compile("(?<!Machines' = '\d''members:num)(C?TSlotsFree|Players)(?:' = ')(\d+'?)"),
-              'steam_path': re.compile('\\t"\d*"\\t\\t"'),
-              'decolor': re.compile('\033\[[0-9;]+m')}
 
 
 csv_header = ['sharecode', 'match_id', 'map', 'team_score', 'enemy_score', 'match_time', 'wait_time', 'afk_time', 'mvps', 'points', 'kills', 'assists', 'deaths', '5k', '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'HLTV', 'rank', 'username', 'server']
