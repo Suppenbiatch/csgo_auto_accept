@@ -19,7 +19,7 @@ class GSIServer(HTTPServer):
 
     def start_server(self):
         try:
-            thread = Thread(target=self.serve_forever)
+            thread = Thread(target=self.serve_forever, name='gsi_server')
             thread.start()
             # first_time = True
         except:

@@ -545,6 +545,41 @@ def generate_table(match, avatar_url: str = ''):
     return {'embeds': [{'title': 'csgostats.gg link', 'url': url, 'color': account["color"], 'fields': [create_field(i) for i in field_values]}], 'avatar_url': avatar_url}
 
 
+# noinspection PyShadowingNames
+def get_match_infos(match_id: str, steam_id: str):
+    url = f'https://csgostats.gg/match/{match_id}'
+    try:
+        r = scraper.get(url)
+    except (cloudscraper.exceptions.CaptchaException, cloudscraper.exceptions.CloudflareChallengeError):
+        write('Failed to get match data because of cloudflare captcha', color=FgColor.Red, add_time=False)
+        return None
+    if r.status_code != requests.status_codes.codes.ok:
+        write(f'Failed to retrieve match data with code {r.status_code}', color=FgColor.Red, add_time=False)
+        return None
+    formatted_html = r.text.replace('\n', '').replace('\t', '')
+    all_info = formatted_html.replace('<tr class="">', '\r\n').replace('<tr class="has-banned">', '\r\n').replace('<div id="match-rounds" class="content-tab">', '\r\n').split('\r\n')
+    players = get_player_info(all_info[1:-1])
+    # round_wins = get_round_info(all_info[1:-1])  # normally stored in the fifth player
+    played_map: str = re.search('(?:<div style="font-weight:500;">.+?_)([a-zA-Z0-9]+)(?:</div>)', all_info[0]).group(1).capitalize()
+    score: Union[list, tuple] = re.findall('(?:<span style="letter-spacing:-0.05em;">)(\d+)(?:</span>)', all_info[0])
+    started_as = ''
+    played_server = re.search('(?:<div style="font-weight:500;">)([A-Za-z ]+Server)(?:</div>)', all_info[0])
+    if played_server is not None:
+        played_server = played_server.group(1)
+    else:
+        played_server = 'undetected'
+    searched_player: Dict[str, Union[str, Dict[str]]] = {}
+    for i, team in enumerate(players):
+        for player in team:
+            if player['steam_id'] == steam_id:
+                searched_player = player
+                score = (score[0], score[1]) if i == 0 else (score[1], score[0])
+                score = tuple(map(str, score))
+                started_as = 'T' if i == 0 else 'CT'
+                break
+    return {'match_id': match_id, 'map': played_map, 'score': score, 'server': played_server, 'player': searched_player, 'players': players, 'started_as': started_as}
+
+
 def get_player_info(raw_players: list):
     players: List[List[Dict[str, Union[str, Dict[str, str]]]]] = [[], []]
     stat_keys = ['K', 'D', 'A', '+/-', 'K/D', 'ADR', 'HS', 'FK', 'FD', 'Trade_K', 'Trade_D', 'Trade_FK', 'Trade_FD', '1v5', '1v4', '1v3', '1v2', '1v1', '5k', '4k', '3k', '2k', '1k', 'KAST', 'HLTV']
@@ -582,36 +617,27 @@ def get_player_info(raw_players: list):
     return players
 
 
-# noinspection PyShadowingNames
-def get_match_infos(match_id: str, steam_id: str):
-    url = f'https://csgostats.gg/match/{match_id}'
-    try:
-        r = scraper.get(url)
-    except (cloudscraper.exceptions.CaptchaException, cloudscraper.exceptions.CloudflareChallengeError):
-        write('Failed to get match data because of cloudflare captcha', color=FgColor.Red, add_time=False)
+def get_round_info(raw_players):
+    pattern = {'rounds': '<ul style="padding:0; margin:0; list-style-type:none;">',
+               'winner': re.compile('li style=".+? <div style=".+?solid #([0-9A-Fa-f]+);'),
+               'ct': 3844602,
+               't': 16232254}
+    round_info = None
+    for player in raw_players:
+        if pattern['rounds'] in player:
+            round_info = player
+            break
+    if not round_info:
         return None
-    if r.status_code != requests.status_codes.codes.ok:
-        write(f'Failed to retrieve match data with code {r.status_code}', color=FgColor.Red, add_time=False)
-        return None
-    formatted_html = r.text.replace('\n', '').replace('\t', '')
-    all_info = formatted_html.replace('<tr class="">', '\r\n').replace('<tr class="has-banned">', '\r\n').replace('<div id="match-rounds" class="content-tab">', '\r\n').split('\r\n')
-    players = get_player_info(all_info[1:-1])
-    played_map: str = re.search('(?:<div style="font-weight:500;">.+?_)([a-zA-Z0-9]+)(?:</div>)', all_info[0]).group(1).capitalize()
-    score: Union[list, tuple] = re.findall('(?:<span style="letter-spacing:-0.05em;">)(\d+)(?:</span>)', all_info[0])
-    played_server = re.search('(?:<div style="font-weight:500;">)([A-Za-z ]+Server)(?:</div>)', all_info[0])
-    if played_server is not None:
-        played_server = played_server.group(1)
-    else:
-        played_server = 'undetected'
-    searched_player: Dict[str, Union[str, Dict[str]]] = {}
-    for i, team in enumerate(players):
-        for player in team:
-            if player['steam_id'] == steam_id:
-                searched_player = player
-                score = (score[0], score[1]) if i == 0 else (score[1], score[0])
-                score = tuple(map(str, score))
-                break
-    return {'match_id': match_id, 'map': played_map, 'score': score, 'server': played_server, 'player': searched_player, 'players': players}
+    round_wins = []
+    for i in pattern['winner'].findall(round_info):
+        if int(i, 16) == pattern['t']:
+            round_wins.append(0)
+        elif int(i, 16) == pattern['ct']:
+            round_wins.append(1)
+        else:
+            write(f'unknown team #{i}')
+    return round_wins
 
 
 def add_match_id(sharecode: str, match: dict):

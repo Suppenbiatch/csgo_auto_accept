@@ -2,14 +2,12 @@
 /venv/
 /.idea/
 /__pycache__/
-/convert_sharecodes/
 basics.py
 test.py
-discord_msg.py
+cs_test.py
 config.ini
 *.pyc
 *.lnk
 *.ps1
-convert_csv.py
 fix_kd_error.py
 match_fixer.py
