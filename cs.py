@@ -103,11 +103,13 @@ def anti_afk(window_id: int, reset_position=None):
     if reset_position is None:
         reset_position = (0, 0)
     current_cursor_position = win32api.GetCursorPos()
+    screen_mid = (int(win32api.GetSystemMetrics(0) / 2), int(win32api.GetSystemMetrics(1) / 2))
     moves = int(win32api.GetSystemMetrics(1) / 3) + 1
+    win32api.SetCursorPos(screen_mid)
     win32gui.ShowWindow(window_id, win32con.SW_MAXIMIZE)
     for _ in range(moves):
         win32api.mouse_event(win32con.MOUSEEVENTF_MOVE, 0, -15)
-    click(win32api.GetCursorPos())
+    click(screen_mid)
     for _ in range(moves):
         win32api.mouse_event(win32con.MOUSEEVENTF_MOVE, 0, 15)
     for _ in range(int(moves / 1.07)):
@@ -570,7 +572,9 @@ def generate_table(match, avatar_url: str = ''):
                     ('Match Duration', match_time, True), ('Search Time', search_time, True), ('AFK Time', afk_time, True)
                     ]
 
-    return {'embeds': [{'title': 'csgostats.gg link', 'url': url, 'color': account["color"], 'fields': [create_field(i) for i in field_values]}], 'avatar_url': avatar_url}
+    return {'embeds': [{'author': {'name': 'csgostats.gg', 'url': url, 'icon_url': ''}, 'color': account["color"],
+                        'footer': {'text': 'CS:GO', 'icon_url': 'https://i.imgur.com/qlBV96I.png'}, 'timestamp': epoch_to_iso(match['timestamp']),
+                        'fields': [create_field(i) for i in field_values]}], 'avatar_url': avatar_url}
 
 
 # noinspection PyShadowingNames
@@ -588,10 +592,18 @@ def get_match_infos(match_id: str, steam_id: str):
     all_info = formatted_html.replace('<tr class="">', '\r\n').replace('<tr class="has-banned">', '\r\n').replace('<div id="match-rounds" class="content-tab">', '\r\n').split('\r\n')
     players = get_player_info(all_info[1:-1])
     # round_wins = get_round_info(all_info[1:-1])  # normally stored in the fifth player
-    played_map: str = re.search('<div style="font-weight:500;">[a-z]+_([a-zA-Z0-9_]+)</div>', all_info[0]).group(1).replace('_', ' ').title()
-    score: Union[list, tuple] = re.findall('(?:<span style="letter-spacing:-0.05em;">)(\d+)(?:</span>)', all_info[0])
+    played_map: str = re.search('<div style="font-weight:\d+;">[a-z]+_([a-zA-Z0-9_]+)</div>', all_info[0]).group(1).replace('_', ' ').title()
+    score: Union[list, tuple] = re.findall('<span style="letter-spacing:[0-9\-.]+?em;">(\d+)</span>', all_info[0])
     started_as = ''
-    played_server = re.search('(?:<div style="font-weight:500;">)([A-Za-z ]+Server)(?:</div>)', all_info[0])
+    played_server = re.search('<div style="font-weight:\d+;">([A-Za-z ]+Server)</div>', all_info[0])
+    timestamp = re.search('<div style="font-weight:\d+;">(\d+?(?:st|nd|rd|th) [A-Za-z]+ \d+? \d+?:\d+?:\d+?)</div>', all_info[0])
+
+    if timestamp is not None:
+        timestamp = parse_time(timestamp.group(1))
+    else:
+        write(f'Could not parse time... report: {match_id}', color=FgColor.Yellow)
+        timestamp = 0.0
+
     if played_server is not None:
         played_server = played_server.group(1)
     else:
@@ -605,7 +617,8 @@ def get_match_infos(match_id: str, steam_id: str):
                 score = tuple(map(str, score))
                 started_as = 'T' if i == 0 else 'CT'
                 break
-    return {'match_id': match_id, 'map': played_map, 'score': score, 'server': played_server, 'player': searched_player, 'players': players, 'started_as': started_as}
+    return {'match_id': match_id, 'map': played_map, 'score': score, 'server': played_server,
+            'player': searched_player, 'players': players, 'started_as': started_as, 'timestamp': timestamp}
 
 
 def get_player_info(raw_players: list):
@@ -668,6 +681,16 @@ def get_round_info(raw_players):
     return round_wins
 
 
+def parse_time(datetime_str: str):
+    clean_date = re.sub(r'(\d)(st|nd|rd|th)', r'\1', datetime_str)
+    dt_obj = datetime.datetime.strptime(f'{clean_date} +0000', '%d %b %Y %H:%M:%S %z')
+    return datetime.datetime.timestamp(dt_obj)
+
+
+def epoch_to_iso(epoch_time):
+    return datetime.datetime.fromtimestamp(float(epoch_time), datetime.datetime.now().astimezone().tzinfo).isoformat()
+
+
 def add_match_id(sharecode: str, match: dict):
     global path_vars
     csv_path = f'{path_vars["appdata_path"]}last_game_{match["player"]["steam_id"]}.csv'
@@ -680,6 +703,7 @@ def add_match_id(sharecode: str, match: dict):
         data[m_index]['match_id'] = match['match_id']
         data[m_index]['map'] = match['map']
         data[m_index]['server'] = match['server']
+        data[m_index]['timestamp'] = match['timestamp']
         data[m_index]['team_score'] = match['score'][0]
         data[m_index]['enemy_score'] = match['score'][1]
         data[m_index]['start_team'] = match['started_as']
@@ -794,9 +818,10 @@ def restart_gsi_server(gsi_server: server.GSIServer = None):
     return gsi_server
 
 
+# noinspection PyShadowingNames
 class WindowEnumerator(threading.Thread):
     def __init__(self, sleep_interval: float = 0.5):
-        super().__init__()
+        super().__init__(name='WindowEnumerator')
         self._kill = threading.Event()
         self._interval = sleep_interval
 
@@ -842,8 +867,8 @@ try:
     cfg = {'activate_script': config.get('HotKeys', 'Activate Script'), 'activate_push_notification': config.get('HotKeys', 'Activate Push Notification'),
            'info_newest_match': config.get('HotKeys', 'Get Info on newest Match'), 'mute_csgo_toggle': config.get('HotKeys', 'Mute CSGO'),
            'open_live_tab': config.get('HotKeys', 'Live Tab Key'), 'switch_accounts': config.get('HotKeys', 'Switch accounts for csgostats.gg'),
-           'end_script': config.get('HotKeys', 'End Script'), 'discord_key': config.get('HotKeys', 'Discord Toggle'),
-           'screenshot_interval': float(config.get('Screenshot', 'Interval')), 'steam_api_key': config.get('csgostats.gg', 'API Key'),
+           'end_script': config.get('HotKeys', 'End Script'), 'discord_key': config.get('HotKeys', 'Discord Toggle'), 'minimize_key': config.get('HotKeys', 'Minimize CSGO'),
+           'sleep_interval': config.getfloat('Screenshot', 'Interval'), 'steam_api_key': config.get('csgostats.gg', 'API Key'),
            'max_queue_position': config.getint('csgostats.gg', 'Auto-Retrying for queue position below'), 'log_color': config.get('Screenshot', 'Log Color').lower(),
            'auto_retry_interval': config.getint('csgostats.gg', 'Auto-Retrying-Interval'), 'pushbullet_device_name': config.get('Pushbullet', 'Device Name'), 'pushbullet_api_key': config.get('Pushbullet', 'API Key'),
            'forbidden_programs': config.get('Screenshot', 'Forbidden Programs'), 'discord_url': config.get('csgostats.gg', 'Discord Webhook URL'), 'taskbar_position': config.getfloat('Screenshot', 'Taskbar Factor')}
@@ -853,8 +878,9 @@ except (configparser.NoOptionError, configparser.NoSectionError, ValueError):
     exit('CHECK FOR NEW CONFIG')
 
 
-csv_header = ['sharecode', 'match_id', 'map', 'team_score', 'enemy_score', 'start_team', 'match_time', 'wait_time', 'afk_time', 'mvps', 'points', 'kills', 'assists', 'deaths', '5k', '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'HLTV', 'rank', 'username', 'server']
-csgo_stats_test_for = ['map', 'team_score', 'enemy_score', 'start_team', 'kills', 'assists', 'deaths', '5k', '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'HLTV', 'rank', 'username', 'server']
+csv_header = ['sharecode', 'match_id', 'map', 'team_score', 'enemy_score', 'start_team',
+              'match_time', 'wait_time', 'afk_time', 'mvps', 'points', 'kills', 'assists', 'deaths', '5k', '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'HLTV', 'rank', 'username', 'server', 'timestamp']
+csgo_stats_test_for = ['map', 'team_score', 'enemy_score', 'start_team', 'kills', 'assists', 'deaths', '5k', '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'HLTV', 'rank', 'username', 'server', 'timestamp']
 
 accounts = []
 get_accounts_from_cfg()
@@ -884,4 +910,8 @@ cfg['taskbar_position'] = task_bar(cfg['taskbar_position'])
 scraper = cloudscraper.create_scraper()
 queue_difference = []
 csgostats_retry = time.time()
+
 window_ids = []
+
+sleep_interval = cfg['sleep_interval']
+sleep_interval_looking_for_accept = 0.05

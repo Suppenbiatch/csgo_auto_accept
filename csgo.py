@@ -38,6 +38,7 @@ def hk_upload_match():
     truth_table['is_upload_thread_active'] = False
 
 
+# noinspection PyShadowingNames
 def hk_new_tab():
     if hwnd:
         try:
@@ -48,7 +49,6 @@ def hk_new_tab():
     if csgo_window_status['new_tab'] != 2:
         win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
     webbrowser.open_new_tab(f'https://csgostats.gg/player/{cs.steam_id}#/live')
-    # write('new tab opened', add_time=False)
     if csgo_window_status['new_tab'] != 2:
         time.sleep(0.5)
         win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
@@ -79,13 +79,31 @@ def hk_discord_toggle():
 def hk_force_restart():
     global gsi_server
     truth_table['gsi_first_launch'] = True
-    write('GSI Server RESTARTING', color=FgColor.Yellow)
+    write('GSI Server restarting', color=FgColor.Yellow, overwrite='8')
     gsi_server = cs.restart_gsi_server(gsi_server)
 
 
 def hk_kill_main_loop():
     global running
     running = False
+
+
+def hk_minimize_csgo(reset_position: tuple):
+    global hwnd
+    if hwnd == 0:
+        return None
+    current_placement = win32gui.GetWindowPlacement(hwnd)
+    if current_placement[1] == 2:
+        win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
+    else:
+        win32gui.ShowWindow(hwnd, win32con.SW_SHOWMINIMIZED)
+        current_pos = win32api.GetCursorPos()
+        if current_pos == (0, 0):
+            current_pos = (int(win32api.GetSystemMetrics(0) / 2), int(win32api.GetSystemMetrics(1) / 2))
+        cs.click(reset_position)
+        time.sleep(0.01)
+        win32api.SetCursorPos(current_pos)
+    return None
 
 
 def gsi_server_status():
@@ -132,18 +150,27 @@ game_state = {'map_phase': []}
 cs.mute_csgo(0)
 
 blue(), magenta()
+
+if cs.cfg['activate_script']:
+    keyboard.add_hotkey(cs.cfg['activate_script'], hk_activate)
+if cs.cfg['activate_push_notification']:
+    keyboard.add_hotkey(cs.cfg['activate_push_notification'], cs.activate_pushbullet)
+if cs.cfg['info_newest_match']:
+    keyboard.add_hotkey(cs.cfg['info_newest_match'], hk_upload_match)
+if cs.cfg['open_live_tab']:
+    keyboard.add_hotkey(cs.cfg['open_live_tab'], hk_new_tab)
+if cs.cfg['switch_accounts']:
+    keyboard.add_hotkey(cs.cfg['switch_accounts'], hk_switch_accounts)
+if cs.cfg['mute_csgo_toggle']:
+    keyboard.add_hotkey(cs.cfg['mute_csgo_toggle'], cs.mute_csgo, args=[2])  # LvL 2 is toggle
+if cs.cfg['discord_key']:
+    keyboard.add_hotkey(cs.cfg['discord_key'], hk_discord_toggle)
+if cs.cfg['end_script']:
+    keyboard.add_hotkey(cs.cfg['end_script'], hk_kill_main_loop)
+if cs.cfg['minimize_key']:
+    keyboard.add_hotkey(cs.cfg['minimize_key'], hk_minimize_csgo, args=[cs.cfg['taskbar_position']])
+
 write('READY', color=FgColor.Green)
-
-keyboard.add_hotkey(cs.cfg['activate_script'], hk_activate)
-keyboard.add_hotkey(cs.cfg['activate_push_notification'], cs.activate_pushbullet)
-keyboard.add_hotkey(cs.cfg['info_newest_match'], hk_upload_match)
-keyboard.add_hotkey(cs.cfg['open_live_tab'], hk_new_tab)
-keyboard.add_hotkey(cs.cfg['switch_accounts'], hk_switch_accounts)
-keyboard.add_hotkey(cs.cfg['mute_csgo_toggle'], cs.mute_csgo, args=[2])  # LvL 2 is toggle
-keyboard.add_hotkey(cs.cfg['discord_key'], hk_discord_toggle)
-keyboard.add_hotkey(cs.cfg['end_script'], hk_kill_main_loop)
-keyboard.add_hotkey('F12', hk_force_restart)
-
 running = True
 
 while running:
@@ -152,8 +179,6 @@ while running:
             retryer = cs.update_csgo_stats(retryer, discord_output=truth_table['discord_output'])
             time_table['csgostats_retry'] = time.time()
 
-    # winlist = []
-    # win32gui.EnumWindows(cs.enum_cb, winlist)
     csgo = [(hwnd, title) for hwnd, title in cs.window_ids if 'counter-strike: global offensive' == title.lower()]
 
     if not csgo:
@@ -185,13 +210,7 @@ while running:
     if truth_table['gsi_first_launch'] and gsi_server.running:
         write('GSI Server running', overwrite='8', color=FgColor.Green)
         truth_table['gsi_first_launch'] = False
-    '''
-    if time.time() - time_table['console_read'] > 0.2:
-        time_table['console_read'] = time.time()
-        matchmaking = cs.read_console()
-    else:
-        matchmaking = {'msg': [], 'update': [], 'players_accepted': [], 'lobby_data': [], 'server_found': False, 'server_ready': False, 'server_abandon': [], 'map': []}
-    '''
+
     matchmaking = cs.read_console()
 
     if matchmaking['update']:
@@ -212,6 +231,7 @@ while running:
         if matchmaking['server_ready']:
             # write('Server found, starting to look for accept button.', overwrite='1')
             truth_table['test_for_accept_button'] = True
+            cs.sleep_interval = cs.sleep_interval_looking_for_accept
             csgo_window_status['server_found'] = win32gui.GetWindowPlacement(hwnd)[1]
             win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
 
@@ -221,6 +241,7 @@ while running:
         if cs.relate_list(accept_avg, (2, 2, 2)):
             # write('Trying to Accept.', push=pushbullet_dict['urgency'] + 1, overwrite='1')
             truth_table['test_for_accept_button'] = False
+            cs.sleep_interval = cs.cfg['sleep_interval']
 
             current_cursor_position = win32api.GetCursorPos()
             for _ in range(5):
@@ -247,6 +268,7 @@ while running:
             truth_table['first_freezetime'] = False
             truth_table['test_for_server'] = False
             truth_table['test_for_accept_button'] = False
+            cs.sleep_interval = cs.cfg['sleep_interval']
             truth_table['test_for_success'] = False
             truth_table['monitoring_since_start'] = True
             cs.mute_csgo(0)
@@ -264,6 +286,7 @@ while running:
         if cs.str_in_list(['Other players failed to connect', 'Failed to ready up'], matchmaking['msg']):
             truth_table['test_for_server'] = True
             truth_table['test_for_accept_button'] = False
+            cs.sleep_interval = cs.cfg['sleep_interval']
             truth_table['test_for_success'] = False
             if 'Other players failed to connect' in matchmaking['msg']:
                 write('Match has not started! Continuing to search for a Server!', push=cs.pushbullet_dict['urgency'] + 1, push_now=True, overwrite='11', color=FgColor.Red)
@@ -387,7 +410,11 @@ while running:
             write('Match did not start', overwrite='1', color=FgColor.Red, push=cs.pushbullet_dict['urgency'] + 2, push_now=True)
 
     if game_state['map_phase'] in ['live', 'warmup'] and not truth_table['game_over'] and not truth_table['disconnected_form_last']:
-        csgo_window_status['in_game'] = win32gui.GetWindowPlacement(hwnd)[1]
+        try:
+            csgo_window_status['in_game'] = win32gui.GetWindowPlacement(hwnd)[1]
+        except BaseException as e:
+            if e.args[1] == 'GetWindowPlacement':
+                csgo_window_status['in_game'] = 2
         afk_dict['still_afk'].append(csgo_window_status['in_game'] == 2)
         afk_dict['still_afk'] = [all(afk_dict['still_afk'])]
         if not afk_dict['still_afk'][0]:
@@ -508,7 +535,7 @@ while running:
                         truth_table['test_for_warmup'] = False
                         truth_table['first_game_over'] = False
                         break
-    time.sleep(0.5)
+    time.sleep(cs.sleep_interval)
 
 window_enum.kill()
 if cs.overwrite_dict['end'] != '\n':
