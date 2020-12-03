@@ -1,5 +1,6 @@
 import time
 import webbrowser
+from threading import Thread
 
 import keyboard
 import win32api
@@ -8,8 +9,8 @@ import win32gui
 from color import uncolorize, FgColor, red, green, yellow, blue, magenta, cyan
 from playsound import playsound
 
-import cs
-from cs import write
+import cs_test as cs
+from cs_test import write
 
 
 def hk_activate():
@@ -27,15 +28,10 @@ def hk_activate():
 
 # noinspection PyShadowingNames
 def hk_upload_match():
-    global retryer, new_sharecodes, time_table, truth_table
+    global retryer, time_table, truth_table
     write('Uploading / Getting status on newest match')
-    new_sharecodes = cs.get_new_sharecodes(cs.get_old_sharecodes(-1)[0])
-    time_table['csgostats_retry'] = time.time()
-    truth_table['is_upload_thread_active'] = True
-    for new_code in new_sharecodes:
-        retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
-    retryer = cs.update_csgo_stats(retryer, discord_output=truth_table['discord_output'])
-    truth_table['is_upload_thread_active'] = False
+    t = Thread(target=upload_matches, args=(True, None), name='UploadThread')
+    t.start()
 
 
 # noinspection PyShadowingNames
@@ -115,10 +111,27 @@ def gsi_server_status():
     return gsi_server.running
 
 
+def upload_matches(look_for_new: bool = True, stats=None):
+    global retryer, time_table, truth_table
+    if truth_table['upload_thread_active']:
+        write('Another Upload-Thread is still active', color=FgColor.Magenta)
+        return None
+    truth_table['upload_thread_active'] = True
+    if look_for_new:
+        new_sharecodes = cs.get_new_sharecodes(cs.get_old_sharecodes(-1)[0], stats=stats)
+        for new_code in new_sharecodes:
+            retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
+    time_table['csgostats_retry'] = time.time()
+    retryer = cs.update_csgo_stats(retryer, discord_output=truth_table['discord_output'])
+    time_table['csgostats_retry'] = time.time()
+    truth_table['upload_thread_active'] = False
+    return None
+
+
 # BOOLEAN, TIME INITIALIZATION
 truth_table = {'test_for_accept_button': False, 'test_for_warmup': False, 'test_for_success': False, 'first_ocr': True, 'testing': False, 'first_push': True, 'still_in_warmup': False, 'test_for_server': False, 'first_freezetime': True,
                'game_over': False, 'monitoring_since_start': False, 'players_still_connecting': False, 'first_game_over': True, 'disconnected_form_last': False, 'c4_round_first': True, 'steam_error': False,
-               'game_minimized_freezetime': False, 'game_minimized_warmup': False, 'discord_output': True, 'gsi_first_launch': True, 'is_upload_thread_active': False}
+               'game_minimized_freezetime': False, 'game_minimized_warmup': False, 'discord_output': True, 'gsi_first_launch': True, 'upload_thread_active': False}
 
 # remove console_read and timed_execution_time
 time_table = {'csgostats_retry': time.time(), 'search_started': time.time(), 'console_read': time.time(), 'timed_execution_time': time.time(), 'match_accepted': time.time(),
@@ -131,10 +144,6 @@ team = yellow('Unknown')
 player_stats = {}
 
 gsi_server = cs.restart_gsi_server(None)
-
-# import threading
-# window_enum = threading.Thread(target=cs.window_enum, name='Window Enum')
-# window_enum.start()
 
 window_enum = cs.WindowEnumerator()
 window_enum.start()
@@ -174,10 +183,10 @@ write('READY', color=FgColor.Green)
 running = True
 
 while running:
-    if retryer and not truth_table['is_upload_thread_active']:
+    if retryer and not truth_table['upload_thread_active']:
         if time.time() - time_table['csgostats_retry'] > cs.cfg['auto_retry_interval']:
-            retryer = cs.update_csgo_stats(retryer, discord_output=truth_table['discord_output'])
-            time_table['csgostats_retry'] = time.time()
+            t = Thread(target=upload_matches, args=(False, None), name='UploadThread')
+            t.start()
 
     csgo = [(hwnd, title) for hwnd, title in cs.window_ids if 'counter-strike: global offensive' == title.lower()]
 
@@ -324,8 +333,6 @@ while running:
         truth_table['players_still_connecting'] = False
         afk_dict['time'] = time.time()
 
-    #    if time.time() - time_table['timed_execution_time'] > .5:
-    #        time_table['timed_execution_time'] = time.time()
     game_state = {'map_phase': gsi_server.get_info('map', 'phase'), 'round_phase': gsi_server.get_info('round', 'phase')}
 
     if truth_table['first_freezetime']:
@@ -409,14 +416,14 @@ while running:
             playsound('sounds/fail.wav', block=True)
             write('Match did not start', overwrite='1', color=FgColor.Red, push=cs.pushbullet_dict['urgency'] + 2, push_now=True)
 
-    if game_state['map_phase'] in ['live', 'warmup'] and not truth_table['game_over'] and not truth_table['disconnected_form_last']:
+    if game_state['map_phase'] == 'live' and not truth_table['game_over'] and not truth_table['disconnected_form_last']:
         try:
             csgo_window_status['in_game'] = win32gui.GetWindowPlacement(hwnd)[1]
         except BaseException as e:
             if e.args[1] == 'GetWindowPlacement':
                 csgo_window_status['in_game'] = 2
-        afk_dict['still_afk'].append(csgo_window_status['in_game'] == 2)
-        afk_dict['still_afk'] = [all(afk_dict['still_afk'])]
+        afk_dict['still_afk'].append(csgo_window_status['in_game'] == 2)  # True if minimized
+        afk_dict['still_afk'] = [all(afk_dict['still_afk'])]  # True if was minimized and still is minimized
         if not afk_dict['still_afk'][0]:
             afk_dict['still_afk'] = []
             afk_dict['time'] = time.time()
@@ -477,25 +484,14 @@ while running:
             for time_str in total_time:
                 write(time_str, add_time=False)
 
-            new_sharecodes = cs.get_new_sharecodes(cs.get_old_sharecodes(-1)[0], played_map=score['map'], team_score=score[team[0]], enemy_score=score[team[1]], match_time=match_time, wait_time=search_time, afk_time=afk_time,
-                                                   player_stats=player_stats)
+            player_stats['map'] = score['map']
+            player_stats['match_score'] = score[team[0]], score[team[1]]
+            player_stats['match_time'] = match_time
+            player_stats['wait_time'] = search_time
+            player_stats['afk_time'] = afk_time
 
-            '''# HOPEFULLY TEMPORARY CSGOSTATS FIX, HAVE TO ADD GAMES MANUALLY
-            [write(i['sharecode'], add_time=False, color=FgColor.Magenta) for i in new_sharecodes]
-            try:
-                pyperclip.copy(new_sharecodes[-1]['sharecode'])
-            except (pyperclip.PyperclipWindowsException, pyperclip.PyperclipTimeoutException):
-                pass
-            # DONE HERE'''
-
-            try:
-                for new_code in new_sharecodes:
-                    retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
-                retryer = cs.update_csgo_stats(retryer, discord_output=truth_table['discord_output'])
-                time_table['csgostats_retry'] = time.time()
-
-            except TypeError:
-                write('ERROR IN GETTING NEW MATCH CODE! TRY PRESSING "F7" to add it manually')
+            t = Thread(target=upload_matches, args=(True, player_stats), name='UploadThread')
+            t.start()
 
         truth_table['game_over'] = False
         truth_table['first_game_over'] = False

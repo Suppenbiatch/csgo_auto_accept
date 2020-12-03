@@ -129,17 +129,13 @@ def task_bar(factor: float = 2.0):
         write('Taskbar location failed', color=FgColor.Yellow, add_time=False)
         return 0, 0
     pos = position_int[0]
-    if pos == 0:
-        # left
+    if pos == 0:  # left
         return 0, int(monitor['Monitor'][3] * factor)
-    elif pos == 1:
-        # top
+    elif pos == 1:  # top
         return int(monitor['Monitor'][2] * factor), 0
-    elif pos == 2:
-        # right
+    elif pos == 2:  # right
         return monitor['Monitor'][2], int(monitor['Monitor'][3] * factor)
-    elif pos == 3:
-        # bottom
+    elif pos == 3:  # bottom
         return int(monitor['Monitor'][2] * factor), monitor['Monitor'][3]
     return 0, 0
 
@@ -279,7 +275,7 @@ def check_userdata_autoexec(steam_id_3: str):
 def get_avg_match_time(steam_id: str):
     global path_vars
     try:
-        data = get_csv_list(path_vars['appdata_path'] + 'last_game_' + steam_id + '.csv')
+        data = get_csv_list(os.path.join(path_vars['appdata_path'], f'last_game_{steam_id}.csv'))
     except FileNotFoundError:
         return []
     match_time = [int(i['match_time']) for i in data if i['match_time']]
@@ -318,7 +314,7 @@ def get_old_sharecodes(last_x: int = -1, from_x: str = ''):
 
 
 # noinspection PyShadowingNames
-def get_new_sharecodes(game_id: str, played_map: str = '', team_score: str = '', enemy_score: str = '', match_time: str = '', wait_time: str = '', afk_time: str = '', player_stats=None):
+def get_new_sharecodes(game_id: str, stats=None):
     sharecodes = [game_id]
     next_code = game_id
     while next_code != 'n/a':
@@ -342,15 +338,19 @@ def get_new_sharecodes(game_id: str, played_map: str = '', team_score: str = '',
                 writer.writerow(row_dict)
 
             # Add the newest match with the given information
-            if player_stats is None:
-                player_stats = {'kills': 0, 'assists': 0, 'deaths': 0, 'mvps': 0, 'score': 0}
+            if stats is None:
+                stats = {'kills': 0, 'assists': 0, 'deaths': 0, 'mvps': 0, 'score': 0, 'map': '', 'match_score': ('', ''), 'match_time': '', 'wait_time': '', 'afk_time': ''}
 
-            row_dict = {'sharecode': sharecodes[-1], 'map': played_map, 'team_score': team_score, 'enemy_score': enemy_score,
-                        'match_time': match_time, 'wait_time': wait_time, 'afk_time': afk_time,
-                        'mvps': player_stats['mvps'], 'points': player_stats['score'], 'kills': player_stats['kills'], 'assists': player_stats['assists'], 'deaths': player_stats['deaths']}
+            if 'mvps' not in stats:  # gameover match stats are given, but player has never been seen (demo watching only)
+                for key, value in [('kills', 0), ('assists', 0), ('deaths', 0), ('mvps', 0), ('score', 0)]:
+                    stats[key] = value
+
+            row_dict = {'sharecode': sharecodes[-1], 'map': stats['map'], 'team_score': stats['match_score'][0], 'enemy_score': stats['match_score'][1],
+                        'match_time': stats['match_time'], 'wait_time': stats['wait_time'], 'afk_time': stats['afk_time'],
+                        'mvps': stats['mvps'], 'points': stats['score'], 'kills': stats['kills'], 'assists': stats['assists'], 'deaths': stats['deaths']}
             writer.writerow(row_dict)
 
-        # Test if the last track match has missing info
+        # Test if the last tracked match has missing info
         data = get_csv_list(os.path.join(path_vars['appdata_path'], f'last_game_{steam_id}.csv'))
         match_index = find_dict(data, 'sharecode', sharecodes[0])
         if match_index is not None:
@@ -458,7 +458,7 @@ def get_csv_list(path):
         data = list(csv.DictReader(f, fieldnames=csv_header, delimiter=';', restval=''))
     first_element = tuple(data[0].values())
     if all(head == first_element[i] for i, head in enumerate(csv_header)):  # File has a valid header
-        del data[0]  # Remove the header
+        del data[0]  # Remove the header from the data
         return data
 
     # rewrite file with the new header and reuse all the old values
@@ -602,7 +602,7 @@ def get_match_infos(match_id: str, steam_id: str):
         timestamp = parse_time(timestamp.group(1))
     else:
         write(f'Could not parse time... report: {match_id}', color=FgColor.Yellow)
-        timestamp = 0.0
+        timestamp = 0
 
     if played_server is not None:
         played_server = played_server.group(1)
@@ -684,7 +684,7 @@ def get_round_info(raw_players):
 def parse_time(datetime_str: str):
     clean_date = re.sub(r'(\d)(st|nd|rd|th)', r'\1', datetime_str)
     dt_obj = datetime.datetime.strptime(f'{clean_date} +0000', '%d %b %Y %H:%M:%S %z')
-    return datetime.datetime.timestamp(dt_obj)
+    return int(datetime.datetime.timestamp(dt_obj))
 
 
 def epoch_to_iso(epoch_time):
@@ -693,7 +693,7 @@ def epoch_to_iso(epoch_time):
 
 def add_match_id(sharecode: str, match: dict):
     global path_vars
-    csv_path = f'{path_vars["appdata_path"]}last_game_{match["player"]["steam_id"]}.csv'
+    csv_path = os.path.join(path_vars['appdata_path'], f'last_game_{steam_id}.csv')
     data = get_csv_list(csv_path)
     m_index = find_dict(data, 'sharecode', sharecode)
     if isinstance(match, str):  # request wasn't successful
@@ -715,13 +715,13 @@ def add_match_id(sharecode: str, match: dict):
         data[m_index]['3k'] = match['player']['stats']['3k']
         data[m_index]['2k'] = match['player']['stats']['2k']
         data[m_index]['1k'] = match['player']['stats']['1k']
-        # data[m_index]['K/D'] = round(float(match['player']['stats']['K/D']) * 100) #  except ValueError, could be '' if 0 deaths
         data[m_index]['ADR'] = match['player']['stats']['ADR']
         data[m_index]['HS%'] = re.sub('\D', '', match['player']['stats']['HS'])
         data[m_index]['HLTV'] = round(float(match['player']['stats']['HLTV']) * 100)
         data[m_index]['rank'] = match['player']['rank']
         data[m_index]['username'] = match['player']['username']
         avatar_url = match['player']['avatar_url']
+
         try:
             data[m_index]['K/D'] = round((float(match['player']['stats']['K']) / float(match['player']['stats']['D'])) * 100)
         except (ZeroDivisionError, ValueError):
