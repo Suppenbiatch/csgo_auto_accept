@@ -9,8 +9,8 @@ import win32gui
 from color import uncolorize, FgColor, red, green, yellow, blue, magenta, cyan
 from playsound import playsound
 
-import cs_test as cs
-from cs_test import write
+import cs
+from cs import write
 
 
 def hk_activate():
