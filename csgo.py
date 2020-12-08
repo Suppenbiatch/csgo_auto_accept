@@ -90,15 +90,9 @@ def hk_minimize_csgo(reset_position: tuple):
         return None
     current_placement = win32gui.GetWindowPlacement(hwnd)
     if current_placement[1] == 2:
-        win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
+        win32gui.ShowWindow(hwnd, win32con.SW_NORMAL)
     else:
-        win32gui.ShowWindow(hwnd, win32con.SW_SHOWMINIMIZED)
-        current_pos = win32api.GetCursorPos()
-        if current_pos == (0, 0):
-            current_pos = (int(win32api.GetSystemMetrics(0) / 2), int(win32api.GetSystemMetrics(1) / 2))
-        cs.click(reset_position)
-        time.sleep(0.01)
-        win32api.SetCursorPos(current_pos)
+        cs.minimize_csgo(hwnd, reset_position)
     return None
 
 
@@ -160,6 +154,8 @@ cs.mute_csgo(0)
 
 blue(), magenta()
 
+# cs.scraper.post('https://csgostats.gg/match/upload/ajax')  # set cookies to prevent cloudflare error
+
 if cs.cfg['activate_script']:
     keyboard.add_hotkey(cs.cfg['activate_script'], hk_activate)
 if cs.cfg['activate_push_notification']:
@@ -220,6 +216,10 @@ while running:
         write('GSI Server running', overwrite='8', color=FgColor.Green)
         truth_table['gsi_first_launch'] = False
 
+    if not gsi_server.running:
+        time.sleep(cs.sleep_interval)
+        continue
+
     matchmaking = cs.read_console()
 
     if matchmaking['update']:
@@ -255,15 +255,15 @@ while running:
             current_cursor_position = win32api.GetCursorPos()
             for _ in range(5):
                 win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
-                cs.click(int(win32api.GetSystemMetrics(0) / 2), int(win32api.GetSystemMetrics(1) / 1.78))
+                cs.click((int(win32api.GetSystemMetrics(0) / 2), int(win32api.GetSystemMetrics(1) / 1.78)))
             if csgo_window_status['server_found'] == 2:  # was minimized when a server was found
                 time.sleep(0.075)
                 win32gui.ShowWindow(hwnd, 2)
                 time.sleep(0.025)
                 cs.click(cs.cfg['taskbar_position'])
-                win32api.SetCursorPos(current_cursor_position)
+                cs.set_mouse_position(current_cursor_position)
             else:
-                win32api.SetCursorPos(current_cursor_position)
+                cs.set_mouse_position(current_cursor_position)
 
             # write('Trying to catch a loading map.', overwrite='1')
             playsound('sounds/accept_found.wav', block=False)
@@ -418,7 +418,7 @@ while running:
             playsound('sounds/fail.wav', block=True)
             write('Match did not start', overwrite='1', color=FgColor.Red, push=cs.pushbullet_dict['urgency'] + 2, push_now=True)
 
-    if game_state['map_phase'] == 'live' and not truth_table['game_over'] and not truth_table['disconnected_form_last']:
+    if game_state['map_phase'] in ['live', 'warmup'] and not truth_table['game_over'] and not truth_table['disconnected_form_last']:
         try:
             csgo_window_status['in_game'] = win32gui.GetWindowPlacement(hwnd)[1]
         except BaseException as e:
@@ -448,11 +448,11 @@ while running:
             afk_dict['start_time'] = time.time()
         elif game_state['map_phase'] == 'live':
             afk_dict['seconds_afk'] += time.time() - afk_dict['start_time']
+            afk_dict['start_time'] = time.time()
             try:
                 afk_dict['per_round'] = afk_dict['seconds_afk'] / scoreboard['total_score']
             except (ZeroDivisionError, KeyError):
                 afk_dict['per_round'] = 0.0
-            afk_dict['start_time'] = time.time()
 
     if game_state['map_phase'] == 'gameover':
         truth_table['game_over'] = True
@@ -461,7 +461,11 @@ while running:
         time.sleep(2)
         team = str(gsi_server.get_info('player', 'team')), 'CT' if gsi_server.get_info('player', 'team') == 'T' else 'T'
         score = {'CT': gsi_server.get_info('map', 'team_ct')['score'], 'T': gsi_server.get_info('map', 'team_t')['score'], 'map': ' '.join(gsi_server.get_info('map', 'name').split('_')[1:]).title()}
-        afk_dict['per_round'] = int(afk_dict['seconds_afk'] / (int(score['CT']) + int(score['T'])))
+        try:
+            afk_dict['per_round'] = round(afk_dict['seconds_afk'] / (int(score['CT']) + int(score['T'])))
+        except (ZeroDivisionError, KeyError):
+            afk_dict['per_round'] = afk_dict['seconds_afk']
+
         if gsi_server.get_info('player', 'steamid') == cs.steam_id:
             player_stats = gsi_server.get_info('player', 'match_stats')
 
@@ -512,31 +516,31 @@ while running:
         except IndexError:
             saved_map = ''
         while True:
-            if time.time() - time_table['warmup_started'] > 1:
-                time_table['warmup_started'] = time.time()
-                if not saved_map:
-                    try:
-                        saved_map = cs.read_console()['map'][-1]
-                    except IndexError:
-                        pass
-                elif gsi_server.get_info('map', 'phase') == 'warmup' and gsi_server.get_info('map', 'name') == saved_map:
-                    # write('Warmup detected', overwrite='12')
-                    if gsi_server.get_info('player', 'team') is not None:
-                        team = red(gsi_server.get_info('player', 'team')) if gsi_server.get_info('player', 'team') == 'T' else cyan(gsi_server.get_info('player', 'team'))
-                        write(f'You will play on {green(saved_map.split("_")[1].capitalize())} as {team} in the first half.', add_time=True, push=cs.pushbullet_dict['urgency'] + 2, push_now=True, overwrite='12')
-                        truth_table['still_in_warmup'] = True
-                        truth_table['players_still_connecting'] = True
-                        time_table['warmup_started'] = time.time()
-                        truth_table['test_for_warmup'] = False
-                        break
-                elif saved_map:
-                    write(f'You will play on {green(saved_map.split("_")[1].capitalize())}', overwrite='12')
-                    game_mode = gsi_server.get_info('map', 'mode')
-                    if game_mode not in ['competitive', 'wingman', None]:
-                        write(f'{game_mode} is not supported', color=FgColor.Yellow, overwrite='1')
-                        truth_table['test_for_warmup'] = False
-                        truth_table['first_game_over'] = False
-                        break
+            time_table['warmup_started'] = time.time()
+            if not saved_map:
+                try:
+                    saved_map = cs.read_console()['map'][-1]
+                except IndexError:
+                    pass
+            elif gsi_server.get_info('map', 'phase') == 'warmup':
+                player_team = gsi_server.get_info('player', 'team')
+                if player_team is not None:
+                    team = red(player_team) if player_team == 'T' else cyan(player_team)
+                    write(f'You will play on {green(" ".join(saved_map.split("_")[1:]).title())} as {team} in the first half.', add_time=True, push=cs.pushbullet_dict['urgency'] + 2, push_now=True, overwrite='12')
+                    truth_table['still_in_warmup'] = True
+                    truth_table['players_still_connecting'] = True
+                    time_table['warmup_started'] = time.time()
+                    truth_table['test_for_warmup'] = False
+                    break
+            elif saved_map:
+                write(f'You will play on {green(" ".join(saved_map.split("_")[1:]).title())}', overwrite='12')
+                game_mode = gsi_server.get_info('map', 'mode')
+                if game_mode not in ['competitive', 'wingman', None]:
+                    write(f'{game_mode} is not supported', color=FgColor.Yellow, overwrite='1')
+                    truth_table['test_for_warmup'] = False
+                    truth_table['first_game_over'] = False
+                    break
+            time.sleep(cs.sleep_interval)
     time.sleep(cs.sleep_interval)
 
 window_enum.kill()

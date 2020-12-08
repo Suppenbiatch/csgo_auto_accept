@@ -11,3 +11,4 @@ config.ini
 *.ps1
 fix_kd_error.py
 match_fixer.py
+player_list.py

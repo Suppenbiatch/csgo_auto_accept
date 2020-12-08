@@ -10,6 +10,8 @@ import sys
 import time
 import threading
 import winreg
+import itertools
+import ast
 from shutil import copyfile
 from typing import List, Dict, Union, Tuple
 
@@ -79,7 +81,6 @@ def write(message, add_time: bool = True, push: int = 0, push_now: bool = False,
         print(message, end=ending)
 
     if push >= 3:
-        # global pushbullet_dict
         if message:
             pushbullet_dict['note'] = pushbullet_dict['note'] + str(push_message.strip('\r').strip('\n')) + '\n'
         if push_now:
@@ -88,14 +89,33 @@ def write(message, add_time: bool = True, push: int = 0, push_now: bool = False,
 
 
 # noinspection PyShadowingNames
-def click(x: int or tuple, y: int = 0):
-    if isinstance(x, tuple):
-        y = x[1]
-        x = x[0]
-    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, x, y, 0, 0)
-    win32api.SetCursorPos((x, y))
-    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, x, y, 0, 0)
-    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, x, y, 0, 0)
+def click(location: tuple, lmb: bool = True):
+    x = location[0]
+    y = location[1]
+    set_mouse_position(location)
+    if lmb:
+        win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, x, y, 0, 0)
+        win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, x, y, 0, 0)
+    else:
+        win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTDOWN, x, y, 0, 0)
+        win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTUP, x, y, 0, 0)
+
+
+def set_mouse_position(location: tuple):
+    position = (int(location[0] * 65536 / win32api.GetSystemMetrics(win32con.SM_CXSCREEN)),
+                int(location[1] * 65535 / win32api.GetSystemMetrics(win32con.SM_CYSCREEN)))
+    win32api.mouse_event(win32con.MOUSEEVENTF_MOVE | win32con.MOUSEEVENTF_ABSOLUTE, position[0], position[1])
+
+
+def minimize_csgo(window_id: int, reset_position: tuple,):
+    current_pos = win32api.GetCursorPos()
+    if current_pos == (0, 0):
+        current_pos = (int(win32api.GetSystemMetrics(0) / 2), int(win32api.GetSystemMetrics(1) / 2))
+    win32gui.ShowWindow(window_id, win32con.SW_MINIMIZE)
+    click((0, 0), lmb=False)
+    time.sleep(0.15)
+    click(reset_position)
+    set_mouse_position(current_pos)
 
 
 # noinspection PyShadowingNames
@@ -105,7 +125,7 @@ def anti_afk(window_id: int, reset_position=None):
     current_cursor_position = win32api.GetCursorPos()
     screen_mid = (int(win32api.GetSystemMetrics(0) / 2), int(win32api.GetSystemMetrics(1) / 2))
     moves = int(win32api.GetSystemMetrics(1) / 3) + 1
-    win32api.SetCursorPos(screen_mid)
+    set_mouse_position(screen_mid)
     win32gui.ShowWindow(window_id, win32con.SW_MAXIMIZE)
     for _ in range(moves):
         win32api.mouse_event(win32con.MOUSEEVENTF_MOVE, 0, -15)
@@ -115,28 +135,27 @@ def anti_afk(window_id: int, reset_position=None):
     for _ in range(int(moves / 1.07)):
         win32api.mouse_event(win32con.MOUSEEVENTF_MOVE, 0, -8)
     time.sleep(0.075)
-    win32gui.ShowWindow(window_id, 2)
-    click(reset_position)
-    time.sleep(0.025)
-    win32api.SetCursorPos(current_cursor_position)
+    set_mouse_position(current_cursor_position)
+    minimize_csgo(window_id, reset_position)
 
 
 def task_bar(factor: float = 2.0):
     monitor = win32api.GetMonitorInfo(win32api.MonitorFromPoint((0, 0)))
     taskbar_size = tuple(map(operator.sub, monitor['Monitor'], monitor['Work']))
-    position_int = [i for i, x in enumerate(taskbar_size) if x]
+    position_int = [(i, abs(x)) for i, x in enumerate(taskbar_size) if x]
     if len(position_int) != 1:
         write('Taskbar location failed', color=FgColor.Yellow, add_time=False)
         return 0, 0
+    position_int = position_int[0]
     pos = position_int[0]
     if pos == 0:  # left
-        return 0, int(monitor['Monitor'][3] * factor)
+        return int(position_int[1] / 2), int(monitor['Monitor'][3] * factor)
     elif pos == 1:  # top
-        return int(monitor['Monitor'][2] * factor), 0
+        return int(monitor['Monitor'][2] * factor), int(position_int[1] / 2)
     elif pos == 2:  # right
-        return monitor['Monitor'][2], int(monitor['Monitor'][3] * factor)
+        return monitor['Monitor'][2] - int(position_int[1] / 2), int(monitor['Monitor'][3] * factor)
     elif pos == 3:  # bottom
-        return int(monitor['Monitor'][2] * factor), monitor['Monitor'][3]
+        return int(monitor['Monitor'][2] * factor), monitor['Monitor'][3] - int(position_int[1] / 2)
     return 0, 0
 
 
@@ -428,6 +447,8 @@ def update_csgo_stats(new_codes: List[dict], discord_output: bool = False):
             write(f'URL: {game_url}', add_time=True, push=pushbullet_dict['urgency'], color=FgColor.Green)
             data = get_csv_list(os.path.join(path_vars['appdata_path'], f'last_game_{steam_id}.csv'))
             match_index = find_dict(data, 'sharecode', sharecode)
+
+            match_infos = None
             if match_index is not None:
                 for item in data[match_index].items():
                     if item[0] in csgo_stats_test_for and not item[1]:  # Match has missing info in csv
@@ -442,6 +463,9 @@ def update_csgo_stats(new_codes: List[dict], discord_output: bool = False):
                 if match_infos is not None:  # None is return if error in csgostats request
                     discord_obj = add_match_id(sharecode, match_infos)
 
+            if match_infos is not None:
+                add_players_to_list(match_infos, steam_id)
+
             if discord_output and discord_obj is not None:
                 send_discord_msg(discord_obj, cfg['discord_url'], f'{account["name"]} - Match Stats')
             try:
@@ -452,12 +476,20 @@ def update_csgo_stats(new_codes: List[dict], discord_output: bool = False):
     return new_codes
 
 
-def get_csv_list(path):
-    global csv_header
+def get_csv_list(path, header=None):
+    if header is None:
+        global csv_header
+        header = csv_header
+
+    if not os.path.isfile(path):
+        with open(path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=header, delimiter=';', lineterminator='\n')
+            writer.writeheader()
+
     with open(path, 'r', newline='', encoding='utf-8') as f:
-        data = list(csv.DictReader(f, fieldnames=csv_header, delimiter=';', restval=''))
+        data = list(csv.DictReader(f, fieldnames=header, delimiter=';', restval=''))
     first_element = tuple(data[0].values())
-    if all(head == first_element[i] for i, head in enumerate(csv_header)):  # File has a valid header
+    if all(head == first_element[i] for i, head in enumerate(header)):  # File has a valid header
         del data[0]  # Remove the header from the data
         return data
 
@@ -467,14 +499,14 @@ def get_csv_list(path):
     rows = []
     for i in data:
         row_dict = {}
-        for key in csv_header:
+        for key in header:
             try:
                 row_dict[key] = i[key]
             except KeyError:
                 row_dict[key] = ''
         rows.append(row_dict)
     with open(path, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=csv_header, delimiter=';', lineterminator='\n')
+        writer = csv.DictWriter(f, fieldnames=header, delimiter=';', lineterminator='\n')
         writer.writeheader()
         writer.writerows(rows)
     return rows
@@ -502,8 +534,8 @@ def read_console():
         console_lines = [i.strip('\n') for i in log.readlines()]
         log.seek(0)
         log.truncate()
-    # with open(path_vars['appdata_path'] + '\\console.log', 'a', encoding='utf-8') as debug_log:
-    #     [debug_log.write(i + '\n') for i in console_lines]
+    with open(path_vars['appdata_path'] + '\\console.log', 'a', encoding='utf-8') as debug_log:
+        [debug_log.write(i + '\n') for i in console_lines]
     return {'msg': str_in_list(['Matchmaking message: '], console_lines, replace=True), 'update': str_in_list(['Matchmaking update: '], console_lines, replace=True),
             'players_accepted': str_in_list(['Server reservation2 is awaiting '], console_lines, replace=True), 'lobby_data': str_in_list(["LobbySetData: "], console_lines, replace=True),
             'server_found': str_in_list(['Matchmaking reservation confirmed: '], console_lines), 'server_ready': str_in_list(['ready-up!'], console_lines),
@@ -529,6 +561,16 @@ def find_dict(lst: list, key: str, value):
         if dic[key] == value:
             return i
     return None
+
+
+def remove_dict(lst: list, key: str, value):
+    for i, _dict in enumerate(lst):
+        if (key, value) in _dict.items():
+            break
+    else:
+        return lst
+    del lst[i]
+    return lst
 
 
 # noinspection PyShadowingNames
@@ -578,7 +620,7 @@ def generate_table(match, avatar_url: str = ''):
 
 
 # noinspection PyShadowingNames
-def get_match_infos(match_id: str, steam_id: str):
+def get_match_infos(match_id, steam_id):
     url = f'https://csgostats.gg/match/{match_id}'
     try:
         r = scraper.get(url)
@@ -611,13 +653,13 @@ def get_match_infos(match_id: str, steam_id: str):
     searched_player: Dict[str, Union[str, Dict[str]]] = {}
     for i, team in enumerate(players):
         for player in team:
-            if player['steam_id'] == steam_id:
+            if player['steam_id'] == str(steam_id):
                 searched_player = player
                 score = (score[0], score[1]) if i == 0 else (score[1], score[0])
                 score = tuple(map(str, score))
                 started_as = 'T' if i == 0 else 'CT'
                 break
-    return {'match_id': match_id, 'map': played_map, 'score': score, 'server': played_server,
+    return {'match_id': str(match_id), 'map': played_map, 'score': score, 'server': played_server,
             'player': searched_player, 'players': players, 'started_as': started_as, 'timestamp': timestamp}
 
 
@@ -625,23 +667,28 @@ def get_player_info(raw_players: list):
     players: List[List[Dict[str, Union[str, Dict[str, str]]]]] = [[], []]
     stat_keys = ['K', 'D', 'A', '+/-', 'K/D', 'ADR', 'HS', 'FK', 'FD', 'Trade_K', 'Trade_D', 'Trade_FK', 'Trade_FD', '1v5', '1v4', '1v3', '1v2', '1v1', '5k', '4k', '3k', '2k', '1k', 'KAST', 'HLTV']
     pattern = {
-        'info': re.compile('(?:img src=")(.+?)(?:".+?<a href="/player/)(\d+)(?:".+?;">)(.*?)(?:</span>)'),
+        'info': re.compile('img src="(.+?)".+?<a href="/player/(\d+)".+?;">(.*?)</span>'),
         'rank': re.compile('(?:ranks/)(\d+)(?:\.png)'),
         'rank_change': re.compile('(?:glyphicon glyphicon-chevron-)(up|down)'),
         'stats': re.compile('(?:"> *)([\d.\-%]*)(?: *</td>)'),
-        'team': re.compile('</tr> +</tbody> +<tbody>')
+        'team': re.compile('</tr> +</tbody> +<tbody>'),
+        'email_name': re.compile('data-cfemail="(.+?)"')
     }
     team = 0
     for player in raw_players:
-        # info = re.search('(?:img src=")(.+?)(?:".+?<a href="/player/)(\d+)(?:".+?;">)(.*?)(?:</span>)', player)
         info = pattern['info'].search(player)
+
+        encoded_name = pattern['email_name'].search(info.group(3))
+        if encoded_name is not None:
+            name = email_decode(encoded_name.group(1))
+        else:
+            name = info.group(3)
+
         try:
-            # rank = re.search('(?:ranks/)(\d+)(?:\.png)', player).group(1)
             rank = pattern['rank'].search(player).group(1)
         except AttributeError:
             rank = '0'
         try:
-            # rank_change = re.search('(?:glyphicon glyphicon-chevron-)(up|down)', player).group(1)
             rank_change = pattern['rank_change'].search(player).group(1)
             if rank_change == 'up':
                 rank += '+'
@@ -652,7 +699,7 @@ def get_player_info(raw_players: list):
         # stat_values = remove_indices(re.findall('(?:"> *)([\d.\-%]*)(?: *</td>)', player), [9, 10, 11, 12, 17, 18, 19, 20])
         stat_values: List[str] = remove_indices(pattern['stats'].findall(player), [9, 10, 11, 12, 17, 18, 19, 20])
         stats = dict(zip(stat_keys, stat_values))
-        players[team].append({'steam_id': info.group(2), 'username': info.group(3), 'rank': rank, 'avatar_url': info.group(1), 'stats': stats})
+        players[team].append({'steam_id': info.group(2), 'username': name, 'rank': rank, 'avatar_url': info.group(1), 'stats': stats})
         if not team:
             team = 1 if pattern['team'].search(player) is not None else 0
     return players
@@ -679,6 +726,35 @@ def get_round_info(raw_players):
         else:
             write(f'unknown team #{i}')
     return round_wins
+
+
+# noinspection PyShadowingNames
+def add_players_to_list(match_data: dict, steam_id):
+    global player_list_header
+    player_list_path = os.path.join(path_vars['appdata_path'], f'player_list_{steam_id}.csv')
+    data = get_csv_list(player_list_path, player_list_header)
+    for i, _dict in enumerate(data):
+        data[i]['seen_in'] = ast.literal_eval(_dict['seen_in'])
+    all_player = list(itertools.chain.from_iterable(match_data['players']))
+    players = remove_dict(all_player, 'steam_id', str(steam_id))
+
+    for player in players:
+        i = find_dict(data, 'steam_id', player['steam_id'])
+
+        if i is not None:
+            data[i]['name'] = player['username']
+            data[i]['seen_in'].append(int(match_data['match_id']))
+            data[i]['seen_in'] = list(dict.fromkeys(data[i]['seen_in']))
+            data[i]['timestamp'] = match_data['timestamp'] if int(data[i]['timestamp']) < int(match_data['timestamp']) else data[i]['timestamp']
+        else:
+            data.append({'steam_id': player['steam_id'], 'name': player['username'], 'seen_in': [int(match_data['match_id'])], 'timestamp': match_data['timestamp']})
+
+    data.sort(key=lambda x: (len(x['seen_in']), int(x['timestamp'])), reverse=True)
+
+    with open(player_list_path, 'w', encoding='utf-8', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=player_list_header, restval='', delimiter=';')
+        writer.writeheader()
+        writer.writerows(data)
 
 
 def parse_time(datetime_str: str):
@@ -771,12 +847,15 @@ def round_start_msg(msg: str, round_phase: str, freezetime_start: float, old_win
             old_window_status = False
             timer_stopped = ' - ' + green('stopped')
 
+        freeze_time = 15
+        buy_time = 20
+
         if round_phase == 'freezetime':
-            time_str = green(timedelta(seconds=time.time() - (freezetime_start + 15)))
+            time_str = green(timedelta(seconds=time.time() - (freezetime_start + freeze_time)))
         elif time.time() - freezetime_start > 35:
             time_str = red(timedelta(then=freezetime_start))
         else:
-            time_str = yellow(timedelta(seconds=time.time() - (freezetime_start + 35)))
+            time_str = yellow(timedelta(seconds=time.time() - (freezetime_start + freeze_time + buy_time)))
 
         msg += f' - {time_str}{timer_stopped}'
         write(msg, overwrite=overwrite_key)
@@ -794,6 +873,12 @@ def time_output(current: int, average: int):
 # noinspection PyShadowingNames
 def enum_cb(hwnd: int, results: list):
     results.append((hwnd, win32gui.GetWindowText(hwnd)))
+
+
+def email_decode(encoded_string):
+    r = int(encoded_string[:2], 16)
+    email = ''.join([chr(int(encoded_string[i:i+2], 16) ^ r) for i in range(2, len(encoded_string), 2)])
+    return email
 
 
 def check_if_running(program_name: str = 'counter-strike: global offensive'):
@@ -880,6 +965,7 @@ except (configparser.NoOptionError, configparser.NoSectionError, ValueError):
 
 csv_header = ['sharecode', 'match_id', 'map', 'team_score', 'enemy_score', 'start_team',
               'match_time', 'wait_time', 'afk_time', 'mvps', 'points', 'kills', 'assists', 'deaths', '5k', '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'HLTV', 'rank', 'username', 'server', 'timestamp']
+player_list_header = ['steam_id', 'name', 'seen_in', 'timestamp']
 csgo_stats_test_for = ['map', 'team_score', 'enemy_score', 'start_team', 'kills', 'assists', 'deaths', '5k', '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'HLTV', 'rank', 'username', 'server', 'timestamp']
 
 accounts = []
