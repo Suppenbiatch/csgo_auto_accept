@@ -127,6 +127,7 @@ truth_table = {'test_for_accept_button': False, 'test_for_warmup': False, 'test_
                'game_over': False, 'monitoring_since_start': False, 'players_still_connecting': False, 'first_game_over': True, 'disconnected_form_last': False, 'c4_round_first': True, 'steam_error': False,
                'game_minimized_freezetime': False, 'game_minimized_warmup': False, 'discord_output': True, 'gsi_first_launch': True, 'upload_thread_active': False}
 
+
 # remove console_read and timed_execution_time
 time_table = {'csgostats_retry': time.time(), 'search_started': time.time(), 'console_read': time.time(), 'timed_execution_time': time.time(), 'match_accepted': time.time(),
               'match_started': time.time(), 'freezetime_started': time.time(), 'join_warmup_time': 0.0, 'warmup_seconds': 0}
@@ -226,7 +227,7 @@ while running:
         if matchmaking['update'][-1] == '1':
             if not truth_table['test_for_server']:
                 truth_table['test_for_server'] = True
-                write(f'Looking for match: {truth_table["test_for_server"]}', overwrite='1')
+                write(f'Looking for match: {truth_table["test_for_server"]}', overwrite='1', color=FgColor.Magenta)
                 time_table['search_started'] = time.time()
                 playsound('sounds/activated.wav', block=False)
             cs.mute_csgo(1)
@@ -238,7 +239,6 @@ while running:
             playsound('sounds/server_found.wav', block=False)
             truth_table['test_for_success'] = True
         if matchmaking['server_ready']:
-            # write('Server found, starting to look for accept button.', overwrite='1')
             truth_table['test_for_accept_button'] = True
             cs.sleep_interval = cs.sleep_interval_looking_for_accept
             csgo_window_status['server_found'] = win32gui.GetWindowPlacement(hwnd)[1]
@@ -248,7 +248,6 @@ while running:
         img = cs.get_screenshot(hwnd, (1265, 760, 1295, 785))
         accept_avg = cs.color_average(img, [(76, 175, 80), (90, 203, 94)])
         if cs.relate_list(accept_avg, (2, 2, 2)):
-            # write('Trying to Accept.', push=pushbullet_dict['urgency'] + 1, overwrite='1')
             truth_table['test_for_accept_button'] = False
             cs.sleep_interval = cs.cfg['sleep_interval']
 
@@ -258,14 +257,10 @@ while running:
                 cs.click((int(win32api.GetSystemMetrics(0) / 2), int(win32api.GetSystemMetrics(1) / 1.78)))
             if csgo_window_status['server_found'] == 2:  # was minimized when a server was found
                 time.sleep(0.075)
-                win32gui.ShowWindow(hwnd, 2)
-                time.sleep(0.025)
-                cs.click(cs.cfg['taskbar_position'])
-                cs.set_mouse_position(current_cursor_position)
+                cs.minimize_csgo(hwnd, cs.cfg['taskbar_position'])
             else:
                 cs.set_mouse_position(current_cursor_position)
 
-            # write('Trying to catch a loading map.', overwrite='1')
             playsound('sounds/accept_found.wav', block=False)
 
     if truth_table['test_for_accept_button'] or truth_table['test_for_success']:
@@ -531,6 +526,10 @@ while running:
                     truth_table['players_still_connecting'] = True
                     time_table['warmup_started'] = time.time()
                     truth_table['test_for_warmup'] = False
+                    if cs.cfg['player_webhook']:
+                        player_check = {'content': f'!live {cs.steam_id}',
+                                        'avatar_url': cs.account['avatar_url']}
+                        cs.send_discord_msg(player_check, cs.cfg['player_webhook'], username=f'{cs.account["name"]} - Player Info')
                     break
             elif saved_map:
                 write(f'You will play on {green(" ".join(saved_map.split("_")[1:]).title())}', overwrite='12')

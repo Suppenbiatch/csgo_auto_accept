@@ -112,8 +112,12 @@ def minimize_csgo(window_id: int, reset_position: tuple,):
     if current_pos == (0, 0):
         current_pos = (int(win32api.GetSystemMetrics(0) / 2), int(win32api.GetSystemMetrics(1) / 2))
     win32gui.ShowWindow(window_id, win32con.SW_MINIMIZE)
-    click((0, 0), lmb=False)
-    time.sleep(0.15)
+    minimized_position = win32api.GetCursorPos()
+    test_position = (minimized_position[0], minimized_position[1] + 1)
+    set_mouse_position(test_position)
+    if test_position != win32api.GetCursorPos():
+        click((0, 0), lmb=False)
+        time.sleep(0.15)
     click(reset_position)
     set_mouse_position(current_pos)
 
@@ -826,7 +830,6 @@ def send_discord_msg(discord_data, webhook_url: str, username: str = 'Auto Accep
 
 
 def activate_pushbullet():
-    # global pushbullet_dict
     if not pushbullet_dict['device']:
         try:
             pushbullet_dict['device'] = pushbullet.PushBullet(cfg['pushbullet_api_key']).get_device(cfg['pushbullet_device_name'])
@@ -956,7 +959,8 @@ try:
            'sleep_interval': config.getfloat('Screenshot', 'Interval'), 'steam_api_key': config.get('csgostats.gg', 'API Key'),
            'max_queue_position': config.getint('csgostats.gg', 'Auto-Retrying for queue position below'), 'log_color': config.get('Screenshot', 'Log Color').lower(),
            'auto_retry_interval': config.getint('csgostats.gg', 'Auto-Retrying-Interval'), 'pushbullet_device_name': config.get('Pushbullet', 'Device Name'), 'pushbullet_api_key': config.get('Pushbullet', 'API Key'),
-           'forbidden_programs': config.get('Screenshot', 'Forbidden Programs'), 'discord_url': config.get('csgostats.gg', 'Discord Webhook URL'), 'taskbar_position': config.getfloat('Screenshot', 'Taskbar Factor')}
+           'forbidden_programs': config.get('Screenshot', 'Forbidden Programs'), 'discord_url': config.get('csgostats.gg', 'Discord Webhook URL'), 'taskbar_position': config.getfloat('Screenshot', 'Taskbar Factor'),
+           'player_webhook': config.get('csgostats.gg', 'Player Info Webhook')}
 except (configparser.NoOptionError, configparser.NoSectionError, ValueError):
     write('ERROR IN CONFIG')
     cfg = {'ERROR': None}
