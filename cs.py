@@ -107,10 +107,11 @@ def set_mouse_position(location: tuple):
     win32api.mouse_event(win32con.MOUSEEVENTF_MOVE | win32con.MOUSEEVENTF_ABSOLUTE, position[0], position[1])
 
 
-def minimize_csgo(window_id: int, reset_position: tuple,):
-    current_pos = win32api.GetCursorPos()
-    if current_pos == (0, 0):
-        current_pos = (int(win32api.GetSystemMetrics(0) / 2), int(win32api.GetSystemMetrics(1) / 2))
+def minimize_csgo(window_id: int, reset_position: tuple, current_position=None):
+    if current_position is None:
+        current_position = win32api.GetCursorPos()
+        if current_position == (0, 0):
+            current_position = (int(win32api.GetSystemMetrics(0) / 2), int(win32api.GetSystemMetrics(1) / 2))
     win32gui.ShowWindow(window_id, win32con.SW_MINIMIZE)
     minimized_position = win32api.GetCursorPos()
     test_position = (minimized_position[0], minimized_position[1] + 1)
@@ -119,7 +120,7 @@ def minimize_csgo(window_id: int, reset_position: tuple,):
         click((0, 0), lmb=False)
         time.sleep(0.15)
     click(reset_position)
-    set_mouse_position(current_pos)
+    set_mouse_position(current_position)
 
 
 # noinspection PyShadowingNames
@@ -306,9 +307,9 @@ def get_avg_match_time(steam_id: str):
     afk_time = [int(i['afk_time']) for i in data if i['afk_time']]
     afk_time_per_round = [int(i['afk_time']) / (int(i['team_score']) + int(i['enemy_score'])) for i in data if i['afk_time'] and i['team_score'] and i['enemy_score']]
     return {
-        'match_time': (int(Avg(match_time, 0)), sum(match_time)),
-        'search_time': (int(Avg(search_time, 0)), sum(search_time)),
-        'afk_time': (int(Avg(afk_time, 0)), sum(afk_time), int(Avg(afk_time_per_round, 0)))
+        'match_time': (round(Avg(match_time, 0)), sum(match_time)),
+        'search_time': (round(Avg(search_time, 0)), sum(search_time)),
+        'afk_time': (round(Avg(afk_time, 0)), sum(afk_time), round(Avg(afk_time_per_round, 0)))
             }
     # return int(Avg(match_time, 0)), int(Avg(search_time, 0)), int(Avg(afk_time, 0)), int(Avg(afk_time_per_round, 0)), timedelta(seconds=sum(match_time)), timedelta(seconds=sum(search_time)), timedelta(seconds=sum(afk_time))
 

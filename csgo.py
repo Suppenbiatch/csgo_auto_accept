@@ -132,7 +132,7 @@ truth_table = {'test_for_accept_button': False, 'test_for_warmup': False, 'test_
 time_table = {'csgostats_retry': time.time(), 'search_started': time.time(), 'console_read': time.time(), 'timed_execution_time': time.time(), 'match_accepted': time.time(),
               'match_started': time.time(), 'freezetime_started': time.time(), 'join_warmup_time': 0.0, 'warmup_seconds': 0}
 matchmaking = {'msg': [], 'update': [], 'players_accepted': [], 'lobby_data': [], 'server_found': False, 'server_ready': False}
-afk_dict = {'time': time.time(), 'still_afk': [], 'start_time': time.time(), 'seconds_afk': 0.0, 'per_round': 0.0, 'player_info': {'steamid': 0, 'state': {}}}
+afk_dict = {'time': time.time(), 'still_afk': [], 'start_time': time.time(), 'seconds_afk': 0.0, 'per_round': 0.0, 'player_info': {'steamid': 0, 'state': {}}, 'round_values': []}
 join_dict = {'t_full': False, 'ct_full': False}
 scoreboard = {'CT': 0, 'T': 0, 'last_round_info': '', 'last_round_key': '0', 'extra_round_info': '', 'player': {}}
 team = yellow('Unknown')
@@ -281,6 +281,7 @@ while running:
             afk_dict['time'] = time.time()
             afk_dict['start_time'] = time.time()
             afk_dict['seconds_afk'] = 0.0
+            afk_dict['round_values'] = []
 
         for i in matchmaking['players_accepted']:
             i = i.split('/')
@@ -320,9 +321,8 @@ while running:
                 break
 
     if any(True for i in matchmaking['server_abandon'] if 'Disconnect' in i):
-        # time_table['match_started'], time_table['match_accepted'] = time.time(), time.time()
         if not truth_table['game_over']:
-            write('Server disconnected', overwrite='1')
+            write('Server disconnected', color=FgColor.Red)
         gsi_server = cs.restart_gsi_server(gsi_server)
         truth_table['disconnected_form_last'] = True
         truth_table['players_still_connecting'] = False
@@ -347,9 +347,16 @@ while running:
             scoreboard['team'] = red('T') if scoreboard['player']['team'] == 'T' else cyan('CT')
             scoreboard['opposing_team'] = cyan('CT') if uncolorize(scoreboard['team']) == 'T' else red('T')
 
+            afk_dict['round_values'].append(afk_dict['seconds_afk'])
+            afk_dict['round_values'] = [round(time_afk, 3) for time_afk in afk_dict['round_values']]
+            afk_dict['per_round'] = cs.Avg(afk_dict['round_values'], 0.0)
+            afk_dict['seconds_afk'] = 0.0
+
             try:
                 scoreboard['last_round_key'] = list(scoreboard['last_round_info'].keys())[-1]
                 scoreboard['last_round_info'] = scoreboard['last_round_info'][scoreboard['last_round_key']].split('_')[0].upper()
+                if int(scoreboard['last_round_key']) == 15:
+                    scoreboard['last_round_info'] = 'T' if scoreboard['last_round_info'] == 'CT' else 'CT'
                 scoreboard['last_round_info'] = f'{scoreboard["team"]} {green("won")} the last round' if uncolorize(scoreboard['team']) == scoreboard['last_round_info'] else f'{scoreboard["team"]} {yellow("lost")} the last round'
             except AttributeError:
                 scoreboard['last_round_info'] = f'You {scoreboard["team"]}, no info on the last round'
@@ -397,6 +404,7 @@ while running:
 
     if truth_table['still_in_warmup']:
         if game_state['map_phase'] == 'live':
+
             truth_table['still_in_warmup'] = False
             truth_table['players_still_connecting'] = False
             team = red('T') if gsi_server.get_info('player', 'team') == 'T' else cyan('CT')
@@ -408,6 +416,8 @@ while running:
             if win32gui.GetWindowPlacement(hwnd)[1] == 2:
                 truth_table['game_minimized_warmup'] = True
                 playsound('sounds/ready_up_warmup.wav', block=False)
+            afk_dict['round_values'] = []
+
         if game_state['map_phase'] is None:
             truth_table['still_in_warmup'] = False
             playsound('sounds/fail.wav', block=True)
@@ -441,13 +451,10 @@ while running:
 
         if csgo_window_status['in_game'] != 2:
             afk_dict['start_time'] = time.time()
-        elif game_state['map_phase'] == 'live':
+
+        if game_state['map_phase'] == 'live' and csgo_window_status['in_game'] == 2:
             afk_dict['seconds_afk'] += time.time() - afk_dict['start_time']
             afk_dict['start_time'] = time.time()
-            try:
-                afk_dict['per_round'] = afk_dict['seconds_afk'] / scoreboard['total_score']
-            except (ZeroDivisionError, KeyError):
-                afk_dict['per_round'] = 0.0
 
     if game_state['map_phase'] == 'gameover':
         truth_table['game_over'] = True
@@ -456,16 +463,12 @@ while running:
         time.sleep(2)
         team = str(gsi_server.get_info('player', 'team')), 'CT' if gsi_server.get_info('player', 'team') == 'T' else 'T'
         score = {'CT': gsi_server.get_info('map', 'team_ct')['score'], 'T': gsi_server.get_info('map', 'team_t')['score'], 'map': ' '.join(gsi_server.get_info('map', 'name').split('_')[1:]).title()}
-        try:
-            afk_dict['per_round'] = round(afk_dict['seconds_afk'] / (int(score['CT']) + int(score['T'])))
-        except (ZeroDivisionError, KeyError):
-            afk_dict['per_round'] = afk_dict['seconds_afk']
 
         if gsi_server.get_info('player', 'steamid') == cs.steam_id:
             player_stats = gsi_server.get_info('player', 'match_stats')
 
         average = cs.get_avg_match_time(cs.steam_id)
-        timings = {'match': time.time() - time_table['match_started'], 'search': time_table['match_accepted'] - time_table['search_started'], 'afk': afk_dict['seconds_afk'], 'afk_round': afk_dict['per_round']}
+        timings = {'match': time.time() - time_table['match_started'], 'search': time_table['match_accepted'] - time_table['search_started'], 'afk': sum(afk_dict['round_values']), 'afk_round': cs.Avg(afk_dict['round_values'], 0.0)}
 
         write(f'The match is over! - {score[team[0]]:02d}:{score[team[1]]:02d}', color=FgColor.Red)
 
@@ -477,9 +480,9 @@ while running:
 
         if gsi_server.get_info('map', 'mode') == 'competitive' and game_state['map_phase'] == 'gameover' and not truth_table['test_for_warmup'] and not truth_table['still_in_warmup']:
             if truth_table['monitoring_since_start']:
-                match_time = str(int(time.time() - time_table['match_started']))
-                search_time = str(int(time_table['match_started'] - time_table['search_started']))
-                afk_time = str(int(afk_dict['seconds_afk']))
+                match_time = str(round(time.time() - time_table['match_started']))
+                search_time = str(round(time_table['match_accepted'] - time_table['search_started']))
+                afk_time = str(round(sum(afk_dict['round_values'])))
             else:
                 match_time, search_time, afk_time = '', '', ''
 
@@ -503,6 +506,7 @@ while running:
         truth_table['monitoring_since_start'] = False
         time_table['match_started'], time_table['match_accepted'] = time.time(), time.time()
         afk_dict['seconds_afk'], afk_dict['time'] = 0.0, time.time()
+        afk_dict['round_values'] = []
 
     if truth_table['test_for_warmup']:
         time_table['warmup_started'] = time.time()
