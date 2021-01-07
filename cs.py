@@ -11,7 +11,6 @@ import time
 import threading
 import winreg
 import itertools
-import ast
 from shutil import copyfile
 from typing import List, Dict, Union, Tuple
 
@@ -739,7 +738,7 @@ def add_players_to_list(match_data: dict, steam_id):
     player_list_path = os.path.join(path_vars['appdata_path'], f'player_list_{steam_id}.csv')
     data = get_csv_list(player_list_path, player_list_header)
     for i, _dict in enumerate(data):
-        data[i]['seen_in'] = ast.literal_eval(_dict['seen_in'])
+        data[i]['seen_in'] = convert_string_to_list(_dict['seen_in'])
     all_player = list(itertools.chain.from_iterable(match_data['players']))
     players = remove_dict(all_player, 'steam_id', str(steam_id))
 
@@ -926,6 +925,10 @@ class WindowEnumerator(threading.Thread):
 
     def kill(self):
         self._kill.set()
+
+
+def convert_string_to_list(_str: str) -> list:
+    return list(map(int, _str.lstrip('[').rstrip(']').split(', ')))
 
 
 path_vars = {'appdata_path': os.path.join(os.getenv('APPDATA'), 'CSGO AUTO ACCEPT\\'), 'mute_csgo_path': f'"{os.path.join(os.getcwd(), "sounds", "nircmdc.exe")}" muteappvolume csgo.exe '}
