@@ -1,29 +1,32 @@
 import configparser
 import csv
 import datetime
+import itertools
 import json
 import operator
 import os
 import random
 import re
 import sys
-import time
 import threading
+import time
 import winreg
-import itertools
 from shutil import copyfile
 from typing import List, Dict, Union, Tuple
 
 import cloudscraper
+import keyboard
 import pushbullet
 import pyperclip
 import requests
 import win32api
+import win32com.client
 import win32con
 import win32gui
 from PIL import ImageGrab, Image
 from color import colorize, FgColor
 from color import green, red, yellow
+
 from GSI import server
 
 
@@ -112,13 +115,10 @@ def minimize_csgo(window_id: int, reset_position: tuple, current_position=None):
         if current_position == (0, 0):
             current_position = (int(win32api.GetSystemMetrics(0) / 2), int(win32api.GetSystemMetrics(1) / 2))
     win32gui.ShowWindow(window_id, win32con.SW_MINIMIZE)
-    minimized_position = win32api.GetCursorPos()
-    test_position = (minimized_position[0], minimized_position[1] + 1)
-    set_mouse_position(test_position)
-    if test_position != win32api.GetCursorPos():
-        click((0, 0), lmb=False)
-        time.sleep(0.15)
+    click((0, 0), lmb=False)
+    time.sleep(0.05)
     click(reset_position)
+    time.sleep(0.05)
     set_mouse_position(current_position)
 
 
@@ -309,7 +309,7 @@ def get_avg_match_time(steam_id: str):
         'match_time': (round(Avg(match_time, 0)), sum(match_time)),
         'search_time': (round(Avg(search_time, 0)), sum(search_time)),
         'afk_time': (round(Avg(afk_time, 0)), sum(afk_time), round(Avg(afk_time_per_round, 0)))
-            }
+    }
     # return int(Avg(match_time, 0)), int(Avg(search_time, 0)), int(Avg(afk_time, 0)), int(Avg(afk_time_per_round, 0)), timedelta(seconds=sum(match_time)), timedelta(seconds=sum(search_time)), timedelta(seconds=sum(afk_time))
 
 
@@ -880,7 +880,7 @@ def enum_cb(hwnd: int, results: list):
 
 def email_decode(encoded_string):
     r = int(encoded_string[:2], 16)
-    email = ''.join([chr(int(encoded_string[i:i+2], 16) ^ r) for i in range(2, len(encoded_string), 2)])
+    email = ''.join([chr(int(encoded_string[i:i + 2], 16) ^ r) for i in range(2, len(encoded_string), 2)])
     return email
 
 
@@ -904,6 +904,26 @@ def restart_gsi_server(gsi_server: server.GSIServer = None):
     else:
         gsi_server.start_server()
     return gsi_server
+
+
+def request_status_command(hwnd, reset_position, key: str = 'F12'):
+    global shell
+    current_position = win32api.GetCursorPos()
+    current_csgo_status = win32gui.GetWindowPlacement(hwnd)[1]
+    win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
+    # shell.AppActivate('Counter-Strike: Global Offensive')
+    shell.SendKeys('toggleconsole', True)
+    shell.SendKeys('{enter}', True)
+    keyboard.send(key)
+    time.sleep(0.05)
+    shell.sendKeys('status', True)
+    shell.SendKeys('{enter}', True)
+    shell.SendKeys('toggleconsole', True)
+    time.sleep(0.05)
+    shell.SendKeys('{enter}', True)
+    if current_csgo_status == 2:
+        minimize_csgo(hwnd, reset_position, current_position)
+    return
 
 
 # noinspection PyShadowingNames
@@ -970,7 +990,6 @@ except (configparser.NoOptionError, configparser.NoSectionError, ValueError):
     cfg = {'ERROR': None}
     exit('CHECK FOR NEW CONFIG')
 
-
 csv_header = ['sharecode', 'match_id', 'map', 'team_score', 'enemy_score', 'start_team',
               'match_time', 'wait_time', 'afk_time', 'mvps', 'points', 'kills', 'assists', 'deaths', '5k', '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'HLTV', 'rank', 'username', 'server', 'timestamp']
 player_list_header = ['steam_id', 'name', 'seen_in', 'timestamp']
@@ -1009,3 +1028,7 @@ window_ids = []
 
 sleep_interval = cfg['sleep_interval']
 sleep_interval_looking_for_accept = 0.05
+shell = win32com.client.Dispatch('WScript.Shell')
+
+if __name__ == '__main__':
+    pass

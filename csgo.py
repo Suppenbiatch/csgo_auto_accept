@@ -534,7 +534,8 @@ while running:
                     time_table['warmup_started'] = time.time()
                     truth_table['test_for_warmup'] = False
                     if cs.cfg['player_webhook']:
-                        player_check = {'content': f'!live {cs.steam_id}',
+                        cs.request_status_command(hwnd, cs.cfg['taskbar_position'], key='F12')
+                        player_check = {'content': f'!check {cs.steam_id}',
                                         'avatar_url': cs.account['avatar_url']}
                         cs.send_discord_msg(player_check, cs.cfg['player_webhook'], username=f'{cs.account["name"]} - Player Info')
                     break
