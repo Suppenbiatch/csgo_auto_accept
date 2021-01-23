@@ -51,11 +51,10 @@ def hk_new_tab():
 
 
 def hk_switch_accounts():
-    global current_account
-    current_account += 1
-    if current_account > len(cs.accounts) - 1:
-        current_account = 0
-    cs.account = cs.accounts[current_account]
+    cs.current_steam_account += 1
+    if cs.current_steam_account > len(cs.accounts) - 1:
+        cs.current_steam_account = 0
+    cs.account = cs.accounts[cs.current_steam_account]
     cs.steam_id = cs.account['steam_id']
     cs.check_userdata_autoexec(cs.account['steam_id_3'])
     write(f'current account is: {cs.account["name"]}', add_time=False, overwrite='3')
@@ -112,7 +111,27 @@ def upload_matches(look_for_new: bool = True, stats=None):
         return None
     truth_table['upload_thread_active'] = True
     if look_for_new:
-        new_sharecodes = cs.get_new_sharecodes(cs.get_old_sharecodes(-1)[0], stats=stats)
+        latest_sharecode = cs.get_old_sharecodes(-1)
+        empty_csv = False
+        if not latest_sharecode:
+            write('Failed to retrive lastest old sharecode', color=FgColor.Yellow)
+            csv_path = cs.csv_path_for_steamid(cs.steam_id)
+            data = cs.get_csv_list(csv_path)
+            if len(data) != 1:
+                write('more then one game has been added, yet no sharecode found; wut?', color=FgColor.Red)
+                truth_table['upload_thread_active'] = False
+                return
+            if not cs.account['match_token']:
+                write('no match token in config, aborting', color=FgColor.Red)
+                return
+            data[0]['sharecode'] = cs.account['match_token']
+            cs.write_data_csv(csv_path, data, cs.csv_header)
+            latest_sharecode = [cs.account['match_token']]
+            empty_csv = True
+        new_sharecodes = cs.get_new_sharecodes(latest_sharecode[0], stats=stats)
+        if empty_csv:
+            new_sharecodes.insert(0, {'sharecode': latest_sharecode[0], 'queue_pos': None})
+
         for new_code in new_sharecodes:
             retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
     time_table['csgostats_retry'] = time.time()
@@ -147,7 +166,7 @@ hwnd, hwnd_old = 0, 0
 csgo_window_status = {'server_found': 2, 'new_tab': 2, 'in_game': 0}
 csgo = []
 
-current_account = 0
+
 retryer = []
 
 game_state = {'map_phase': []}
@@ -349,7 +368,7 @@ while running:
 
             afk_dict['round_values'].append(afk_dict['seconds_afk'])
             afk_dict['round_values'] = [round(time_afk, 3) for time_afk in afk_dict['round_values']]
-            afk_dict['per_round'] = cs.Avg(afk_dict['round_values'], 0.0)
+            afk_dict['per_round'] = cs.avg(afk_dict['round_values'], 0.0)
             afk_dict['seconds_afk'] = 0.0
 
             try:
@@ -471,7 +490,7 @@ while running:
             player_stats = gsi_server.get_info('player', 'match_stats')
 
         average = cs.get_avg_match_time(cs.steam_id)
-        timings = {'match': time.time() - time_table['match_started'], 'search': time_table['match_accepted'] - time_table['search_started'], 'afk': sum(afk_dict['round_values']), 'afk_round': cs.Avg(afk_dict['round_values'], 0.0)}
+        timings = {'match': time.time() - time_table['match_started'], 'search': time_table['match_accepted'] - time_table['search_started'], 'afk': sum(afk_dict['round_values']), 'afk_round': cs.avg(afk_dict['round_values'], 0.0)}
 
         write(f'The match is over! - {score[team[0]]:02d}:{score[team[1]]:02d}', color=FgColor.Red)
 
@@ -528,11 +547,12 @@ while running:
                 player_team = gsi_server.get_info('player', 'team')
                 if player_team is not None:
                     team = red(player_team) if player_team == 'T' else cyan(player_team)
-                    write(f'You will play on {green(" ".join(saved_map.split("_")[1:]).title())} as {team} in the first half.', add_time=True, push=cs.pushbullet_dict['urgency'] + 2, push_now=True, overwrite='12')
+                    write(f'You will play on {green(" ".join(saved_map.split("_")[1:]).title())} as {team} in the first half. Last Games: {cs.match_win_list(8, cs.steam_id)}',
+                          add_time=True, push=cs.pushbullet_dict['urgency'] + 2, push_now=True, overwrite='12')
                     truth_table['still_in_warmup'] = True
+                    truth_table['test_for_warmup'] = False
                     truth_table['players_still_connecting'] = True
                     time_table['warmup_started'] = time.time()
-                    truth_table['test_for_warmup'] = False
                     if cs.cfg['player_webhook']:
                         cs.request_status_command(hwnd, cs.cfg['taskbar_position'], key='F12')
                         player_check = {'content': f'!check {cs.steam_id}',
