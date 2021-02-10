@@ -95,6 +95,13 @@ def hk_minimize_csgo(reset_position: tuple):
     return None
 
 
+def hk_cancel_csgostats_retrying():
+    global retryer
+    retryer = []
+    write('canceled csgostats.gg retrying', overwrite='4', color=FgColor.Yellow)
+    return
+
+
 def gsi_server_status():
     global gsi_server
     if gsi_server.running:
@@ -174,8 +181,6 @@ cs.mute_csgo(0)
 
 blue(), magenta()
 
-# cs.scraper.post('https://csgostats.gg/match/upload/ajax')  # set cookies to prevent cloudflare error
-
 if cs.cfg['activate_script']:
     keyboard.add_hotkey(cs.cfg['activate_script'], hk_activate)
 if cs.cfg['activate_push_notification']:
@@ -194,6 +199,8 @@ if cs.cfg['end_script']:
     keyboard.add_hotkey(cs.cfg['end_script'], hk_kill_main_loop)
 if cs.cfg['minimize_key']:
     keyboard.add_hotkey(cs.cfg['minimize_key'], hk_minimize_csgo, args=[cs.cfg['taskbar_position']])
+if cs.cfg['cancel_csgostats']:
+    keyboard.add_hotkey(cs.cfg['cancel_csgostats'], hk_cancel_csgostats_retrying)
 
 write('READY', color=FgColor.Green)
 running = True
@@ -554,7 +561,7 @@ while running:
                     truth_table['players_still_connecting'] = True
                     time_table['warmup_started'] = time.time()
                     if cs.cfg['player_webhook']:
-                        cs.request_status_command(hwnd, cs.cfg['taskbar_position'], key='F12')
+                        cs.request_status_command(hwnd, cs.cfg['taskbar_position'], key=cs.cfg['status_key'])
                         player_check = {'content': f'!check {cs.steam_id}',
                                         'avatar_url': cs.account['avatar_url']}
                         cs.send_discord_msg(player_check, cs.cfg['player_webhook'], username=f'{cs.account["name"]} - Player Info')
