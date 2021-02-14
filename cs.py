@@ -866,6 +866,7 @@ def add_match_id(sharecode, match: dict, _steam_id, match_id=None):
         match_data['1k'] = match['player']['stats']['1k']
         match_data['ADR'] = match['player']['stats']['ADR']
         match_data['HS%'] = re.sub('\D', '', match['player']['stats']['HS'])
+        match_data['KAST'] = re.sub('\D', '', match['player']['stats']['KAST'])
         match_data['HLTV'] = round(float(match['player']['stats']['HLTV']) * 100)
         match_data['rank'] = match['player']['rank']
         match_data['username'] = match['player']['username']
@@ -876,20 +877,6 @@ def add_match_id(sharecode, match: dict, _steam_id, match_id=None):
         except (ZeroDivisionError, ValueError):
             match_data['K/D'] = '∞'
 
-        # HLTV2 Calculation
-        match_data['KAST'] = re.sub('\D', '', match['player']['stats']['KAST'])
-        rounds = int(match_data['team_score']) + int(match_data['enemy_score'])
-        kd = (int(match_data['K/D']) / 100.0) if match_data['K/D'] != '∞' else int(match_data['kills'])
-        impact = max(0, 2.13 * kd + 0.42 * int(match_data['assists']) / rounds - 0.41)
-        hltv2 = 0.0073 * int(match_data['KAST']) \
-                + 0.3591 * int(match_data['kills']) / rounds \
-                + -0.5329 * int(match_data['deaths']) / rounds \
-                + 0.2372 * impact \
-                + 0.0032 * int(match_data['ADR']) \
-                + 0.1587
-
-        # round and *100 to store it as int with a precision of 1/100
-        match_data['HLTV2'] = round(max(0.0, hltv2) * 100)
 
     global csv_header
     write_data_csv(csv_path, data, csv_header)
@@ -1102,10 +1089,10 @@ except (configparser.NoOptionError, configparser.NoSectionError, ValueError) as 
 
 csv_header = ['sharecode', 'match_id', 'map', 'team_score', 'enemy_score', 'outcome', 'start_team',
               'match_time', 'wait_time', 'afk_time', 'mvps', 'points', 'kills', 'assists', 'deaths',
-              '5k', '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'KAST', 'HLTV', 'HLTV2', 'rank', 'username', 'server', 'timestamp']
+              '5k', '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'KAST', 'HLTV', 'rank', 'username', 'server', 'timestamp']
 
 csgo_stats_test_for = ['map', 'team_score', 'enemy_score', 'outcome',  'start_team', 'kills', 'assists', 'deaths',
-                       '5k', '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'HLTV', 'rank', 'username', 'server', 'timestamp', 'KAST', 'HLTV2']
+                       '5k', '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'HLTV', 'rank', 'username', 'server', 'timestamp']
 
 player_list_header = ['steam_id', 'name', 'seen_in', 'timestamp']
 

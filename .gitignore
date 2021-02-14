@@ -10,3 +10,4 @@ config.ini
 *.lnk
 *.ps1
 match_fixer.py
+csv_fixer.py
