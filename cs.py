@@ -320,9 +320,10 @@ def get_old_sharecodes(last_x: int = -1, from_x: str = ''):
         return []
     global csv_header
     csv_path = csv_path_for_steamid(steam_id)
+    game_dict = []
     if os.path.isfile(csv_path):
         game_dict = get_csv_list(csv_path)
-    else:
+    if not os.path.isfile(csv_path) or not game_dict:
         with open(csv_path, 'w') as last_game:
             writer = csv.DictWriter(last_game, fieldnames=csv_header, delimiter=';', lineterminator='\n')
             writer.writeheader()
