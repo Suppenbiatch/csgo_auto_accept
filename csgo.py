@@ -124,7 +124,7 @@ def upload_matches(look_for_new: bool = True, stats=None):
             write('Failed to retrive lastest old sharecode', color=FgColor.Yellow)
             csv_path = cs.csv_path_for_steamid(cs.steam_id)
             data = cs.get_csv_list(csv_path)
-            if len(data) != 1:
+            if len(data) > 1:
                 write('more then one game has been added, yet no sharecode found; wut?', color=FgColor.Red)
                 truth_table['upload_thread_active'] = False
                 return
