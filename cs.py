@@ -502,7 +502,7 @@ def update_csgo_stats(new_codes: List[dict], discord_output: bool = False):
                             discord_obj = add_match_id(sharecode, match_infos, steam_id)
                         break
                 else:
-                    discord_obj = generate_table(data[match_index], account['avatar_url'])  # Match has no missing info (was already done)
+                    discord_obj = generate_table(data[match_index])  # Match has no missing info (was already done)
             else:
                 match_infos = get_match_infos(match_id, steam_id)  # Match is completely new, no info in csv
                 if match_infos is not None:  # None is return if error in csgostats request
@@ -628,6 +628,8 @@ def remove_dict(lst: list, key: str, value):
 
 # noinspection PyShadowingNames
 def generate_table(match, avatar_url: str = ''):
+    if not avatar_url:
+        avatar_url = account['avatar_url']
     match_time = timedelta(seconds=match['match_time'] if match['match_time'] else 0)
     search_time = timedelta(seconds=match['wait_time'] if match['wait_time'] else 0)
     afk_time = timedelta(seconds=match['afk_time'] if match['afk_time'] else 0)
@@ -871,7 +873,6 @@ def add_match_id(sharecode, match: dict, _steam_id, match_id=None):
         match_data['HLTV'] = round(float(match['player']['stats']['HLTV']) * 100)
         match_data['rank'] = match['player']['rank']
         match_data['username'] = match['player']['username']
-        avatar_url = match['player']['avatar_url']
 
         try:
             match_data['K/D'] = round((float(match['player']['stats']['K']) / float(match['player']['stats']['D'])) * 100)
@@ -881,7 +882,7 @@ def add_match_id(sharecode, match: dict, _steam_id, match_id=None):
 
     global csv_header
     write_data_csv(csv_path, data, csv_header)
-    return generate_table(match_data, avatar_url)
+    return generate_table(match_data)
 
 
 def send_discord_msg(discord_data, webhook_url: str, username: str = 'Auto Acceptor'):
