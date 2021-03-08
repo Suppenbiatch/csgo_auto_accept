@@ -451,6 +451,9 @@ while running:
             truth_table['still_in_warmup'] = False
             playsound('sounds/fail.wav', block=True)
             write('Match did not start', overwrite='1', color=FgColor.Red, push=cs.pushbullet_dict['urgency'] + 2, push_now=True)
+            afk_dict['start_time'] = time.time()
+            afk_dict['seconds_afk'] = 0.0
+            afk_dict['round_values'] = []
 
     if game_state['map_phase'] in ['live', 'warmup'] and not truth_table['game_over'] and not truth_table['disconnected_form_last']:
         try:
