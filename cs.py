@@ -234,9 +234,9 @@ def get_accounts_from_cfg():
 
     colors_1 = ['00{:02x}ff', '00ff{:02x}', '{:02x}00ff', '{:02x}00ff', 'ff00{:02x}', 'ff{:02x}00']
     colors_2 = ['{:02x}ffff', 'ff{:02x}ff', 'ffff{:02x}']
-    two_part_numbers = list(dict.fromkeys(int(pattern.format(i), 16) for pattern in colors_1 for i in range(256)))
-    single_part_numbers = list(dict.fromkeys(int(pattern.format(i), 16) for pattern in colors_2 for i in range(177)))
-    numbers = list(dict.fromkeys(two_part_numbers + single_part_numbers))
+    two_part_numbers = list(set(int(pattern.format(i), 16) for pattern in colors_1 for i in range(256)))
+    single_part_numbers = list(set(int(pattern.format(i), 16) for pattern in colors_2 for i in range(177)))
+    numbers = list(set(two_part_numbers + single_part_numbers))
 
     for account in accounts:
         random.seed(f'{account["name"]}_{account["steam_id"]}_{account["avatar_hash"]}', version=2)
@@ -246,7 +246,7 @@ def get_accounts_from_cfg():
 
 # noinspection PyShadowingNames
 def get_csgo_path():
-    steam_reg_key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 'SOFTWARE\WOW6432Node\Valve\Steam')
+    steam_reg_key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r'SOFTWARE\WOW6432Node\Valve\Steam')
     steam_path = winreg.QueryValueEx(steam_reg_key, 'InstallPath')[0]
     libraries = [os.path.join(steam_path, 'steamapps')]
     with open(os.path.join(steam_path, 'steamapps', 'libraryfolders.vdf'), 'r') as library_file:
@@ -265,7 +265,7 @@ def get_csgo_path():
 # noinspection PyShadowingNames
 def get_current_steam_user():
     try:
-        steam_reg_key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, 'Software\Valve\Steam\ActiveProcess')
+        steam_reg_key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\Valve\Steam\ActiveProcess')
         current_user = winreg.QueryValueEx(steam_reg_key, 'ActiveUser')[0]
         if not current_user:
             return ''
@@ -643,8 +643,8 @@ def generate_table(match, avatar_url: str = ''):
                   'MG1', 'MG2', 'MGE', 'DMG',
                   'LE', 'LEM', 'SMFC', 'GE']
 
-    rank_integer = int(re.sub('\D', '', match['rank']))
-    rank_changed = re.sub('[\d ]', '', match['rank'])
+    rank_integer = int(re.sub(r'\D', '', match['rank']))
+    rank_changed = re.sub(r'[\d ]', '', match['rank'])
     if '+' in rank_changed:
         rank_changed = 'up-ranked'
     elif '-' in rank_changed:
@@ -689,11 +689,11 @@ def get_match_infos(match_id, steam_id):
     all_info = formatted_html.replace('<tr class="">', '\r\n').replace('<tr class="has-banned">', '\r\n').replace('<div id="match-rounds" class="content-tab">', '\r\n').split('\r\n')
     players = get_player_info(all_info[1:-1])
     # round_wins = get_round_info(all_info[1:-1])  # normally stored in the fifth player
-    played_map: str = re.search('<div style="font-weight:\d+;">[a-z]+_([a-zA-Z0-9_]+)</div>', all_info[0]).group(1).replace('_', ' ').title()
-    score = re.findall('<div class="team-score-inner ([\w]+)">\s+<span style="letter-spacing:[0-9\-.]+?em;">(\d+)</span>', all_info[0])
+    played_map: str = re.search(r'<div style="font-weight:\d+;">[a-z]+_([a-zA-Z0-9_]+)</div>', all_info[0]).group(1).replace('_', ' ').title()
+    score = re.findall(r'<div class="team-score-inner ([\w]+)">\s+<span style="letter-spacing:[0-9\-.]+?em;">(\d+)</span>', all_info[0])
     started_as, match_outcome, match_score = '', '', None
-    played_server = re.search('<div style="font-weight:\d+;">([A-Za-z ]+Server)</div>', all_info[0])
-    timestamp = re.search('<div style="font-weight:\d+;">(\d+?(?:st|nd|rd|th) [A-Za-z]+ \d+? \d+?:\d+?:\d+?)</div>', all_info[0])
+    played_server = re.search(r'<div style="font-weight:\d+;">([A-Za-z ]+Server)</div>', all_info[0])
+    timestamp = re.search(r'<div style="font-weight:\d+;">(\d+?(?:st|nd|rd|th) [A-Za-z]+ \d+? \d+?:\d+?:\d+?)</div>', all_info[0])
 
     if timestamp is not None:
         timestamp = parse_time(timestamp.group(1))
@@ -730,12 +730,12 @@ def get_player_info(raw_players: list):
     players: List[List[Dict[str, Union[str, Dict[str, str]]]]] = [[], []]
     stat_keys = ['K', 'D', 'A', '+/-', 'K/D', 'ADR', 'HS', 'FK', 'FD', 'Trade_K', 'Trade_D', 'Trade_FK', 'Trade_FD', '1v5', '1v4', '1v3', '1v2', '1v1', '5k', '4k', '3k', '2k', '1k', 'KAST', 'HLTV']
     pattern = {
-        'info': re.compile('img src="(.+?)".+?<a href="/player/(\d+)".+?;">(.*?)</span>'),
-        'rank': re.compile('(?:ranks/)(\d+)(?:\.png)'),
-        'rank_change': re.compile('(?:glyphicon glyphicon-chevron-)(up|down)'),
-        'stats': re.compile('(?:"> *)([\d.\-%]*)(?: *</td>)'),
-        'team': re.compile('</tr>\s+</tbody>\s+<tbody>'),
-        'email_name': re.compile('data-cfemail="(.+?)"')
+        'info': re.compile(r'img src="(.+?)".+?<a href="/player/(\d+)".+?;">(.*?)</span>'),
+        'rank': re.compile(r'(?:ranks/)(\d+)(?:\.png)'),
+        'rank_change': re.compile(r'(?:glyphicon glyphicon-chevron-)(up|down)'),
+        'stats': re.compile(r'(?:"> *)([\d.\-%]*)(?: *</td>)'),
+        'team': re.compile(r'</tr>\s+</tbody>\s+<tbody>'),
+        'email_name': re.compile(r'data-cfemail="(.+?)"')
     }
     team = 0
     for player in raw_players:
@@ -776,7 +776,7 @@ def get_player_info(raw_players: list):
 
 def get_round_info(raw_players):
     pattern = {'rounds': '<ul style="padding:0; margin:0; list-style-type:none;">',
-               'winner': re.compile('li style=".+? <div style=".+?solid #([0-9A-Fa-f]+);'),
+               'winner': re.compile(r'li style=".+? <div style=".+?solid #([0-9A-Fa-f]+);'),
                'ct': 3844602,
                't': 16232254}
     round_info = None
@@ -813,7 +813,7 @@ def add_players_to_list(match_data: dict, steam_id):
         if i is not None:
             data[i]['name'] = player['username']
             data[i]['seen_in'].append(int(match_data['match_id']))
-            data[i]['seen_in'] = list(dict.fromkeys(data[i]['seen_in']))
+            data[i]['seen_in'] = list(set(data[i]['seen_in']))
             data[i]['timestamp'] = match_data['timestamp'] if int(data[i]['timestamp']) < int(match_data['timestamp']) else data[i]['timestamp']
         else:
             data.append({'steam_id': player['steam_id'], 'name': player['username'], 'seen_in': [int(match_data['match_id'])], 'timestamp': match_data['timestamp']})
@@ -849,7 +849,6 @@ def add_match_id(sharecode, match: dict, _steam_id, match_id=None):
 
     if isinstance(match, str):  # request wasn't successful
         match_data['match_id'] = match
-        avatar_url = ''
     else:
         match_data['match_id'] = match['match_id']
         match_data['map'] = match['map']
@@ -868,8 +867,8 @@ def add_match_id(sharecode, match: dict, _steam_id, match_id=None):
         match_data['2k'] = match['player']['stats']['2k']
         match_data['1k'] = match['player']['stats']['1k']
         match_data['ADR'] = match['player']['stats']['ADR']
-        match_data['HS%'] = re.sub('\D', '', match['player']['stats']['HS'])
-        match_data['KAST'] = re.sub('\D', '', match['player']['stats']['KAST'])
+        match_data['HS%'] = re.sub(r'\D', '', match['player']['stats']['HS'])
+        match_data['KAST'] = re.sub(r'\D', '', match['player']['stats']['KAST'])
         match_data['HLTV'] = round(float(match['player']['stats']['HLTV']) * 100)
         match_data['rank'] = match['player']['rank']
         match_data['username'] = match['player']['username']
@@ -878,7 +877,6 @@ def add_match_id(sharecode, match: dict, _steam_id, match_id=None):
             match_data['K/D'] = round((float(match['player']['stats']['K']) / float(match['player']['stats']['D'])) * 100)
         except (ZeroDivisionError, ValueError):
             match_data['K/D'] = '∞'
-
 
     global csv_header
     write_data_csv(csv_path, data, csv_header)
@@ -1065,9 +1063,9 @@ else:
 pushbullet_dict: Dict[str, Union[str, int, pushbullet.pushbullet.Device, Tuple[str, str, str, str]]] = \
     {'note': '', 'urgency': 0, 'device': None, 'push_info': ('not active', 'on if accepted', 'all game status related information', 'all information (game status/csgostats.gg information)')}
 
-re_pattern = {'lobby_info': re.compile("(?<!Machines' = '\d''members:num)(C?TSlotsFree|Players)(?:' = ')(\d+'?)"),
-              'steam_path': re.compile('\\t"\d*"\\t\\t"'),
-              'decolor': re.compile('\033\[[0-9;]+m')}
+re_pattern = {'lobby_info': re.compile(r"(?<!Machines' = '\d''members:num)(C?TSlotsFree|Players)(?:' = ')(\d+'?)"),
+              'steam_path': re.compile(r'\\t"\d*"\\t\\t"'),
+              'decolor': re.compile(r'\033\[[0-9;]+m')}
 
 # CONFIG HANDLING
 config = configparser.ConfigParser()
