@@ -1064,7 +1064,7 @@ pushbullet_dict: Dict[str, Union[str, int, pushbullet.pushbullet.Device, Tuple[s
     {'note': '', 'urgency': 0, 'device': None, 'push_info': ('not active', 'on if accepted', 'all game status related information', 'all information (game status/csgostats.gg information)')}
 
 re_pattern = {'lobby_info': re.compile(r"(?<!Machines' = '\d''members:num)(C?TSlotsFree|Players)(?:' = ')(\d+'?)"),
-              'steam_path': re.compile(r'\\t"\d*"\\t\\t"'),
+              'steam_path': re.compile(r'\t"\d*"\t\t"'),
               'decolor': re.compile(r'\033\[[0-9;]+m')}
 
 # CONFIG HANDLING
