@@ -240,7 +240,6 @@ def get_accounts_from_cfg():
 
     for account in accounts:
         random.seed(f'{account["name"]}_{account["steam_id"]}_{account["avatar_hash"]}', version=2)
-        # random.seed(f'{account["name"]}_{account["steam_id"]}', version=2) #  Should the avatar influence discord color?
         account['color'] = numbers[random.randint(0, len(numbers))]
 
 
@@ -249,12 +248,17 @@ def get_csgo_path():
     steam_reg_key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r'SOFTWARE\WOW6432Node\Valve\Steam')
     steam_path = winreg.QueryValueEx(steam_reg_key, 'InstallPath')[0]
     libraries = [os.path.join(steam_path, 'steamapps')]
-    with open(os.path.join(steam_path, 'steamapps', 'libraryfolders.vdf'), 'r') as library_file:
-        library_data = library_file.readlines()
-        libraries.extend([re_pattern['steam_path'].sub('', i.rstrip('"\n')) for i in library_data if bool(re_pattern['steam_path'].match(i))])
-    try:
-        csgo_path = os.path.join([i for i in libraries if os.path.exists(os.path.join(i, 'appmanifest_730.acf'))][0], 'common', 'Counter-Strike Global Offensive', 'csgo')
-    except IndexError:
+    with open(os.path.join(steam_path, 'steamapps', 'libraryfolders.vdf'), 'r', encoding='utf-8') as library_file:
+        for line in library_file:
+            folder_object = re_pattern['steam_path'].search(line)
+            if folder_object is not None:
+                libraries.append(os.path.join(folder_object.group(1), 'steamapps'))
+
+    for library in libraries:
+        if os.path.exists(os.path.join(library, 'appmanifest_730.acf')):
+            csgo_path = os.path.join(library, 'common', 'Counter-Strike Global Offensive', 'csgo')
+            break
+    else:
         write('DID NOT FIND CSGO PATH', add_time=False, color=FgColor.Red)
         csgo_path = ''
     global path_vars
@@ -731,9 +735,9 @@ def get_player_info(raw_players: list):
     stat_keys = ['K', 'D', 'A', '+/-', 'K/D', 'ADR', 'HS', 'FK', 'FD', 'Trade_K', 'Trade_D', 'Trade_FK', 'Trade_FD', '1v5', '1v4', '1v3', '1v2', '1v1', '5k', '4k', '3k', '2k', '1k', 'KAST', 'HLTV']
     pattern = {
         'info': re.compile(r'img src="(.+?)".+?<a href="/player/(\d+)".+?;">(.*?)</span>'),
-        'rank': re.compile(r'(?:ranks/)(\d+)(?:\.png)'),
-        'rank_change': re.compile(r'(?:glyphicon glyphicon-chevron-)(up|down)'),
-        'stats': re.compile(r'(?:"> *)([\d.\-%]*)(?: *</td>)'),
+        'rank': re.compile(r'ranks/(\d+)\.png'),
+        'rank_change': re.compile(r'glyphicon glyphicon-chevron-(up|down)'),
+        'stats': re.compile(r'"> *([\d.\-%]*) *</td>'),
         'team': re.compile(r'</tr>\s+</tbody>\s+<tbody>'),
         'email_name': re.compile(r'data-cfemail="(.+?)"')
     }
@@ -1021,7 +1025,7 @@ def match_win_list(number_of_matches: int, _steam_id):
 # noinspection PyShadowingNames
 class WindowEnumerator(threading.Thread):
     def __init__(self, sleep_interval: float = 0.5):
-        super().__init__(name='WindowEnumerator')
+        super().__init__(name='WindowEnumerator', daemon=True)
         self._kill = threading.Event()
         self._interval = sleep_interval
 
@@ -1063,8 +1067,8 @@ else:
 pushbullet_dict: Dict[str, Union[str, int, pushbullet.pushbullet.Device, Tuple[str, str, str, str]]] = \
     {'note': '', 'urgency': 0, 'device': None, 'push_info': ('not active', 'on if accepted', 'all game status related information', 'all information (game status/csgostats.gg information)')}
 
-re_pattern = {'lobby_info': re.compile(r"(?<!Machines' = '\d''members:num)(C?TSlotsFree|Players)(?:' = ')(\d+'?)"),
-              'steam_path': re.compile(r'\t"\d*"\t\t"'),
+re_pattern = {'lobby_info': re.compile(r"(?<!Machines' = '\d''members:num)(C?TSlotsFree|Players)' = '(\d+'?)"),
+              'steam_path': re.compile(r'\t"\d+"\t\t"(.+)"\n'),
               'decolor': re.compile(r'\033\[[0-9;]+m')}
 
 # CONFIG HANDLING

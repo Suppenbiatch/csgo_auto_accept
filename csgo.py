@@ -86,13 +86,21 @@ def hk_kill_main_loop():
 def hk_minimize_csgo(reset_position: tuple):
     global hwnd
     if hwnd == 0:
-        return None
-    current_placement = win32gui.GetWindowPlacement(hwnd)
+        return
+    try:
+        current_placement = win32gui.GetWindowPlacement(hwnd)
+    except BaseException as e:
+        if e.args[1] == 'GetWindowPlacement':
+            return
+        else:
+            print(f'failed mini/maximizing csgo with {e}')
+            return
+
     if current_placement[1] == 2:
         win32gui.ShowWindow(hwnd, win32con.SW_NORMAL)
     else:
         cs.minimize_csgo(hwnd, reset_position)
-    return None
+    return
 
 
 def hk_cancel_csgostats_retrying():
@@ -115,13 +123,13 @@ def upload_matches(look_for_new: bool = True, stats=None):
     global retryer, time_table, truth_table
     if truth_table['upload_thread_active']:
         write('Another Upload-Thread is still active', color=FgColor.Magenta)
-        return None
+        return
     truth_table['upload_thread_active'] = True
     if look_for_new:
         latest_sharecode = cs.get_old_sharecodes(-1)
         empty_csv = False
         if not latest_sharecode:
-            write('Failed to retrive lastest old sharecode', color=FgColor.Yellow)
+            write('Failed to retrieve latest old sharecode', color=FgColor.Yellow)
             csv_path = cs.csv_path_for_steamid(cs.steam_id)
             data = cs.get_csv_list(csv_path)
             if len(data) > 1:
@@ -145,7 +153,7 @@ def upload_matches(look_for_new: bool = True, stats=None):
     retryer = cs.update_csgo_stats(retryer, discord_output=truth_table['discord_output'])
     time_table['csgostats_retry'] = time.time()
     truth_table['upload_thread_active'] = False
-    return None
+    return
 
 
 # BOOLEAN, TIME INITIALIZATION
@@ -253,9 +261,9 @@ while running:
         if matchmaking['update'][-1] == '1':
             if not truth_table['test_for_server']:
                 truth_table['test_for_server'] = True
-                write(f'Looking for match: {truth_table["test_for_server"]}', overwrite='1', color=FgColor.Magenta)
                 time_table['search_started'] = time.time()
-                playsound('sounds/activated.wav', block=False)
+                write(f'Looking for match: {truth_table["test_for_server"]}', overwrite='1', color=FgColor.Magenta)
+            playsound('sounds/activated.wav', block=False)
             cs.mute_csgo(1)
         elif matchmaking['update'][-1] == '0' and truth_table['test_for_server']:
             cs.mute_csgo(0)
@@ -349,6 +357,7 @@ while running:
     if any(True for i in matchmaking['server_abandon'] if 'Disconnect' in i):
         if not truth_table['game_over']:
             write('Server disconnected', color=FgColor.Red)
+            playsound('sounds/fail.wav', block=False)
         gsi_server = cs.restart_gsi_server(gsi_server)
         truth_table['disconnected_form_last'] = True
         truth_table['players_still_connecting'] = False
@@ -445,15 +454,14 @@ while running:
             if win32gui.GetWindowPlacement(hwnd)[1] == 2:
                 truth_table['game_minimized_warmup'] = True
                 playsound('sounds/ready_up_warmup.wav', block=False)
+            afk_dict['start_time'] = time.time()
+            afk_dict['seconds_afk'] = 0.0
             afk_dict['round_values'] = []
 
         if game_state['map_phase'] is None:
             truth_table['still_in_warmup'] = False
-            playsound('sounds/fail.wav', block=True)
+            # playsound('sounds/fail.wav', block=True)
             write('Match did not start', overwrite='1', color=FgColor.Red, push=cs.pushbullet_dict['urgency'] + 2, push_now=True)
-            afk_dict['start_time'] = time.time()
-            afk_dict['seconds_afk'] = 0.0
-            afk_dict['round_values'] = []
 
     if game_state['map_phase'] in ['live', 'warmup'] and not truth_table['game_over'] and not truth_table['disconnected_form_last']:
         try:
