@@ -38,7 +38,8 @@ def avg(lst: list, non_return=None):
 
 def mute_csgo(lvl: int):
     global path_vars
-    os.system(path_vars['mute_csgo_path'] + str(lvl))
+
+    os.system(f'{path_vars["mute_csgo_path"]} {lvl}')
     if lvl == 2:
         write('Mute toggled!', add_time=False)
 
@@ -990,9 +991,9 @@ def request_status_command(hwnd, reset_position, key: str = 'F12'):
     return
 
 
-def match_win_list(number_of_matches: int, _steam_id):
+def match_win_list(number_of_matches: int, _steam_id, time_difference: int = 7_200):
     data = get_csv_list(csv_path_for_steamid(_steam_id))
-    number_of_matches = (abs(number_of_matches + 1) * -1)
+    number_of_matches = abs(number_of_matches + 1) * -1
     outcome_lst = []
     for match in data[:number_of_matches:-1]:
         outcome = match['outcome']
@@ -1011,15 +1012,30 @@ def match_win_list(number_of_matches: int, _steam_id):
                 outcome = 'D'
             else:
                 outcome = 'U'
-        if outcome == 'W':
-            outcome_lst.append(green('\u2588'))
-        elif outcome == 'L':
-            outcome_lst.append(red('\u2588'))
-        elif outcome == 'D':
-            outcome_lst.append(blue('\u2588'))
+        if not match['timestamp']:
+            timestamp = int(time.time()) - (60 * 60)
         else:
-            outcome_lst.append(magenta('\u2588'))
-    return '\u007c'.join(outcome_lst)
+            timestamp = int(match['timestamp'])
+
+        if outcome == 'W':
+            outcome_lst.append((timestamp, green('\u2588')))
+        elif outcome == 'L':
+            outcome_lst.append((timestamp, red('\u2588')))
+        elif outcome == 'D':
+            outcome_lst.append((timestamp, blue('\u2588')))
+        else:
+            outcome_lst.append((timestamp, magenta('\u2588')))
+
+    start = outcome_lst[0][0]
+    group = 0
+    outcome_groups = [[]]
+    for timestamp, outcome in outcome_lst:
+        if start - timestamp > time_difference:
+            outcome_groups.append([])
+            group += 1
+        start = timestamp
+        outcome_groups[group].append(outcome)
+    return '\u007c \u007c'.join(['\u007c'.join(group) for group in outcome_groups])
 
 
 # noinspection PyShadowingNames
@@ -1051,7 +1067,7 @@ def csv_path_for_steamid(steamid):
     return os.path.join(path_vars['appdata_path'], f'last_game_{steamid}.csv')
 
 
-path_vars = {'appdata_path': os.path.join(os.getenv('APPDATA'), 'CSGO AUTO ACCEPT'), 'mute_csgo_path': f'"{os.path.join(os.getcwd(), "sounds", "nircmdc.exe")}" muteappvolume csgo.exe '}
+path_vars = {'appdata_path': os.path.join(os.getenv('APPDATA'), 'CSGO AUTO ACCEPT'), 'mute_csgo_path': f'"{os.path.abspath(os.path.expanduser("sounds/nircmdc.exe"))}" muteappvolume csgo.exe'}
 
 try:
     os.mkdir(path_vars['appdata_path'])
@@ -1080,16 +1096,21 @@ try:
            'info_newest_match': config.get('HotKeys', 'Get Info on newest Match'), 'mute_csgo_toggle': config.get('HotKeys', 'Mute CSGO'),
            'open_live_tab': config.get('HotKeys', 'Live Tab Key'), 'switch_accounts': config.get('HotKeys', 'Switch accounts for csgostats.gg'),
            'end_script': config.get('HotKeys', 'End Script'), 'discord_key': config.get('HotKeys', 'Discord Toggle'), 'minimize_key': config.get('HotKeys', 'Minimize CSGO'),
-           'cancel_csgostats': config.get('HotKeys', 'Cancel Match Retrying'),
-           'sleep_interval': config.getfloat('Screenshot', 'Interval'), 'steam_api_key': config.get('csgostats.gg', 'API Key'),
-           'max_queue_position': config.getint('csgostats.gg', 'Auto-Retrying for queue position below'), 'log_color': config.get('Screenshot', 'Log Color').lower(),
-           'auto_retry_interval': config.getint('csgostats.gg', 'Auto-Retrying-Interval'), 'pushbullet_device_name': config.get('Pushbullet', 'Device Name'), 'pushbullet_api_key': config.get('Pushbullet', 'API Key'),
-           'forbidden_programs': config.get('Screenshot', 'Forbidden Programs'), 'discord_url': config.get('csgostats.gg', 'Discord Webhook URL'), 'taskbar_position': config.getfloat('Screenshot', 'Taskbar Factor'),
-           'player_webhook': config.get('csgostats.gg', 'Player Info Webhook'), 'status_key': config.get('csgostats.gg', 'Status Key')}
+           'cancel_csgostats': config.get('HotKeys', 'Cancel Match Retrying'), 'sleep_interval': config.getfloat('Script Settings', 'Interval'),
+
+           'log_color': config.get('Script Settings', 'Log Color').lower(), 'forbidden_programs': config.get('Script Settings', 'Forbidden Programs'),
+           'taskbar_position': config.getfloat('Script Settings', 'Taskbar Factor'), 'match_list_lenght': config.getint('Script Settings', 'Match History Lenght'),
+
+           'steam_api_key': config.get('csgostats.gg', 'API Key'), 'max_queue_position': config.getint('csgostats.gg', 'Auto-Retrying for queue position below'),
+           'auto_retry_interval': config.getint('csgostats.gg', 'Auto-Retrying-Interval'), 'discord_url': config.get('csgostats.gg', 'Discord Webhook URL'),
+           'player_webhook': config.get('csgostats.gg', 'Player Info Webhook'), 'status_key': config.get('csgostats.gg', 'Status Key'),
+
+           'pushbullet_device_name': config.get('Pushbullet', 'Device Name'), 'pushbullet_api_key': config.get('Pushbullet', 'API Key')
+           }
 except (configparser.NoOptionError, configparser.NoSectionError, ValueError) as e:
     write(f'ERROR IN CONFIG - {str(e)}')
     cfg = {'ERROR': None}
-    exit('CHECK FOR NEW CONFIG')
+    exit('REPAIR CONFIG')
 
 csv_header = ['sharecode', 'match_id', 'map', 'team_score', 'enemy_score', 'outcome', 'start_team',
               'match_time', 'wait_time', 'afk_time', 'mvps', 'points', 'kills', 'assists', 'deaths',

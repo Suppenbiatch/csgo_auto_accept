@@ -460,7 +460,6 @@ while running:
 
         if game_state['map_phase'] is None:
             truth_table['still_in_warmup'] = False
-            # playsound('sounds/fail.wav', block=True)
             write('Match did not start', overwrite='1', color=FgColor.Red, push=cs.pushbullet_dict['urgency'] + 2, push_now=True)
 
     if game_state['map_phase'] in ['live', 'warmup'] and not truth_table['game_over'] and not truth_table['disconnected_form_last']:
@@ -565,7 +564,7 @@ while running:
                 player_team = gsi_server.get_info('player', 'team')
                 if player_team is not None:
                     team = red(player_team) if player_team == 'T' else cyan(player_team)
-                    write(f'You will play on {green(" ".join(saved_map.split("_")[1:]).title())} as {team} in the first half. Last Games: {cs.match_win_list(8, cs.steam_id)}',
+                    write(f'You will play on {green(" ".join(saved_map.split("_")[1:]).title())} as {team} in the first half. Last Games: {cs.match_win_list(cs.cfg["match_list_lenght"], cs.steam_id)}',
                           add_time=True, push=cs.pushbullet_dict['urgency'] + 2, push_now=True, overwrite='12')
                     truth_table['still_in_warmup'] = True
                     truth_table['test_for_warmup'] = False
