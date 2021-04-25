@@ -347,8 +347,8 @@ def get_old_sharecodes(last_x: int = -1, from_x: str = ''):
 # noinspection PyShadowingNames
 def get_new_sharecodes(game_id: str, stats=None):
     sharecodes = [game_id]
-    next_code = game_id
-    while next_code != 'n/a':
+    stats_error = True
+    while True:
         steam_url = f'https://api.steampowered.com/ICSGOPlayers_730/GetNextMatchSharingCode/v1?key={cfg["steam_api_key"]}&steamid={steam_id}&steamidkey={account["auth_code"]}&knowncode={game_id}'
         try:
             r = requests.get(steam_url, timeout=2)
@@ -356,10 +356,20 @@ def get_new_sharecodes(game_id: str, stats=None):
         except (KeyError, requests.exceptions.ConnectionError, requests.exceptions.Timeout, json.decoder.JSONDecodeError) as e:
             write(f'STEAM API ERROR! Error: "{e}"', color=FgColor.Red)
             break
-        time.sleep(0.5)
-        if next_code != 'n/a':
+        if r.status_code == 200:  # new match has been found
             sharecodes.append(next_code)
             game_id = next_code
+            time.sleep(0.5)
+        elif r.status_code == 202:  # no new match has been found
+            if stats is None or len(sharecodes) > 1:
+                if stats_error is False:
+                    write('got a match code for the given stats', color=FgColor.Green)
+                break
+            else:
+                if stats_error is True:
+                    write('new match stats were given, yet steam api gave no new sharecode', color=FgColor.Yellow)
+                    stats_error = False
+                time.sleep(2)
 
     global csv_header, csgo_stats_test_for
     if len(sharecodes) > 1:

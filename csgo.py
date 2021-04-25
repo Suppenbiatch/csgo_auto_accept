@@ -125,30 +125,30 @@ def upload_matches(look_for_new: bool = True, stats=None):
         write('Another Upload-Thread is still active', color=FgColor.Magenta)
         return
     truth_table['upload_thread_active'] = True
-    if look_for_new:
+    if look_for_new is True:
         latest_sharecode = cs.get_old_sharecodes(-1)
         empty_csv = False
         if not latest_sharecode:
             write('Failed to retrieve latest old sharecode', color=FgColor.Yellow)
             csv_path = cs.csv_path_for_steamid(cs.steam_id)
             data = cs.get_csv_list(csv_path)
-            if len(data) > 1:
-                write('more then one game has been added, yet no sharecode found; wut?', color=FgColor.Red)
-                truth_table['upload_thread_active'] = False
-                return
             if not cs.account['match_token']:
                 write('no match token in config, aborting', color=FgColor.Red)
+                truth_table['upload_thread_active'] = False
                 return
             data[0]['sharecode'] = cs.account['match_token']
             cs.write_data_csv(csv_path, data, cs.csv_header)
             latest_sharecode = [cs.account['match_token']]
             empty_csv = True
+
         new_sharecodes = cs.get_new_sharecodes(latest_sharecode[0], stats=stats)
+
         if empty_csv:
             new_sharecodes.insert(0, {'sharecode': latest_sharecode[0], 'queue_pos': None})
 
         for new_code in new_sharecodes:
             retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
+
     time_table['csgostats_retry'] = time.time()
     retryer = cs.update_csgo_stats(retryer, discord_output=truth_table['discord_output'])
     time_table['csgostats_retry'] = time.time()
