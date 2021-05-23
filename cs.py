@@ -420,7 +420,8 @@ def update_csgo_stats(new_codes: List[dict], discord_output: bool = False):
     already_queued_matches, queued_matches = [], []
     csgostats_error = []
     for match_dict in new_codes:
-        if match_dict['queue_id'] is not None:
+        # if match_dict['queue_id'] is not None:  # Disabled /processing/ routine as it always errors w/ 500
+        if False:
             already_queued_matches.append((match_dict['sharecode'], match_dict['queue_id']))
         else:
             try:
@@ -864,6 +865,9 @@ def add_match_id(sharecode, match: dict, _steam_id, match_id=None):
 
     if isinstance(match, str):  # request wasn't successful
         match_data['match_id'] = match
+    elif not match['player']:
+        write(f'{steam_id} was not found in {match["match_id"]}', color=FgColor.Red)
+        return
     else:
         match_data['match_id'] = match['match_id']
         match_data['map'] = match['map']
