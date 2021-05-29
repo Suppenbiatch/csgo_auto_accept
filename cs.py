@@ -27,6 +27,8 @@ from color import colorize, FgColor
 from color import green, red, yellow, blue, magenta
 
 from GSI import server
+from csgostats.csgostatsAPI import CSGOstatsAPI
+from csgostats.entities import Match, CSSPlayer, Stats
 
 
 # noinspection PyShadowingNames
@@ -513,14 +515,14 @@ def update_csgo_stats(new_codes: List[dict], discord_output: bool = False):
             if match_index is not None:
                 for item in data[match_index].items():
                     if item[0] in csgo_stats_test_for and not item[1]:  # Match has missing info in csv
-                        match_infos = get_match_infos(match_id, steam_id)
+                        match_infos = csgostats_api.get_match_info(match_id, steam_id)
                         if match_infos is not None:  # None is return if error in csgostats request
                             discord_obj = add_match_id(sharecode, match_infos, steam_id)
                         break
                 else:
                     discord_obj = generate_table(data[match_index])  # Match has no missing info (was already done)
             else:
-                match_infos = get_match_infos(match_id, steam_id)  # Match is completely new, no info in csv
+                match_infos = csgostats_api.get_match_info(match_id, steam_id)  # Match is completely new, no info in csv
                 if match_infos is not None:  # None is return if error in csgostats request
                     discord_obj = add_match_id(sharecode, match_infos, steam_id)
 
@@ -611,12 +613,6 @@ def read_console():
             'server_abandon': str_in_list(['Closing Steam Net Connection to =', 'Kicked by Console'], console_lines, replace=True), 'map': str_in_list(['Map: '], console_lines, replace=True)}
 
 
-def remove_indices(lst: list, index: list):
-    for i in sorted(index, reverse=True):
-        del lst[i]
-    return lst
-
-
 def create_field(field: tuple):
     return {
         'name': field[0],
@@ -630,16 +626,6 @@ def find_dict(lst: list, key: str, value):
         if dic[key] == value:
             return i
     return None
-
-
-def remove_dict(lst: list, key: str, value):
-    for i, _dict in enumerate(lst):
-        if (key, value) in _dict.items():
-            break
-    else:
-        return lst
-    del lst[i]
-    return lst
 
 
 # noinspection PyShadowingNames
@@ -691,165 +677,36 @@ def generate_table(match, avatar_url: str = ''):
 
 
 # noinspection PyShadowingNames
-def get_match_infos(match_id, steam_id):
-    url = f'https://csgostats.gg/match/{match_id}'
-    try:
-        r = scraper.get(url)
-    except (cloudscraper.exceptions.CaptchaException, cloudscraper.exceptions.CloudflareChallengeError):
-        write('Failed to get match data because of cloudflare captcha', color=FgColor.Red, add_time=False)
-        return None
-    if r.status_code != requests.status_codes.codes.ok:
-        write(f'Failed to retrieve match data with code {r.status_code}', color=FgColor.Red, add_time=False)
-        return None
-    formatted_html = r.text.replace('\n', '').replace('\t', '')
-    all_info = formatted_html.replace('<tr class="">', '\r\n').replace('<tr class="has-banned">', '\r\n').replace('<div id="match-rounds" class="content-tab">', '\r\n').split('\r\n')
-    players = get_player_info(all_info[1:-1])
-    # round_wins = get_round_info(all_info[1:-1])  # normally stored in the fifth player
-    played_map: str = re.search(r'<div style="font-weight:\d+;">[a-z]+_([a-zA-Z0-9_]+)</div>', all_info[0]).group(1).replace('_', ' ').title()
-    score = re.findall(r'<div class="team-score-inner ([\w]+)">\s+<span style="letter-spacing:[0-9\-.]+?em;">(\d+)</span>', all_info[0])
-    started_as, match_outcome, match_score = '', '', None
-    played_server = re.search(r'<div style="font-weight:\d+;">([A-Za-z ]+Server)</div>', all_info[0])
-    timestamp = re.search(r'<div style="font-weight:\d+;">(\d+?(?:st|nd|rd|th) [A-Za-z]+ \d+? \d+?:\d+?:\d+?)</div>', all_info[0])
-
-    if timestamp is not None:
-        timestamp = parse_time(timestamp.group(1))
-    else:
-        write(f'Could not parse time... report: {match_id}', color=FgColor.Yellow, add_time=False)
-        timestamp = 0
-
-    if played_server is not None:
-        played_server = played_server.group(1)
-    else:
-        played_server = 'undetected'
-    searched_player = {}
-    for i, team in enumerate(players):
-        for player in team:
-            if player['steam_id'] == str(steam_id):
-                searched_player = player
-                score = (score[0], score[1]) if i == 0 else (score[1], score[0])
-                match_score = (score[0][1], score[1][1])
-                if score[0][0] == 'winner':
-                    match_outcome = 'W'
-                elif score[0][0] == 'loser':
-                    match_outcome = 'L'
-                elif score[0][0] == 'draw':
-                    match_outcome = 'D'
-                else:
-                    write(f'Could not convert {score[0][0]} to an valid outcome', color=FgColor.Yellow, add_time=False)
-                started_as = 'T' if i == 0 else 'CT'
-                break
-    return {'match_id': str(match_id), 'map': played_map, 'score': match_score, 'outcome': match_outcome, 'server': played_server,
-            'player': searched_player, 'players': players, 'started_as': started_as, 'timestamp': timestamp}
-
-
-def get_player_info(raw_players: list):
-    players: List[List[Dict[str, Union[str, Dict[str, str]]]]] = [[], []]
-    stat_keys = ['K', 'D', 'A', '+/-', 'K/D', 'ADR', 'HS', 'FK', 'FD', 'Trade_K', 'Trade_D', 'Trade_FK', 'Trade_FD', '1v5', '1v4', '1v3', '1v2', '1v1', '5k', '4k', '3k', '2k', '1k', 'KAST', 'HLTV']
-    pattern = {
-        'info': re.compile(r'img src="(.+?)".+?<a href="/player/(\d+)".+?;">(.*?)</span>'),
-        'rank': re.compile(r'ranks/(\d+)\.png'),
-        'rank_change': re.compile(r'glyphicon glyphicon-chevron-(up|down)'),
-        'stats': re.compile(r'"> *([\d.\-%]*) *</td>'),
-        'team': re.compile(r'</tr>\s+</tbody>\s+<tbody>'),
-        'email_name': re.compile(r'data-cfemail="(.+?)"')
-    }
-    team = 0
-    for player in raw_players:
-        info = pattern['info'].search(player)
-        if info is None:
-            player_name = re.search('<span>(.+)</span>', player)
-            if player_name is not None:
-                player_name = player_name.group(1)
-            write(f'{player_name} has deleted his profile on csgostats.gg', color=FgColor.Yellow)
-            continue
-
-        encoded_name = pattern['email_name'].search(info.group(3))
-        if encoded_name is not None:
-            name = email_decode(encoded_name.group(1))
-        else:
-            name = info.group(3)
-
-        try:
-            rank = pattern['rank'].search(player).group(1)
-        except AttributeError:
-            rank = '0'
-        try:
-            rank_change = pattern['rank_change'].search(player).group(1)
-            if rank_change == 'up':
-                rank += '+'
-            else:
-                rank += '-'
-        except AttributeError:
-            pass
-        # stat_values = remove_indices(re.findall('(?:"> *)([\d.\-%]*)(?: *</td>)', player), [9, 10, 11, 12, 17, 18, 19, 20])
-        stat_values: List[str] = remove_indices(pattern['stats'].findall(player), [9, 10, 11, 12, 17, 18, 19, 20])
-        stats = dict(zip(stat_keys, stat_values))
-        players[team].append({'steam_id': info.group(2), 'username': name, 'rank': rank, 'avatar_url': info.group(1), 'stats': stats})
-        if not team:
-            team = 1 if pattern['team'].search(player) is not None else 0
-    return players
-
-
-def get_round_info(raw_players):
-    pattern = {'rounds': '<ul style="padding:0; margin:0; list-style-type:none;">',
-               'winner': re.compile(r'li style=".+? <div style=".+?solid #([0-9A-Fa-f]+);'),
-               'ct': 3844602,
-               't': 16232254}
-    round_info = None
-    for player in raw_players:
-        if pattern['rounds'] in player:
-            round_info = player
-            break
-    if not round_info:
-        return None
-    round_wins = []
-    for i in pattern['winner'].findall(round_info):
-        if int(i, 16) == pattern['t']:
-            round_wins.append(0)
-        elif int(i, 16) == pattern['ct']:
-            round_wins.append(1)
-        else:
-            write(f'unknown team #{i}')
-    return round_wins
-
-
-# noinspection PyShadowingNames
-def add_players_to_list(match_data: dict, steam_id):
+def add_players_to_list(match_data: Match, steam_id):
     global player_list_header
     player_list_path = os.path.join(path_vars['appdata_path'], f'player_list_{steam_id}.csv')
     data = get_csv_list(player_list_path, player_list_header)
     for i, _dict in enumerate(data):
         data[i]['seen_in'] = convert_string_to_list(_dict['seen_in'])
-    all_player = list(itertools.chain.from_iterable(match_data['players']))
-    players = remove_dict(all_player, 'steam_id', str(steam_id))
+    all_player = list(itertools.chain.from_iterable(match_data.players))
+    players = [player for player in all_player if player != steam_id]
 
     for player in players:
-        i = find_dict(data, 'steam_id', player['steam_id'])
+        player: CSSPlayer
+        i = find_dict(data, 'steam_id', player.steam_id)
 
         if i is not None:
-            data[i]['name'] = player['username']
-            data[i]['seen_in'].append(int(match_data['match_id']))
+            data[i]['name'] = player.username
+            data[i]['seen_in'].append(int(match_data.match_id))
             data[i]['seen_in'] = list(set(data[i]['seen_in']))
-            data[i]['timestamp'] = match_data['timestamp'] if int(data[i]['timestamp']) < int(match_data['timestamp']) else data[i]['timestamp']
+            data[i]['timestamp'] = match_data.timestamp if int(data[i]['timestamp']) < int(match_data.timestamp) else data[i]['timestamp']
         else:
-            data.append({'steam_id': player['steam_id'], 'name': player['username'], 'seen_in': [int(match_data['match_id'])], 'timestamp': match_data['timestamp']})
+            data.append({'steam_id': player.steam_id, 'name': player.username, 'seen_in': [int(match_data.match_id)], 'timestamp': match_data.timestamp})
 
     data.sort(key=lambda x: (len(x['seen_in']), int(x['timestamp'])), reverse=True)
-
     write_data_csv(player_list_path, data, player_list_header)
-
-
-def parse_time(datetime_str: str):
-    clean_date = re.sub(r'(\d)(st|nd|rd|th)', r'\1', datetime_str)
-    dt_obj = datetime.datetime.strptime(f'{clean_date} +0000', '%d %b %Y %H:%M:%S %z')
-    return int(datetime.datetime.timestamp(dt_obj))
 
 
 def epoch_to_iso(epoch_time):
     return datetime.datetime.fromtimestamp(float(epoch_time), datetime.datetime.now().astimezone().tzinfo).isoformat()
 
 
-def add_match_id(sharecode, match: dict, _steam_id, match_id=None):
+def add_match_id(sharecode, match: Match, _steam_id, match_id=None):
     csv_path = csv_path_for_steamid(_steam_id)
     data = get_csv_list(csv_path)
     m_index = None
@@ -863,37 +720,37 @@ def add_match_id(sharecode, match: dict, _steam_id, match_id=None):
 
     match_data = data[m_index]
 
-    if isinstance(match, str):  # request wasn't successful
-        match_data['match_id'] = match
-    elif not match['player']:
-        write(f'{steam_id} was not found in {match["match_id"]}', color=FgColor.Red)
+    if not match.player:
+        write(f'{steam_id} was not found in {match.match_id}', color=FgColor.Red)
         return
     else:
-        match_data['match_id'] = match['match_id']
-        match_data['map'] = match['map']
-        match_data['server'] = match['server']
-        match_data['timestamp'] = match['timestamp']
-        match_data['team_score'] = match['score'][0]
-        match_data['enemy_score'] = match['score'][1]
-        match_data['outcome'] = match['outcome']
-        match_data['start_team'] = match['started_as']
-        match_data['kills'] = match['player']['stats']['K']
-        match_data['assists'] = match['player']['stats']['A']
-        match_data['deaths'] = match['player']['stats']['D']
-        match_data['5k'] = match['player']['stats']['5k']
-        match_data['4k'] = match['player']['stats']['4k']
-        match_data['3k'] = match['player']['stats']['3k']
-        match_data['2k'] = match['player']['stats']['2k']
-        match_data['1k'] = match['player']['stats']['1k']
-        match_data['ADR'] = match['player']['stats']['ADR']
-        match_data['HS%'] = re.sub(r'\D', '', match['player']['stats']['HS'])
-        match_data['KAST'] = re.sub(r'\D', '', match['player']['stats']['KAST'])
-        match_data['HLTV'] = round(float(match['player']['stats']['HLTV']) * 100)
-        match_data['rank'] = match['player']['rank']
-        match_data['username'] = match['player']['username']
+        match_data['match_id'] = match.match_id
+        match_data['map'] = match.map
+        match_data['server'] = match.server
+        match_data['timestamp'] = match.timestamp
+        match_data['team_score'] = match.score[0]
+        match_data['enemy_score'] = match.score[1]
+        match_data['outcome'] = match.outcome
+        match_data['start_team'] = match.started_as
+
+        player_stats: Stats = match.player.stats
+        match_data['kills'] = player_stats.K
+        match_data['assists'] = player_stats.A
+        match_data['deaths'] = player_stats.D
+        match_data['5k'] = player_stats.K5
+        match_data['4k'] = player_stats.K4
+        match_data['3k'] = player_stats.K3
+        match_data['2k'] = player_stats.K2
+        match_data['1k'] = player_stats.K1
+        match_data['ADR'] = round(float(player_stats.ADR))
+        match_data['HS%'] = re.sub(r'\D', '', player_stats.HS)
+        match_data['KAST'] = re.sub(r'\D', '', player_stats.KAST)
+        match_data['HLTV'] = round(float(player_stats.HLTV) * 100)
+        match_data['rank'] = f'{match.player.rank.rank_int}{match.player.rank.rank_change}'
+        match_data['username'] = match.player.username
 
         try:
-            match_data['K/D'] = round((float(match['player']['stats']['K']) / float(match['player']['stats']['D'])) * 100)
+            match_data['K/D'] = round((float(player_stats.K) / float(player_stats.D)) * 100)
         except (ZeroDivisionError, ValueError):
             match_data['K/D'] = '∞'
 
@@ -1172,6 +1029,7 @@ if cfg['taskbar_position'] > 1.0:
 cfg['taskbar_position'] = task_bar(cfg['taskbar_position'])
 
 scraper = cloudscraper.create_scraper()
+csgostats_api = CSGOstatsAPI()
 queue_difference = []
 csgostats_retry = time.time()
 
