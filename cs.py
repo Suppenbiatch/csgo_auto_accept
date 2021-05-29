@@ -422,8 +422,7 @@ def update_csgo_stats(new_codes: List[dict], discord_output: bool = False):
     already_queued_matches, queued_matches = [], []
     csgostats_error = []
     for match_dict in new_codes:
-        # if match_dict['queue_id'] is not None:  # Disabled /processing/ routine as it always errors w/ 500
-        if False:
+        if match_dict['queue_id'] is not None:  # Disabled /processing/ routine as it always errors w/ 500
             already_queued_matches.append((match_dict['sharecode'], match_dict['queue_id']))
         else:
             try:
