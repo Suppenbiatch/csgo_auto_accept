@@ -10,7 +10,8 @@ from color import uncolorize, FgColor, red, green, yellow, blue, magenta, cyan
 from playsound import playsound
 
 import cs
-from cs import write
+from write import write
+from async_csgostats.csgostats_updater import CSGOStatsUpdater, send_discord_msg
 
 
 def hk_activate():
@@ -57,6 +58,7 @@ def hk_switch_accounts():
     cs.account = cs.accounts[cs.current_steam_account]
     cs.steam_id = cs.account['steam_id']
     cs.check_userdata_autoexec(cs.account['steam_id_3'])
+    updater.new_account(cs.account)
     write(f'current account is: {cs.account["name"]}', add_time=False, overwrite='3')
 
 
@@ -150,7 +152,11 @@ def upload_matches(look_for_new: bool = True, stats=None):
             retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
 
     time_table['csgostats_retry'] = time.time()
-    retryer = cs.update_csgo_stats(retryer, discord_output=truth_table['discord_output'])
+    if not retryer:
+        write('no new sharecodes found, aborting', color=FgColor.Yellow)
+        truth_table['upload_thread_active'] = False
+        return
+    retryer = updater.update_csgo_stats(retryer, cs.steam_id, discord_output=truth_table['discord_output'])
     time_table['csgostats_retry'] = time.time()
     truth_table['upload_thread_active'] = False
     return
@@ -181,7 +187,7 @@ hwnd, hwnd_old = 0, 0
 csgo_window_status = {'server_found': 2, 'new_tab': 2, 'in_game': 0}
 csgo = []
 
-
+updater = CSGOStatsUpdater(cs.cfg, cs.account)
 retryer = []
 
 game_state = {'map_phase': []}
@@ -238,6 +244,7 @@ while running:
             write('Account is not in the config.ini!\nScript will not work properly!', add_time=False, overwrite='9')
             playsound('sounds/fail.wav', block=False)
             exit('Update config.ini!')
+        updater.new_account(cs.account)
         write(f'Current account is: {cs.account["name"]}', add_time=False, overwrite='9')
 
         if cs.check_for_forbidden_programs(cs.window_ids):
@@ -574,7 +581,7 @@ while running:
                         cs.request_status_command(hwnd, cs.cfg['taskbar_position'], key=cs.cfg['status_key'])
                         player_check = {'content': f'?check {cs.steam_id}',
                                         'avatar_url': cs.account['avatar_url']}
-                        cs.send_discord_msg(player_check, cs.cfg['player_webhook'], username=f'{cs.account["name"]} - Player Info')
+                        send_discord_msg(player_check, cs.cfg['player_webhook'], username=f'{cs.account["name"]} - Player Info')
                     break
             elif saved_map:
                 write(f'You will play on {green(" ".join(saved_map.split("_")[1:]).title())}', overwrite='12')

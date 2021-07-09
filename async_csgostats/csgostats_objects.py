@@ -108,6 +108,7 @@ class Match(object):
         self.outcome = None
         self.server = None
         self.timestamp = None
+        self.sharecode = None
 
     def __repr__(self):
-        return f'Match(map={self.map}, score={self.score[0]:02d}:{self.score[1]:02d}, match_id={self.match_id}'
+        return f'Match(map={self.map}, score={self.score[0]:02d}:{self.score[1]:02d}, match_id={self.match_id})'

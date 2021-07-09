@@ -1,7 +1,4 @@
 import configparser
-import csv
-import datetime
-import itertools
 import json
 import operator
 import os
@@ -11,31 +8,23 @@ import sys
 import threading
 import time
 import winreg
+from datetime import timedelta as td
 from shutil import copyfile
-from typing import List, Dict, Union, Tuple
+from typing import List
 
-import cloudscraper
 import keyboard
 import pushbullet
-import pyperclip
 import requests
 import win32api
 import win32con
 import win32gui
 from PIL import ImageGrab, Image
-from color import colorize, FgColor
+from color import FgColor
 from color import green, red, yellow, blue, magenta
 
 from GSI import server
-from csgostats.csgostatsAPI import CSGOstatsAPI
-from csgostats.entities import Match, CSSPlayer, Stats
-
-
-# noinspection PyShadowingNames
-def avg(lst: list, non_return=None):
-    if not lst:
-        return non_return
-    return sum(lst) / len(lst)
+from utils import *
+from write import write, pushbullet_dict
 
 
 def mute_csgo(lvl: int):
@@ -48,48 +37,10 @@ def mute_csgo(lvl: int):
 
 def timedelta(then=None, seconds=None):
     if seconds is not None:
-        return str(datetime.timedelta(seconds=abs(int(seconds))))
+        return str(td(seconds=abs(int(seconds))))
     else:
         now = time.time()
-        return str(datetime.timedelta(seconds=abs(int(now - then))))
-
-
-# noinspection PyShadowingNames
-def write(message, add_time: bool = True, push: int = 0, push_now: bool = False, output: bool = True, overwrite: str = '0', color: FgColor = FgColor.Null):  # last overwrite key used: 11
-    message = str(message)
-    global re_pattern
-    push_message = re_pattern['decolor'].sub('', message)
-    if output:
-        if add_time:
-            message = datetime.datetime.now().strftime('%H:%M:%S') + ': ' + message
-        else:
-            message = ' ' * 10 + message
-        global overwrite_dict
-        if overwrite != '0':
-            ending = console_window['suffix']
-            if overwrite_dict['key'] == overwrite:
-                if console_window['isatty']:
-                    print(' ' * len(overwrite_dict['msg']), end=ending)
-                message = console_window['prefix'] + message
-            else:
-                if overwrite_dict['end'] != '\n':
-                    message = '\n' + message
-        else:
-            ending = '\n'
-            if overwrite_dict['end'] != '\n':
-                message = '\n' + message
-
-        overwrite_dict = {'key': overwrite, 'msg': re_pattern['decolor'].sub('', message), 'end': ending}
-
-        message = colorize(10, 10, color, message)
-        print(message, end=ending)
-
-    if push >= 3:
-        if message:
-            pushbullet_dict['note'] = pushbullet_dict['note'] + str(push_message.strip('\r').strip('\n')) + '\n'
-        if push_now:
-            pushbullet_dict['device'].push_note('CSGO AUTO ACCEPT', pushbullet_dict['note'])
-            pushbullet_dict['note'] = ''
+        return str(td(seconds=abs(int(now - then))))
 
 
 # noinspection PyShadowingNames
@@ -404,182 +355,7 @@ def get_new_sharecodes(game_id: str, stats=None):
                     sharecodes.insert(0, match['sharecode'])
                 break
 
-    # If no match has missing info return the most recent match with sharecode
-    if not sharecodes:
-        for match in data:
-            if match['sharecode']:
-                sharecodes = [match['sharecode']]
-                break
-
-    return [{'sharecode': code, 'queue_pos': None, 'queue_id': None} for code in sharecodes]
-
-
-# noinspection PyShadowingNames
-def update_csgo_stats(new_codes: List[dict], discord_output: bool = False):
-    global queue_difference, csgostats_retry, scraper, cfg, csgo_stats_test_for
-
-    responses, cloudflare_blocked = [], []
-    already_queued_matches, queued_matches = [], []
-    csgostats_error = []
-    for match_dict in new_codes:
-        if match_dict['queue_id'] is not None:  # Disabled /processing/ routine as it always errors w/ 500
-            already_queued_matches.append((match_dict['sharecode'], match_dict['queue_id']))
-        else:
-            try:
-                response = scraper.post('https://csgostats.gg/match/upload/ajax', data={'sharecode': match_dict['sharecode'], 'index': 0})
-                responses.append((response, match_dict['sharecode']))
-            except (cloudscraper.exceptions.CloudflareCode1020, requests.exceptions.ConnectionError, cloudscraper.exceptions.CaptchaException, cloudscraper.exceptions.CloudflareChallengeError) as e:
-                write(f'"{str(e).split(",")[0]}", match added to queue', color=FgColor.Yellow, overwrite='4')
-                cloudflare_blocked.append({'sharecode': match_dict['sharecode'], 'queue_pos': None, 'queue_id': None})
-            if len(new_codes) >= 10:  # Sleep between requests to prevent 429s
-                time.sleep(1.5)
-
-    if already_queued_matches:
-        sharecodes, queue_ids = zip(*already_queued_matches)
-        try:
-            response = scraper.post('https://csgostats.gg/match/processing/ajax', json={'matches': list(queue_ids)})
-            if response.status_code != requests.codes.ok:
-                for sharecode, queue_id in already_queued_matches:
-                    csgostats_error.append({'sharecode': sharecode, 'queue_pos': None, 'queue_id': queue_id})
-            else:
-                queued_matches = response.json()
-                for i, queued_match in enumerate(queued_matches):
-                    queued_match['data']['sharecode'] = sharecodes[i]
-        except (cloudscraper.exceptions.CloudflareCode1020, requests.exceptions.ConnectionError, cloudscraper.exceptions.CaptchaException, cloudscraper.exceptions.CloudflareChallengeError) as e:
-            write(f'"{str(e).split(",")[0]}", match added to queue', color=FgColor.Yellow, overwrite='4')
-            for sharecode, queue_id in already_queued_matches:
-                cloudflare_blocked.append({'sharecode': sharecode, 'queue_pos': None, 'queue_id': queue_id})
-
-    all_games = [r.json() for r, _ in responses if r.status_code == requests.codes.ok]
-    csgostats_error.extend([{'sharecode': sharecode, 'queue_pos': None, 'queue_id': None} for r, sharecode in responses if r.status_code != requests.codes.ok])
-
-    if queued_matches:
-        all_games.extend(queued_matches)
-    completed_games, not_completed_games, = [], []
-
-    for game in all_games:
-        if game['status'] == 'complete':
-            completed_games.append(game)
-        else:
-            not_completed_games.append(game)
-
-    queued_games = [{'sharecode': game['data']['sharecode'], 'queue_pos': game['data']['queue_pos'], 'queue_id': game['data']['queue_id']} for game in not_completed_games if game['status'] != 'error']
-    corrupt_games = [{'sharecode': game['data']['sharecode'], 'queue_pos': None, 'queue_id': None} for game in not_completed_games if game['status'] == 'error']
-
-    if queued_games:
-        temp_string = ''
-        for i, val in enumerate(queued_games, start=1):
-            temp_string += f'#{i}: in Queue #{val["queue_pos"]} - '
-
-        current_queue_difference = avg([last_game['queue_pos'] - game['queue_pos'] for game in queued_games for last_game in new_codes if last_game['sharecode'] == game['sharecode'] and last_game['queue_pos'] is not None])
-        if current_queue_difference is not None:
-            if current_queue_difference >= 0.0:
-                queue_difference.append(current_queue_difference / ((time.time() - csgostats_retry) / 60))
-                queue_difference = queue_difference[-10:]
-                matches_per_min = round(avg(queue_difference), 1)
-                if matches_per_min != 0.0:
-                    time_till_done = timedelta(seconds=(queued_games[0]['queue_pos'] / matches_per_min) * 60)
-                else:
-                    time_till_done = '∞:∞:∞'
-                temp_string += f'{matches_per_min} matches/min - #1 done in {time_till_done}'
-        temp_string = temp_string.rstrip(' - ')
-        write(temp_string, add_time=False, overwrite='4')
-
-    csgostats_retry = time.time()
-    new_codes = [game for game in corrupt_games]
-    new_codes.extend(cloudflare_blocked)
-    new_codes.extend(csgostats_error)
-
-    if new_codes:
-        erred_games_string = 'An error occurred in one game' if len(new_codes) == 1 else f'An error occurred in {len(new_codes)} games'
-        write(erred_games_string, overwrite='5')
-
-    new_codes.extend([game for game in queued_games if game['queue_pos'] < cfg['max_queue_position']])
-
-    if completed_games:
-        # time.sleep(2.5)  # idk if this helps to give csgostats some time
-        global account
-        for i, responses in enumerate(completed_games):
-            game_url = responses['data']['url']
-            sharecode = responses['data']['sharecode']
-            match_id = game_url.rpartition('/')[2]
-
-            discord_obj = None
-
-            write(f'URL: {game_url}', add_time=True, push=pushbullet_dict['urgency'], color=FgColor.Green)
-            data = get_csv_list(csv_path_for_steamid(steam_id))
-            match_index = find_dict(data, 'sharecode', sharecode)
-
-            match_infos = None
-            if match_index is not None:
-                for item in data[match_index].items():
-                    if item[0] in csgo_stats_test_for and not item[1]:  # Match has missing info in csv
-                        match_infos = csgostats_api.get_match_info(match_id, steam_id)
-                        if match_infos is not None:  # None is return if error in csgostats request
-                            discord_obj = add_match_id(sharecode, match_infos, steam_id)
-                        break
-                else:
-                    discord_obj = generate_table(data[match_index])  # Match has no missing info (was already done)
-            else:
-                match_infos = csgostats_api.get_match_info(match_id, steam_id)  # Match is completely new, no info in csv
-                if match_infos is not None:  # None is return if error in csgostats request
-                    discord_obj = add_match_id(sharecode, match_infos, steam_id)
-
-            if match_infos is not None:
-                add_players_to_list(match_infos, steam_id)
-
-            if discord_output and discord_obj is not None and cfg['discord_url']:
-                send_discord_msg(discord_obj, cfg['discord_url'], f'{account["name"]} - Match Stats')
-            try:
-                pyperclip.copy(game_url)
-            except (pyperclip.PyperclipWindowsException, pyperclip.PyperclipTimeoutException):
-                write('Failed to load URL in to clipboard', add_time=False)
-
-            if len(completed_games) > 10:
-                time.sleep(2)  # Sleep between requests to prevent 429s
-        write(None, add_time=False, push=pushbullet_dict['urgency'], push_now=True, output=False)
-    return new_codes
-
-
-def get_csv_list(path, header=None):
-    if header is None:
-        global csv_header
-        header = csv_header
-
-    if not os.path.isfile(path):
-        with open(path, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=header, delimiter=';', lineterminator='\n')
-            writer.writeheader()
-
-    with open(path, 'r', newline='', encoding='utf-8') as f:
-        data = list(csv.DictReader(f, fieldnames=header, delimiter=';', restval=''))
-    first_element = tuple(data[0].values())
-    if all(head == first_element[i] for i, head in enumerate(header)):  # File has a valid header
-        del data[0]  # Remove the header from the data
-        return data
-
-    # rewrite file with the new header and reuse all the old values
-    with open(path, 'r', newline='', encoding='utf-8') as f:
-        data = list(csv.DictReader(f, delimiter=';', restval=''))
-    rows = []
-    for i in data:
-        row_dict = {}
-        for key in header:
-            try:
-                row_dict[key] = i[key]
-            except KeyError:
-                row_dict[key] = ''
-        rows.append(row_dict)
-    write_data_csv(path, rows, header)
-    return rows
-
-
-def write_data_csv(path, data, header):
-    with open(path, 'w', encoding='utf-8', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=header, restval='', delimiter=';')
-        writer.writeheader()
-        writer.writerows(data)
-    return
+    return [{'sharecode': code, 'queue_pos': None} for code in sharecodes]
 
 
 # noinspection PyShadowingNames
@@ -610,166 +386,6 @@ def read_console():
             'players_accepted': str_in_list(['Server reservation2 is awaiting '], console_lines, replace=True), 'lobby_data': str_in_list(["LobbySetData: "], console_lines, replace=True),
             'server_found': str_in_list(['Matchmaking reservation confirmed: '], console_lines), 'server_ready': str_in_list(['ready-up!'], console_lines),
             'server_abandon': str_in_list(['Closing Steam Net Connection to =', 'Kicked by Console'], console_lines, replace=True), 'map': str_in_list(['Map: '], console_lines, replace=True)}
-
-
-def create_field(field: tuple):
-    return {
-        'name': field[0],
-        'value': str(field[1]),
-        'inline': field[2]
-    }
-
-
-def find_dict(lst: list, key: str, value):
-    for i, dic in enumerate(lst):
-        if dic[key] == value:
-            return i
-    return None
-
-
-# noinspection PyShadowingNames
-def generate_table(match, avatar_url: str = ''):
-    if not avatar_url:
-        avatar_url = account['avatar_url']
-    match_time = timedelta(seconds=match['match_time'] if match['match_time'] else 0)
-    search_time = timedelta(seconds=match['wait_time'] if match['wait_time'] else 0)
-    afk_time = timedelta(seconds=match['afk_time'] if match['afk_time'] else 0)
-    afk_per_round = timedelta(seconds=int(int(match['afk_time']) / (int(match['team_score']) + int(match['enemy_score']))) if match['afk_time'] else 0)
-    mvps = match['mvps'] if match['mvps'] else '0'
-    points = match['points'] if match['points'] else '0'
-
-    rank_names = ['None',
-                  'S1', 'S2', 'S3', 'S4', 'SE', 'SEM',
-                  'GN1', 'GN2', 'GN3', 'GNM',
-                  'MG1', 'MG2', 'MGE', 'DMG',
-                  'LE', 'LEM', 'SMFC', 'GE']
-
-    rank_integer = int(re.sub(r'\D', '', match['rank']))
-    rank_changed = re.sub(r'[\d ]', '', match['rank'])
-    if '+' in rank_changed:
-        rank_changed = 'up-ranked'
-    elif '-' in rank_changed:
-        rank_changed = 'de-ranked'
-
-    rank_name = f'{rank_names[rank_integer]} ({rank_changed})' if rank_changed else rank_names[rank_integer]
-
-    try:
-        match_kd = f'{float(match["K/D"]) / 100:.2f}'
-    except ValueError:
-        match_kd = match["K/D"]
-
-    url = 'https://csgostats.gg/match/' + match['match_id']
-
-    field_values = [('Map', match['map'], True), ('Score', '{:02d} **:** {:02d}'.format(int(match['team_score']), int(match['enemy_score'])), True), ('Username', match['username'], True),
-                    ('Kills', match['kills'], True), ('Assists', match['assists'], True), ('Deaths', match['deaths'], True),
-                    ('MVPs', mvps, True), ('Points', points, True), ('\u200B', '\u200B', True),
-                    ('K/D', match_kd, True), ('ADR', match['ADR'], True), ('HS%', f'{match["HS%"]}%', True),
-                    ('5k', match['5k'], True), ('4k', match['4k'], True), ('3k', match['3k'], True),
-                    ('2k', match['2k'], True), ('1k', match['1k'], True), ('HLTV-Rating', f'{float(match["HLTV"]) / 100:.2f}', True),
-                    ('Rank', rank_name, True), ('Server', match['server'], True), ('AFK per round', afk_per_round, True),
-                    ('Match Duration', match_time, True), ('Search Time', search_time, True), ('AFK Time', afk_time, True)
-                    ]
-
-    return {'embeds': [{'author': {'name': 'csgostats.gg', 'url': url, 'icon_url': ''}, 'color': account["color"],
-                        'footer': {'text': 'CS:GO', 'icon_url': 'https://i.imgur.com/qlBV96I.png'}, 'timestamp': epoch_to_iso(match['timestamp']),
-                        'fields': [create_field(i) for i in field_values]}], 'avatar_url': avatar_url}
-
-
-# noinspection PyShadowingNames
-def add_players_to_list(match_data: Match, steam_id):
-    global player_list_header
-    player_list_path = os.path.join(path_vars['appdata_path'], f'player_list_{steam_id}.csv')
-    data = get_csv_list(player_list_path, player_list_header)
-    for i, _dict in enumerate(data):
-        data[i]['seen_in'] = convert_string_to_list(_dict['seen_in'])
-    all_player = list(itertools.chain.from_iterable(match_data.players))
-    players = [player for player in all_player if player != steam_id]
-
-    for player in players:
-        player: CSSPlayer
-        i = find_dict(data, 'steam_id', player.steam_id)
-
-        if i is not None:
-            data[i]['name'] = player.username
-            data[i]['seen_in'].append(int(match_data.match_id))
-            data[i]['seen_in'] = list(set(data[i]['seen_in']))
-            data[i]['timestamp'] = match_data.timestamp if int(data[i]['timestamp']) < int(match_data.timestamp) else data[i]['timestamp']
-        else:
-            data.append({'steam_id': player.steam_id, 'name': player.username, 'seen_in': [int(match_data.match_id)], 'timestamp': match_data.timestamp})
-
-    data.sort(key=lambda x: (len(x['seen_in']), int(x['timestamp'])), reverse=True)
-    write_data_csv(player_list_path, data, player_list_header)
-
-
-def epoch_to_iso(epoch_time):
-    return datetime.datetime.fromtimestamp(float(epoch_time), datetime.datetime.now().astimezone().tzinfo).isoformat()
-
-
-def add_match_id(sharecode, match: Match, _steam_id, match_id=None):
-    csv_path = csv_path_for_steamid(_steam_id)
-    data = get_csv_list(csv_path)
-    m_index = None
-    if sharecode is not None:
-        m_index = find_dict(data, 'sharecode', sharecode)
-    if m_index is None and match_id is not None:
-        m_index = find_dict(data, 'match_id', match_id)
-    if m_index is None:
-        print('Failed to locate match in csv file')
-        return
-
-    match_data = data[m_index]
-
-    if not match.player:
-        write(f'{steam_id} was not found in {match.match_id}', color=FgColor.Red)
-        return
-    else:
-        match_data['match_id'] = match.match_id
-        match_data['map'] = match.map
-        match_data['server'] = match.server
-        match_data['timestamp'] = match.timestamp
-        match_data['team_score'] = match.score[0]
-        match_data['enemy_score'] = match.score[1]
-        match_data['outcome'] = match.outcome
-        match_data['start_team'] = match.started_as
-
-        player_stats: Stats = match.player.stats
-        match_data['kills'] = player_stats.K
-        match_data['assists'] = player_stats.A
-        match_data['deaths'] = player_stats.D
-        match_data['5k'] = player_stats.K5
-        match_data['4k'] = player_stats.K4
-        match_data['3k'] = player_stats.K3
-        match_data['2k'] = player_stats.K2
-        match_data['1k'] = player_stats.K1
-        match_data['ADR'] = round(float(player_stats.ADR))
-        match_data['HS%'] = re.sub(r'\D', '', player_stats.HS)
-        match_data['KAST'] = re.sub(r'\D', '', player_stats.KAST)
-        match_data['HLTV'] = round(float(player_stats.HLTV) * 100)
-        match_data['rank'] = f'{match.player.rank.rank_int}{match.player.rank.rank_change}'
-        match_data['username'] = match.player.username
-
-        try:
-            match_data['K/D'] = round((float(player_stats.K) / float(player_stats.D)) * 100)
-        except (ZeroDivisionError, ValueError):
-            match_data['K/D'] = '∞'
-
-    global csv_header
-    write_data_csv(csv_path, data, csv_header)
-    return generate_table(match_data)
-
-
-def send_discord_msg(discord_data, webhook_url: str, username: str = 'Auto Acceptor'):
-    discord_data['username'] = username
-    r = requests.post(webhook_url, data=json.dumps(discord_data), headers={"Content-Type": "application/json"})
-    try:
-        remaining_requests = int(r.headers['x-ratelimit-remaining'])
-    except KeyError:
-        write(f'KeyError with status code {r.status_code}')
-        remaining_requests = 1
-    if remaining_requests == 0:
-        ratelimit_wait = abs(int(r.headers['x-ratelimit-reset']) - time.time() + 0.2)
-        print(f'sleeping {ratelimit_wait}s to prevent hitting the discord webhook rate limit')
-        time.sleep(ratelimit_wait)
 
 
 def activate_pushbullet():
@@ -929,14 +545,6 @@ class WindowEnumerator(threading.Thread):
         self._kill.set()
 
 
-def convert_string_to_list(_str: str) -> list:
-    return list(map(int, _str.lstrip('[').rstrip(']').split(', ')))
-
-
-def csv_path_for_steamid(steamid):
-    return os.path.join(path_vars['appdata_path'], f'last_game_{steamid}.csv')
-
-
 path_vars = {'appdata_path': os.path.join(os.getenv('APPDATA'), 'CSGO AUTO ACCEPT'), 'mute_csgo_path': f'"{os.path.abspath(os.path.expanduser("sounds/nircmdc.exe"))}" muteappvolume csgo.exe'}
 
 try:
@@ -950,12 +558,9 @@ if not sys.stdout.isatty():
 else:
     console_window = {'prefix': '', 'suffix': '\r', 'isatty': True}
 
-pushbullet_dict: Dict[str, Union[str, int, pushbullet.pushbullet.Device, Tuple[str, str, str, str]]] = \
-    {'note': '', 'urgency': 0, 'device': None, 'push_info': ('not active', 'on if accepted', 'all game status related information', 'all information (game status/csgostats.gg information)')}
-
 re_pattern = {'lobby_info': re.compile(r"(?<!Machines' = '\d''members:num)(C?TSlotsFree|Players)' = '(\d+'?)"),
               'steam_path': re.compile(r'\t"\d+"\t\t"(.+)"\n'),
-              'decolor': re.compile(r'\033\[[0-9;]+m')}
+              }
 
 # CONFIG HANDLING
 config = configparser.ConfigParser()
@@ -986,7 +591,7 @@ csv_header = ['sharecode', 'match_id', 'map', 'team_score', 'enemy_score', 'outc
               'match_time', 'wait_time', 'afk_time', 'mvps', 'points', 'kills', 'assists', 'deaths',
               '5k', '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'KAST', 'HLTV', 'rank', 'username', 'server', 'timestamp']
 
-csgo_stats_test_for = ['map', 'team_score', 'enemy_score', 'outcome',  'start_team', 'kills', 'assists', 'deaths',
+csgo_stats_test_for = ['map', 'team_score', 'enemy_score', 'outcome', 'start_team', 'kills', 'assists', 'deaths',
                        '5k', '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'HLTV', 'rank', 'username', 'server', 'timestamp']
 
 player_list_header = ['steam_id', 'name', 'seen_in', 'timestamp']
@@ -1026,11 +631,6 @@ if cfg['taskbar_position'] > 1.0:
     cfg['taskbar_position'] = 1.0 / cfg['taskbar_position']
     write(f'Taskbar Factor to big, using inverse {cfg["taskbar_position"]}')
 cfg['taskbar_position'] = task_bar(cfg['taskbar_position'])
-
-scraper = cloudscraper.create_scraper()
-csgostats_api = CSGOstatsAPI()
-queue_difference = []
-csgostats_retry = time.time()
 
 window_ids = []
 
