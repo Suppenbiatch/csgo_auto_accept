@@ -106,8 +106,9 @@ def hk_minimize_csgo(reset_position: tuple):
 
 
 def hk_cancel_csgostats_retrying():
-    global retryer
+    global retryer, truth_table
     retryer = []
+    truth_table['upload_thread_active'] = False
     write('canceled csgostats.gg retrying', overwrite='4', color=FgColor.Yellow)
     return
 

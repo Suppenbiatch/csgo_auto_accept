@@ -29,6 +29,7 @@ async def add_match(sharecode, use_signal: bool = True):
                            handleSIGTERM=use_signal,
                            handleSIGHUP=use_signal,
                            defaultViewport={'width': 600, 'height': 300})
+
     matches = await add_match_parser(browser, sharecode)
     await browser.close()
     return matches

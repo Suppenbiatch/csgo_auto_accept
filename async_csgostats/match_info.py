@@ -37,6 +37,7 @@ async def multiple_match_info(ids: List[Tuple[int, int, str]], use_signal: bool 
                            handleSIGHUP=use_signal)
     funcs = [partial(get_match_infos, browser, match_id, steam_id) for match_id, steam_id, _ in ids]
     matches = await asyncio.gather(*[func() for func in funcs])
+
     await browser.close()
     for i, match in enumerate(matches):
         match.sharecode = ids[i][2]
@@ -177,7 +178,7 @@ def get_player_info(raw_players: List[List[Tag]], hltv_format: dict) -> list:
             player = CSSPlayer(steam_id)
 
             player.username = info.text.lstrip('\n').rstrip('\n')
-            rank = player_tag.find(name='img', src=True, attrs={'width': 45})
+            rank = player_tag.find(name='img', src=True, attrs={'width': 40})
             if rank is not None:
                 player.rank = Rank(int(re.search(r'ranks/(\d+)\.png', rank.attrs['src']).group(1)))
             else:

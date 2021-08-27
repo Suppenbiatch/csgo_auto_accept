@@ -1,5 +1,6 @@
 import csv
 import os.path
+import sqlite3
 from datetime import datetime
 
 import consts
@@ -68,3 +69,47 @@ def avg(lst: list, non_return=None):
     if not lst:
         return non_return
     return sum(lst) / len(lst)
+
+
+def create_table(db_path):
+    if os.path.isfile(db_path):
+        return
+    with sqlite3.connect(db_path) as db:
+        db.execute("""CREATE TABLE IF NOT EXISTS players (
+                                steam_id integer,
+                                name text,
+                                match_ids text,
+                                match_count integer,
+                                timestamp integer
+                                )""")
+        db.commit()
+
+
+def get_players_from_db(db_path, steam_ids):
+    insertions = ('? , ' * len(steam_ids)).strip(' , ')
+    sql = f"""select * from players where steam_id in ({insertions})"""
+    with sqlite3.connect(db_path) as db:
+        db.row_factory = sqlite3.Row
+        cur = db.execute(sql, steam_ids)
+        results = cur.fetchall()
+    rows = [dict(row) for row in results]
+    for player in rows:
+        player['match_ids'] = player['match_ids'].split(';')
+    return rows
+
+
+def add_and_update_players(db_path, updated_players, new_players):
+    with sqlite3.connect(db_path) as db:
+        for player in updated_players:
+            sql = f"""UPDATE players 
+                SET name = ?, 
+                    match_ids = ?,
+                    match_count = ?,
+                    timestamp = ?
+                WHERE 
+                    steam_id = ?"""
+            db.execute(sql, (player['name'], player['match_ids'], player['match_count'], player['timestamp'], player['steam_id']))
+
+        new_players_tuple = [(player['steam_id'], player['name'], player['match_ids'], player['match_count'], player['timestamp']) for player in new_players]
+        db.executemany("""INSERT INTO players (steam_id, name, match_ids, match_count, timestamp) VALUES (?, ?, ?, ?, ?)""", new_players_tuple)
+        db.commit()

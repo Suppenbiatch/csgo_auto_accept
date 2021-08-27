@@ -86,7 +86,7 @@ class CSGOStatsUpdater:
 
                 write(f'URL: {game_url}', add_time=True, push=pushbullet_dict['urgency'], color=FgColor.Green)
                 csv_match_data = add_match_id_to_csv(match, steam_id)
-                add_players_to_list(match, steam_id)
+                add_players_to_db(match, steam_id)
 
                 if discord_output and self.cfg['discord_url']:
                     discord_obj = generate_table(csv_match_data, self.account)
@@ -189,6 +189,34 @@ def add_players_to_list(match_data: Match, steam_id):
 
     data.sort(key=lambda x: (len(x['seen_in']), int(x['timestamp'])), reverse=True)
     utils.write_data_csv(player_list_path, data, consts.player_list_header)
+
+
+def add_players_to_db(match_data: Match, steam_id):
+    player_db_path = os.path.join(os.getenv('APPDATA'), 'CSGO AUTO ACCEPT', f'player_list_{steam_id}.db')
+    utils.create_table(player_db_path)
+
+    all_player = list(itertools.chain.from_iterable(match_data.players))
+    players = [player for player in all_player if player != steam_id]
+
+    seen_players = utils.get_players_from_db(player_db_path, [player.steam_id for player in players])
+    new_players = []
+
+    for player in players:
+        player: CSSPlayer
+        i = utils.find_dict(seen_players, 'steam_id', int(player.steam_id))
+
+        if i is not None:
+            seen_players[i]['name'] = player.username
+            match_ids = seen_players[i]['match_ids']
+            match_ids.append(match_data.match_id)
+            match_ids = sorted(map(int, set(match_ids)))
+            seen_players[i]['match_count'] = len(match_ids)
+            seen_players[i]['match_ids'] = ';'.join(map(str, match_ids))
+
+            seen_players[i]['timestamp'] = match_data.timestamp if int(seen_players[i]['timestamp']) < int(match_data.timestamp) else seen_players[i]['timestamp']
+        else:
+            new_players.append({'steam_id': player.steam_id, 'name': player.username, 'match_ids': match_data.match_id, 'match_count': 1, 'timestamp': match_data.timestamp})
+    utils.add_and_update_players(player_db_path, seen_players, new_players)
 
 
 def generate_table(match, account):
