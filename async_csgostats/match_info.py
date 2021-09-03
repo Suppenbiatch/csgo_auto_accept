@@ -178,7 +178,8 @@ def get_player_info(raw_players: List[List[Tag]], hltv_format: dict) -> list:
             player = CSSPlayer(steam_id)
 
             player.username = info.text.lstrip('\n').rstrip('\n')
-            rank = player_tag.find(name='img', src=True, attrs={'width': 40})
+            # rank = player_tag.find(name='img', src=True, attrs={'width': 40})
+            rank = player_tag.select_one('img.rank')
             if rank is not None:
                 player.rank = Rank(int(re.search(r'ranks/(\d+)\.png', rank.attrs['src']).group(1)))
             else:
