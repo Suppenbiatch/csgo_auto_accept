@@ -346,7 +346,7 @@ while running:
 
     if truth_table['players_still_connecting']:
         lobby_data = ''.join(matchmaking['lobby_data'])
-        lobby_info = cs.re_pattern['lobby_info'].findall(lobby_data)
+        lobby_info = cs.lobby_info.findall(lobby_data)
         lobby_data = [(info, int(num.strip("'\n"))) for info, num in lobby_info]
         for i in lobby_data:
             if i[0] == 'Players':

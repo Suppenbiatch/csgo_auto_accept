@@ -10,7 +10,8 @@ import time
 import winreg
 from datetime import timedelta as td
 from shutil import copyfile
-from typing import List
+from typing import List, Union
+from pathlib import Path
 
 import keyboard
 import pushbullet
@@ -204,9 +205,9 @@ def get_csgo_path():
     libraries = [os.path.join(steam_path, 'steamapps')]
     with open(os.path.join(steam_path, 'steamapps', 'libraryfolders.vdf'), 'r', encoding='utf-8') as library_file:
         for line in library_file:
-            folder_object = re_pattern['steam_path'].search(line)
+            folder_object = re.search(r'"path"\s*"(.+)"', line)
             if folder_object is not None:
-                libraries.append(os.path.join(folder_object.group(1), 'steamapps'))
+                libraries.append(os.path.join(Path(folder_object.group(1)), 'steamapps'))
 
     for library in libraries:
         if os.path.exists(os.path.join(library, 'appmanifest_730.acf')):
@@ -424,7 +425,7 @@ def round_start_msg(msg: str, round_phase: str, freezetime_start: float, old_win
     return old_window_status
 
 
-def time_output(current: int, average: int):
+def time_output(current: Union[float, int], average: Union[float, int]):
     difference = abs(current - average)
     if current <= average:
         return f'{timedelta(seconds=current)}, {timedelta(seconds=difference)} {green("shorter")} than average of {timedelta(seconds=average)}'
@@ -558,9 +559,7 @@ if not sys.stdout.isatty():
 else:
     console_window = {'prefix': '', 'suffix': '\r', 'isatty': True}
 
-re_pattern = {'lobby_info': re.compile(r"(?<!Machines' = '\d''members:num)(C?TSlotsFree|Players)' = '(\d+'?)"),
-              'steam_path': re.compile(r'\t"\d+"\t\t"(.+)"\n'),
-              }
+lobby_info = re.compile(r"(?<!Machines' = '\d''members:num)(C?TSlotsFree|Players)' = '(\d+'?)")
 
 # CONFIG HANDLING
 config = configparser.ConfigParser()
