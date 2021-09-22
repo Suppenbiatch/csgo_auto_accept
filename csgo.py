@@ -287,7 +287,7 @@ while running:
             win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
 
     if truth_table['test_for_accept_button']:
-        img = cs.get_screenshot(hwnd, (1265, 760, 1295, 785))
+        img = cs.get_screenshot(hwnd, (1300, 550, 1310, 570))
         accept_avg = cs.color_average(img, [(76, 175, 80), (90, 203, 94)])
         if cs.relate_list(accept_avg, (2, 2, 2)):
             truth_table['test_for_accept_button'] = False
@@ -296,7 +296,7 @@ while running:
             current_cursor_position = win32api.GetCursorPos()
             for _ in range(5):
                 win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
-                cs.click((int(win32api.GetSystemMetrics(0) / 2), int(win32api.GetSystemMetrics(1) / 1.78)))
+                cs.click((int(win32api.GetSystemMetrics(0) / 2), int(win32api.GetSystemMetrics(1) / 2.4)))
             if csgo_window_status['server_found'] == 2:  # was minimized when a server was found
                 time.sleep(0.075)
                 cs.minimize_csgo(hwnd, cs.cfg['taskbar_position'])
