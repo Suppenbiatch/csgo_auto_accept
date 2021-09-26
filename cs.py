@@ -327,18 +327,19 @@ def get_new_sharecodes(game_id: str, stats=None):
 
     global csv_header, csgo_stats_test_for
     if len(sharecodes) > 1:
+        create_backup(csv_path_for_steamid(steam_id))
         with open(csv_path_for_steamid(steam_id), 'a', newline='', encoding='utf-8') as last_game:
             writer = csv.DictWriter(last_game, fieldnames=csv_header, delimiter=';', lineterminator='\n')
             for i in sharecodes[1:-1]:  # Add all matches except the newest one without any additional information
-                row_dict = {'sharecode': i, 'match_id': '', 'map': '', 'team_score': '', 'enemy_score': '', 'wait_time': '', 'afk_time': '', 'mvps': 0, 'points': 0, 'kills': 0, 'assists': 0, 'deaths': 0}
+                row_dict = {'sharecode': i, 'match_id': '', 'map': '', 'team_score': '', 'enemy_score': '', 'wait_time': '', 'afk_time': '', 'mvps': '', 'points': '', 'kills': '', 'assists': '', 'deaths': ''}
                 writer.writerow(row_dict)
 
             # Add the newest match with the given information
             if stats is None:
-                stats = {'kills': 0, 'assists': 0, 'deaths': 0, 'mvps': 0, 'score': 0, 'map': '', 'match_score': ('', ''), 'match_time': '', 'wait_time': '', 'afk_time': ''}
+                stats = {'kills': '', 'assists': '', 'deaths': '', 'mvps': '', 'score': '', 'map': '', 'match_score': ('', ''), 'match_time': '', 'wait_time': '', 'afk_time': ''}
 
             if 'mvps' not in stats:  # gameover match stats are given, but player has never been seen (demo watching only)
-                for key, value in [('kills', 0), ('assists', 0), ('deaths', 0), ('mvps', 0), ('score', 0)]:
+                for key, value in [('kills', ''), ('assists', ''), ('deaths', ''), ('mvps', ''), ('score', '')]:
                     stats[key] = value
 
             row_dict = {'sharecode': sharecodes[-1], 'map': stats['map'], 'team_score': stats['match_score'][0], 'enemy_score': stats['match_score'][1],
@@ -386,7 +387,8 @@ def read_console():
     return {'msg': str_in_list(['Matchmaking message: '], console_lines, replace=True), 'update': str_in_list(['Matchmaking update: '], console_lines, replace=True),
             'players_accepted': str_in_list(['Server reservation2 is awaiting '], console_lines, replace=True), 'lobby_data': str_in_list(["LobbySetData: "], console_lines, replace=True),
             'server_found': str_in_list(['Matchmaking reservation confirmed: '], console_lines), 'server_ready': str_in_list(['ready-up!'], console_lines),
-            'server_abandon': str_in_list(['Closing Steam Net Connection to =', 'Kicked by Console'], console_lines, replace=True), 'map': str_in_list(['Map: '], console_lines, replace=True)}
+            'server_abandon': str_in_list(['Closing Steam Net Connection to =', 'Kicked by Console'], console_lines, replace=True), 'map': str_in_list(['Map: '], console_lines, replace=True),
+            'server_settings': str_in_list(['SetConVar: mp_'], console_lines, replace=True)}
 
 
 def activate_pushbullet():
@@ -402,7 +404,7 @@ def activate_pushbullet():
         write(f'Pushing: {pushbullet_dict["push_info"][pushbullet_dict["urgency"]]}', overwrite='2')
 
 
-def round_start_msg(msg: str, round_phase: str, freezetime_start: float, old_window_status: bool, current_window_status: bool, overwrite_key: str = '7'):
+def round_start_msg(msg: str, round_phase: str, freezetime_start: float, old_window_status: bool, current_window_status: bool, scoreboard: dict, overwrite_key: str = '7'):
     if old_window_status:
         if current_window_status:
             timer_stopped = ''
@@ -410,8 +412,8 @@ def round_start_msg(msg: str, round_phase: str, freezetime_start: float, old_win
             old_window_status = False
             timer_stopped = ' - ' + green('stopped')
 
-        freeze_time = 15
-        buy_time = 20
+        freeze_time = scoreboard['freeze_time']
+        buy_time = scoreboard['buy_time']
 
         if round_phase == 'freezetime':
             time_str = green(timedelta(seconds=time.time() - (freezetime_start + freeze_time)))

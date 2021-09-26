@@ -64,8 +64,7 @@ async def add_match_parser(browser: Browser, sharecodes):
 if __name__ == '__main__':
     async def main():
         # 'CSGO-a74aG-3Mr7o-qrbBa-77DGK-VTTrC'  # uncompletable, valid sharecode
-        r = await add_match(['CSGO-6LYAh-Wo7ED-X4mfd-Qxoo2-2zYUN', ], use_signal=False)
+        r = await add_match(['CSGO-MtwLb-JqtW9-SMSUt-Cpden-x3JPJ', ], use_signal=False)
         print(r)
-
 
     asyncio.run(main())

@@ -1,5 +1,6 @@
 import csv
 import os.path
+import shutil
 import sqlite3
 from datetime import datetime
 
@@ -10,7 +11,16 @@ def epoch_to_iso(epoch_time):
     return datetime.fromtimestamp(float(epoch_time), datetime.now().astimezone().tzinfo).isoformat()
 
 
-def write_data_csv(path, data, header):
+def create_backup(path: str):
+    folder, filename = path.rsplit('\\', maxsplit=1)
+    backup_folder = os.path.join(folder, 'BACKUPS')
+    os.makedirs(backup_folder, exist_ok=True)
+    shutil.copy(path, backup_folder)
+    return
+
+
+def write_data_csv(path: str, data, header):
+    create_backup(path)
     with open(path, 'w', encoding='utf-8', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=header, restval='', delimiter=';')
         writer.writeheader()

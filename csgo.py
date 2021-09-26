@@ -1,3 +1,4 @@
+import re
 import time
 import webbrowser
 from threading import Thread
@@ -164,7 +165,7 @@ def upload_matches(look_for_new: bool = True, stats=None):
 
 
 # BOOLEAN, TIME INITIALIZATION
-truth_table = {'test_for_accept_button': False, 'test_for_warmup': False, 'test_for_success': False, 'first_ocr': True, 'testing': False, 'first_push': True, 'still_in_warmup': False, 'test_for_server': False, 'first_freezetime': True,
+truth_table = {'test_for_accept_button': False, 'test_for_warmup': False, 'test_for_success': False, 'testing': False, 'first_push': True, 'still_in_warmup': False, 'test_for_server': False, 'first_freezetime': True,
                'game_over': False, 'monitoring_since_start': False, 'players_still_connecting': False, 'first_game_over': True, 'disconnected_form_last': False, 'c4_round_first': True, 'steam_error': False,
                'game_minimized_freezetime': False, 'game_minimized_warmup': False, 'discord_output': True, 'gsi_first_launch': True, 'upload_thread_active': False}
 
@@ -172,10 +173,10 @@ truth_table = {'test_for_accept_button': False, 'test_for_warmup': False, 'test_
 # remove console_read and timed_execution_time
 time_table = {'csgostats_retry': time.time(), 'search_started': time.time(), 'console_read': time.time(), 'timed_execution_time': time.time(), 'match_accepted': time.time(),
               'match_started': time.time(), 'freezetime_started': time.time(), 'join_warmup_time': 0.0, 'warmup_seconds': 0}
-matchmaking = {'msg': [], 'update': [], 'players_accepted': [], 'lobby_data': [], 'server_found': False, 'server_ready': False}
+matchmaking = {'msg': [], 'update': [], 'players_accepted': [], 'lobby_data': [], 'server_found': False, 'server_ready': False, 'server_settings': []}
 afk_dict = {'time': time.time(), 'still_afk': [], 'start_time': time.time(), 'seconds_afk': 0.0, 'per_round': 0.0, 'player_info': {'steamid': 0, 'state': {}}, 'round_values': []}
 join_dict = {'t_full': False, 'ct_full': False}
-scoreboard = {'CT': 0, 'T': 0, 'last_round_info': '', 'last_round_key': '0', 'extra_round_info': '', 'player': {}}
+scoreboard = {'CT': 0, 'T': 0, 'last_round_info': '', 'last_round_key': '0', 'extra_round_info': '', 'player': {}, 'max_rounds': 30, 'buy_time': 20, 'freeze_time': 15}
 team = yellow('Unknown')
 player_stats = {}
 
@@ -373,6 +374,20 @@ while running:
 
     game_state = {'map_phase': gsi_server.get_info('map', 'phase'), 'round_phase': gsi_server.get_info('round', 'phase')}
 
+    if len(matchmaking['server_settings']) != 0:
+        try:
+            scoreboard['max_rounds'] = [int(re.sub('\D', '', line)) for line in matchmaking['server_settings'] if 'maxrounds' in line][0]
+        except IndexError:
+            pass
+        try:
+            scoreboard['buy_time'] = [int(re.sub('\D', '', line)) for line in matchmaking['server_settings'] if 'buytime' in line][0]
+        except IndexError:
+            pass
+        try:
+            scoreboard['freeze_time'] = [int(re.sub('\D', '', line)) for line in matchmaking['server_settings'] if 'freezetime' in line][0]
+        except IndexError:
+            pass
+
     if truth_table['first_freezetime']:
         if game_state['map_phase'] == 'live' and game_state['round_phase'] == 'freezetime':
             truth_table['first_game_over'], truth_table['game_over'] = True, False
@@ -398,15 +413,16 @@ while running:
             try:
                 scoreboard['last_round_key'] = list(scoreboard['last_round_info'].keys())[-1]
                 scoreboard['last_round_info'] = scoreboard['last_round_info'][scoreboard['last_round_key']].split('_')[0].upper()
-                if int(scoreboard['last_round_key']) == 15:
+                if int(scoreboard['last_round_key']) == scoreboard['max_rounds'] / 2:
                     scoreboard['last_round_info'] = 'T' if scoreboard['last_round_info'] == 'CT' else 'CT'
                 scoreboard['last_round_info'] = f'{scoreboard["team"]} {green("won")} the last round' if uncolorize(scoreboard['team']) == scoreboard['last_round_info'] else f'{scoreboard["team"]} {yellow("lost")} the last round'
             except AttributeError:
                 scoreboard['last_round_info'] = f'You {scoreboard["team"]}, no info on the last round'
 
-            if scoreboard['total_score'] == 14:
+            if scoreboard['total_score'] == scoreboard['max_rounds'] / 2 - 1:
                 scoreboard['extra_round_info'] = yellow(' - Half-Time')
-            elif scoreboard['CT'] == 15 or scoreboard['T'] == 15:
+                playsound('sounds/ding.wav', block=True)
+            elif scoreboard['CT'] == scoreboard['max_rounds'] / 2 or scoreboard['T'] == scoreboard['max_rounds'] / 2:
                 scoreboard['extra_round_info'] = yellow(' - Match Point')
             else:
                 scoreboard['extra_round_info'] = ''
@@ -418,8 +434,6 @@ while running:
             if win32gui.GetWindowPlacement(hwnd)[1] == 2:
                 truth_table['game_minimized_freezetime'] = True
                 playsound('sounds/ready_up.wav', block=True)
-            if 'Half-Time' in uncolorize(scoreboard['extra_round_info']):
-                playsound('sounds/ding.wav', block=True)
 
         elif game_state['map_phase'] == 'live' and gsi_server.get_info('player', 'steamid') == cs.steam_id:
             player_stats = gsi_server.get_info('player', 'match_stats')
@@ -433,11 +447,11 @@ while running:
     if truth_table['game_minimized_freezetime']:
         message = f'Freeze Time - {scoreboard["last_round_info"]} - {scoreboard[uncolorize(scoreboard["team"])]:02d}:{scoreboard[uncolorize(scoreboard["opposing_team"])]:02d}' \
                   f'{scoreboard["extra_round_info"]}{scoreboard["c4"]} - AFK: {cs.timedelta(seconds=afk_dict["per_round"])}'
-        truth_table['game_minimized_freezetime'] = cs.round_start_msg(message, game_state['round_phase'], time_table['freezetime_started'], truth_table['game_minimized_freezetime'], win32gui.GetWindowPlacement(hwnd)[1] == 2)
+        truth_table['game_minimized_freezetime'] = cs.round_start_msg(message, game_state['round_phase'], time_table['freezetime_started'], truth_table['game_minimized_freezetime'], win32gui.GetWindowPlacement(hwnd)[1] == 2, scoreboard)
     elif truth_table['game_minimized_warmup']:
         try:
             message = f'Warmup is over! Map: {green(" ".join(gsi_server.get_info("map", "name").split("_")[1:]).title())}, Team: {team}, Took: {cs.timedelta(seconds=time_table["warmup_seconds"])}'
-            truth_table['game_minimized_warmup'] = cs.round_start_msg(message, game_state['round_phase'], time_table['freezetime_started'], truth_table['game_minimized_warmup'], win32gui.GetWindowPlacement(hwnd)[1] == 2)
+            truth_table['game_minimized_warmup'] = cs.round_start_msg(message, game_state['round_phase'], time_table['freezetime_started'], truth_table['game_minimized_warmup'], win32gui.GetWindowPlacement(hwnd)[1] == 2, scoreboard)
         except AttributeError:
             pass
 

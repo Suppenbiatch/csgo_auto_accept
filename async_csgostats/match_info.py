@@ -95,7 +95,7 @@ async def get_match_infos(browser: Browser, match_id, steam_id):
     url = f'https://csgostats.gg/match/{match_id}'
     page = await browser.newPage()
     await stealth(page)
-    await page.goto(url)
+    await page.goto(url, timeout=0)
     await wait_for_ready(page)
     text = await page.evaluate('document.body.innerHTML')
     loop = asyncio.get_running_loop()
@@ -281,7 +281,7 @@ async def generate_csv_match(steam_id, csv_str):
 
 
 async def main():
-    r = await single_match_info(38763438, 76561199014843546)
+    r = await single_match_info(43409239, 76561199014843546)
     print(r)
 
 
