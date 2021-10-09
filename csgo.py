@@ -357,7 +357,10 @@ while running:
             if i[0] == 'CTSlotsFree' and i[1] == 0:
                 join_dict['ct_full'] = True
             if join_dict['t_full'] and join_dict['ct_full']:
-                write(f'Server full, All Players connected. Took {cs.timedelta(time_table["warmup_started"])} since match start.', push=cs.pushbullet_dict['urgency'] + 2, push_now=True, overwrite='7')
+                best_of = red(f"BR{scoreboard['max_rounds']}")
+                write(f'Server full, All Players connected. '
+                      f'{best_of}, '
+                      f'Took {cs.timedelta(time_table["warmup_started"])} since match start.', push=cs.pushbullet_dict['urgency'] + 2, push_now=True, overwrite='7')
                 playsound('sounds/minute_warning.wav', block=True)
                 truth_table['players_still_connecting'] = False
                 join_dict['t_full'], join_dict['ct_full'] = False, False
@@ -450,7 +453,8 @@ while running:
         truth_table['game_minimized_freezetime'] = cs.round_start_msg(message, game_state['round_phase'], time_table['freezetime_started'], truth_table['game_minimized_freezetime'], win32gui.GetWindowPlacement(hwnd)[1] == 2, scoreboard)
     elif truth_table['game_minimized_warmup']:
         try:
-            message = f'Warmup is over! Map: {green(" ".join(gsi_server.get_info("map", "name").split("_")[1:]).title())}, Team: {team}, Took: {cs.timedelta(seconds=time_table["warmup_seconds"])}'
+            best_of = red(f"BR{scoreboard['max_rounds']}")
+            message = f'Warmup is over! Map: {green(" ".join(gsi_server.get_info("map", "name").split("_")[1:]).title())}, Team: {team}, {best_of}, Took: {cs.timedelta(seconds=time_table["warmup_seconds"])}'
             truth_table['game_minimized_warmup'] = cs.round_start_msg(message, game_state['round_phase'], time_table['freezetime_started'], truth_table['game_minimized_warmup'], win32gui.GetWindowPlacement(hwnd)[1] == 2, scoreboard)
         except AttributeError:
             pass
@@ -469,7 +473,9 @@ while running:
             truth_table['players_still_connecting'] = False
             team = red('T') if gsi_server.get_info('player', 'team') == 'T' else cyan('CT')
             time_table['warmup_seconds'] = int(time.time() - time_table['warmup_started'])
-            write('Warmup is over! Map: {map}, Team: {team}, Took: {time}'.format(team=team, map=green(' '.join(gsi_server.get_info('map', 'name').split('_')[1:]).title()), time=cs.timedelta(seconds=time_table['warmup_seconds'])),
+            write('Warmup is over! Map: {map}, Team: {team}, Took: {time}'.format(team=team,
+                                                                                  map=green(' '.join(gsi_server.get_info('map', 'name').split('_')[1:]).title()),
+                                                                                  time=cs.timedelta(seconds=time_table['warmup_seconds'])),
                   push=cs.pushbullet_dict['urgency'] + 2, push_now=True, overwrite='7')
             time_table['match_started'] = time.time()
             time_table['freezetime_started'] = time.time()
@@ -586,7 +592,8 @@ while running:
                 player_team = gsi_server.get_info('player', 'team')
                 if player_team is not None:
                     team = red(player_team) if player_team == 'T' else cyan(player_team)
-                    write(f'You will play on {green(" ".join(saved_map.split("_")[1:]).title())} as {team} in the first half. Last Games: {cs.match_win_list(cs.cfg["match_list_lenght"], cs.steam_id)}',
+                    write(f'You will play on {green(" ".join(saved_map.split("_")[1:]).title())} as {team} in the first half. '
+                          f'Last Games: {cs.match_win_list(cs.cfg["match_list_lenght"], cs.steam_id)}',
                           add_time=True, push=cs.pushbullet_dict['urgency'] + 2, push_now=True, overwrite='12')
                     truth_table['still_in_warmup'] = True
                     truth_table['test_for_warmup'] = False

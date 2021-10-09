@@ -178,7 +178,6 @@ def get_player_info(raw_players: List[List[Tag]], hltv_format: dict) -> list:
             player = CSSPlayer(steam_id)
 
             player.username = info.text.lstrip('\n').rstrip('\n')
-            # rank = player_tag.find(name='img', src=True, attrs={'width': 40})
             rank = player_tag.select_one('img.rank')
             if rank is not None:
                 player.rank = Rank(int(re.search(r'ranks/(\d+)\.png', rank.attrs['src']).group(1)))
@@ -232,7 +231,7 @@ def get_outcome(winning_info_classes: List[Tag], team_id: int):
 def parse_match_date(datetime_str: str) -> int:
     """
     :param datetime_str: A date/time string form a match from csgostats.gg
-    :return: the unix epcho timestamp from set date
+    :return: the unix epoch timestamp from set date
     """
     clean_date = re.sub(r'(\d)(st|nd|rd|th)', r'\1', datetime_str)
     dt_obj = datetime.strptime(f'{clean_date} +0000', '%d %b %Y %H:%M:%S %z')
