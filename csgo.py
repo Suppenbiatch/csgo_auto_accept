@@ -157,7 +157,7 @@ def upload_matches(look_for_new: bool = True, stats=None):
         write('no new sharecodes found, aborting', color=FgColor.Yellow)
         truth_table['upload_thread_active'] = False
         return
-    retryer = updater.update_csgo_stats(retryer, cs.steam_id, discord_output=truth_table['discord_output'])
+    retryer = updater.update_csgo_stats(retryer, discord_output=truth_table['discord_output'])
     time_table['csgostats_retry'] = time.time()
     truth_table['upload_thread_active'] = False
     return

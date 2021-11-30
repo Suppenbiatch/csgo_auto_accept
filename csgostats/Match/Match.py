@@ -95,11 +95,6 @@ class Match:
         return pickle.dumps(self, protocol=pickle.HIGHEST_PROTOCOL, fix_imports=False)
 
     def sql_tuple(self, steam_id):
-        a = ('match_id', 'map', 'team_score', 'enemy_score',
-             'outcome', 'start_team', 'kills', 'assists', 'deaths', '5k',
-             '4k', '3k', '2k', '1k', 'K/D', 'ADR', 'HS%', 'KAST', 'HLTV1',
-             'HLTV2', 'rank', 'rank_change', 'username', 'server', 'timestamp', 'sharecode')
-
         starting_team = 'T' if steam_id in self.teams[0] else 'CT'
         player = self.get_player_sort(steam_id)
         return (self.match_id, self.map,

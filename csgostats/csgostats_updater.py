@@ -24,7 +24,7 @@ class CSGOStatsUpdater:
     def new_account(self, account):
         self.account = account
 
-    def update_csgo_stats(self, new_codes: List[dict], steam_id, discord_output: bool = False):
+    def update_csgo_stats(self, new_codes: List[dict], discord_output: bool = False):
         sharecodes = [match_dict['sharecode'] for match_dict in new_codes]
 
         r = requests.post(f'http://{self.cfg.server_ip}:{self.cfg.server_port}/matches', json={'sharecodes': sharecodes})
@@ -93,7 +93,7 @@ class CSGOStatsUpdater:
                     url = match.match_url()
                     write(f'URL: {url}', add_time=True, push=pushbullet_dict['urgency'], color=FgColor.Green)
                     try:
-                        sql_data = match.sql_tuple(int(steam_id))
+                        sql_data = match.sql_tuple(int(self.account['steam_id']))
                         sql_str = '''UPDATE matches SET id = ?,
                                                         map = ?,
                                                         team_score = ?,
@@ -133,10 +133,14 @@ class CSGOStatsUpdater:
                 if discord_output:
                     discord_matches = []
                     for match in completed_games:
-                        sql_str = """SELECT id, match_time, wait_time, afk_time, mvps, points FROM matches WHERE sharecode = ?"""
-                        cur = db.execute(sql_str, (match.sharecode,))
+                        sql_str = """SELECT id, match_time, wait_time, afk_time, mvps, points FROM matches WHERE sharecode = ? AND steam_id = ?"""
+                        cur = db.execute(sql_str, (match.sharecode, int(self.account['steam_id'])))
                         sql_match = dict(cur.fetchone())
+                        sql_match['steam_id'] = int(self.account['steam_id'])
                         discord_matches.append(sql_match)
+                    r = requests.post(f'http://{self.cfg.server_ip}:{self.cfg.server_port}/discord_msg', json=discord_matches)
+                    if r.status_code != 200:
+                        write(f'failed to request discord message, {repr(r.text)}')
 
                 try:
                     pyperclip.copy(url)
