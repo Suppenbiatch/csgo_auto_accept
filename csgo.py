@@ -65,15 +65,12 @@ def hk_switch_accounts():
 
 
 def hk_discord_toggle():
-    if cs.cfg.discord_url:
-        truth_table['discord_output'] = not truth_table['discord_output']
-        if truth_table['discord_output']:
-            write('Discord output activated', add_time=False, color=FgColor.Green, overwrite='13')
-        else:
-            write('Discord output deactivated', add_time=False, color=FgColor.Red, overwrite='13')
+    truth_table['discord_output'] = not truth_table['discord_output']
+    if truth_table['discord_output']:
+        write('Discord output activated', add_time=False, color=FgColor.Green, overwrite='13')
     else:
-        write('Discord Webhook URL not set in config', color=FgColor.Yellow)
-
+        write('Discord output deactivated', add_time=False, color=FgColor.Red, overwrite='13')
+    return
 
 def hk_force_restart():
     global gsi_server
