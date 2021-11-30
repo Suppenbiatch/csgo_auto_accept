@@ -1,4 +1,5 @@
 import re
+import statistics
 import time
 import webbrowser
 from threading import Thread
@@ -12,7 +13,7 @@ from playsound import playsound
 
 import cs
 from write import write
-from async_csgostats.csgostats_updater import CSGOStatsUpdater, send_discord_msg
+from csgostats.csgostats_updater import CSGOStatsUpdater
 
 
 def hk_activate():
@@ -64,7 +65,7 @@ def hk_switch_accounts():
 
 
 def hk_discord_toggle():
-    if cs.cfg['discord_url']:
+    if cs.cfg.discord_url:
         truth_table['discord_output'] = not truth_table['discord_output']
         if truth_table['discord_output']:
             write('Discord output activated', add_time=False, color=FgColor.Green, overwrite='13')
@@ -114,6 +115,15 @@ def hk_cancel_csgostats_retrying():
     return
 
 
+def hk_fetch_status():
+    global hwnd
+    if hwnd == 0:
+        return
+    cs.request_status_command(hwnd, cs.cfg.taskbar_position, key=cs.cfg.status_key)
+    thread_ = cs.MatchRequest()
+    thread_.start()
+
+
 def gsi_server_status():
     global gsi_server
     if gsi_server.running:
@@ -130,25 +140,14 @@ def upload_matches(look_for_new: bool = True, stats=None):
         return
     truth_table['upload_thread_active'] = True
     if look_for_new is True:
-        latest_sharecode = cs.get_old_sharecodes(-1)
-        empty_csv = False
-        if not latest_sharecode:
-            write('Failed to retrieve latest old sharecode', color=FgColor.Yellow)
-            csv_path = cs.csv_path_for_steamid(cs.steam_id)
-            data = cs.get_csv_list(csv_path)
-            if not cs.account['match_token']:
-                write('no match token in config, aborting', color=FgColor.Red)
-                truth_table['upload_thread_active'] = False
-                return
-            data[0]['sharecode'] = cs.account['match_token']
-            cs.write_data_csv(csv_path, data, cs.csv_header)
-            latest_sharecode = [cs.account['match_token']]
-            empty_csv = True
+        try:
+            latest_sharecode = cs.get_old_sharecodes(-1)
+        except ValueError:
+            write('no match token in config, aborting', color=FgColor.Red)
+            truth_table['upload_thread_active'] = False
+            return
 
         new_sharecodes = cs.get_new_sharecodes(latest_sharecode[0], stats=stats)
-
-        if empty_csv:
-            new_sharecodes.insert(0, {'sharecode': latest_sharecode[0], 'queue_pos': None})
 
         for new_code in new_sharecodes:
             retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
@@ -189,7 +188,7 @@ hwnd, hwnd_old = 0, 0
 csgo_window_status = {'server_found': 2, 'new_tab': 2, 'in_game': 0}
 csgo = []
 
-updater = CSGOStatsUpdater(cs.cfg, cs.account)
+updater = CSGOStatsUpdater(cs.cfg, cs.account, cs.path_vars['db_path'])
 retryer = []
 
 game_state = {'map_phase': []}
@@ -197,33 +196,35 @@ cs.mute_csgo(0)
 
 blue(), magenta()
 
-if cs.cfg['activate_script']:
-    keyboard.add_hotkey(cs.cfg['activate_script'], hk_activate)
-if cs.cfg['activate_push_notification']:
-    keyboard.add_hotkey(cs.cfg['activate_push_notification'], cs.activate_pushbullet)
-if cs.cfg['info_newest_match']:
-    keyboard.add_hotkey(cs.cfg['info_newest_match'], hk_upload_match)
-if cs.cfg['open_live_tab']:
-    keyboard.add_hotkey(cs.cfg['open_live_tab'], hk_new_tab)
-if cs.cfg['switch_accounts']:
-    keyboard.add_hotkey(cs.cfg['switch_accounts'], hk_switch_accounts)
-if cs.cfg['mute_csgo_toggle']:
-    keyboard.add_hotkey(cs.cfg['mute_csgo_toggle'], cs.mute_csgo, args=[2])  # LvL 2 is toggle
-if cs.cfg['discord_key']:
-    keyboard.add_hotkey(cs.cfg['discord_key'], hk_discord_toggle)
-if cs.cfg['end_script']:
-    keyboard.add_hotkey(cs.cfg['end_script'], hk_kill_main_loop)
-if cs.cfg['minimize_key']:
-    keyboard.add_hotkey(cs.cfg['minimize_key'], hk_minimize_csgo, args=[cs.cfg['taskbar_position']])
-if cs.cfg['cancel_csgostats']:
-    keyboard.add_hotkey(cs.cfg['cancel_csgostats'], hk_cancel_csgostats_retrying)
+if cs.cfg.activate_script:
+    keyboard.add_hotkey(cs.cfg.activate_script, hk_activate)
+if cs.cfg.activate_push_notification:
+    keyboard.add_hotkey(cs.cfg.activate_push_notification, cs.activate_pushbullet)
+if cs.cfg.info_newest_match:
+    keyboard.add_hotkey(cs.cfg.info_newest_match, hk_upload_match)
+if cs.cfg.open_live_tab:
+    keyboard.add_hotkey(cs.cfg.open_live_tab, hk_new_tab)
+if cs.cfg.switch_accounts:
+    keyboard.add_hotkey(cs.cfg.switch_accounts, hk_switch_accounts)
+if cs.cfg.mute_csgo_toggle:
+    keyboard.add_hotkey(cs.cfg.mute_csgo_toggle, cs.mute_csgo, args=[2])  # LvL 2 is toggle
+if cs.cfg.discord_key:
+    keyboard.add_hotkey(cs.cfg.discord_key, hk_discord_toggle)
+if cs.cfg.end_script:
+    keyboard.add_hotkey(cs.cfg.end_script, hk_kill_main_loop)
+if cs.cfg.minimize_key:
+    keyboard.add_hotkey(cs.cfg.minimize_key, hk_minimize_csgo, args=[cs.cfg.taskbar_position])
+if cs.cfg.cancel_csgostats:
+    keyboard.add_hotkey(cs.cfg.cancel_csgostats, hk_cancel_csgostats_retrying)
+if cs.cfg.fetch_status:
+    keyboard.add_hotkey(cs.cfg.fetch_status, hk_fetch_status)
 
 write('READY', color=FgColor.Green)
 running = True
 
 while running:
     if retryer and not truth_table['upload_thread_active']:
-        if time.time() - time_table['csgostats_retry'] > cs.cfg['auto_retry_interval']:
+        if time.time() - time_table['csgostats_retry'] > cs.cfg.auto_retry_interval:
             t = Thread(target=upload_matches, args=(False, None), name='UploadThread')
             t.start()
 
@@ -292,7 +293,7 @@ while running:
         accept_avg = cs.color_average(img, [(76, 175, 80), (90, 203, 94)])
         if cs.relate_list(accept_avg, (2, 2, 2)):
             truth_table['test_for_accept_button'] = False
-            cs.sleep_interval = cs.cfg['sleep_interval']
+            cs.sleep_interval = cs.cfg.sleep_interval
 
             current_cursor_position = win32api.GetCursorPos()
             for _ in range(5):
@@ -300,7 +301,7 @@ while running:
                 cs.click((int(win32api.GetSystemMetrics(0) / 2), int(win32api.GetSystemMetrics(1) / 2.4)))
             if csgo_window_status['server_found'] == 2:  # was minimized when a server was found
                 time.sleep(0.075)
-                cs.minimize_csgo(hwnd, cs.cfg['taskbar_position'])
+                cs.minimize_csgo(hwnd, cs.cfg.taskbar_position)
             else:
                 cs.set_mouse_position(current_cursor_position)
 
@@ -315,7 +316,7 @@ while running:
             truth_table['first_freezetime'] = False
             truth_table['test_for_server'] = False
             truth_table['test_for_accept_button'] = False
-            cs.sleep_interval = cs.cfg['sleep_interval']
+            cs.sleep_interval = cs.cfg.sleep_interval
             truth_table['test_for_success'] = False
             truth_table['monitoring_since_start'] = True
             cs.mute_csgo(0)
@@ -334,7 +335,7 @@ while running:
         if cs.str_in_list(['Other players failed to connect', 'Failed to ready up'], matchmaking['msg']):
             truth_table['test_for_server'] = True
             truth_table['test_for_accept_button'] = False
-            cs.sleep_interval = cs.cfg['sleep_interval']
+            cs.sleep_interval = cs.cfg.sleep_interval
             truth_table['test_for_success'] = False
             if 'Other players failed to connect' in matchmaking['msg']:
                 write('Match has not started! Continuing to search for a Server!', push=cs.pushbullet_dict['urgency'] + 1, push_now=True, overwrite='11', color=FgColor.Red)
@@ -410,7 +411,10 @@ while running:
 
             afk_dict['round_values'].append(afk_dict['seconds_afk'])
             afk_dict['round_values'] = [round(time_afk, 3) for time_afk in afk_dict['round_values']]
-            afk_dict['per_round'] = cs.avg(afk_dict['round_values'], 0.0)
+            try:
+                afk_dict['per_round'] = statistics.mean(afk_dict['round_values'])
+            except statistics.StatisticsError:
+                afk_dict['per_round'] = 0.0
             afk_dict['seconds_afk'] = 0.0
 
             try:
@@ -509,7 +513,7 @@ while running:
                     afk_dict['round_phase'] = 'warmup'
                 if afk_dict['player_info']['steamid'] == cs.steam_id and afk_dict['player_info']['state']['health'] > 0 and afk_dict['round_phase'] not in ['freezetime', None]:
                     write('Ran Anti-Afk Script.', overwrite='10')
-                    cs.anti_afk(hwnd, cs.cfg['taskbar_position'])
+                    cs.anti_afk(hwnd, cs.cfg.taskbar_position)
                     break
                 if win32gui.GetWindowPlacement(hwnd)[1] != 2:
                     break
@@ -535,7 +539,11 @@ while running:
             player_stats = gsi_server.get_info('player', 'match_stats')
 
         average = cs.get_avg_match_time(cs.steam_id)
-        timings = {'match': time.time() - time_table['match_started'], 'search': time_table['match_accepted'] - time_table['search_started'], 'afk': sum(afk_dict['round_values']), 'afk_round': cs.avg(afk_dict['round_values'], 0.0)}
+        try:
+            afk_round = statistics.mean(afk_dict['round_values'])
+        except statistics.StatisticsError:
+            afk_round = 0.0
+        timings = {'match': time.time() - time_table['match_started'], 'search': time_table['match_accepted'] - time_table['search_started'], 'afk': sum(afk_dict['round_values']), 'afk_round': afk_round}
 
         write(f'The match is over! - {score[team[0]]:02d}:{score[team[1]]:02d}', color=FgColor.Red)
 
@@ -547,9 +555,9 @@ while running:
 
         if gsi_server.get_info('map', 'mode') == 'competitive' and game_state['map_phase'] == 'gameover' and not truth_table['test_for_warmup'] and not truth_table['still_in_warmup']:
             if truth_table['monitoring_since_start']:
-                match_time = str(round(time.time() - time_table['match_started']))
-                search_time = str(round(time_table['match_accepted'] - time_table['search_started']))
-                afk_time = str(round(sum(afk_dict['round_values'])))
+                match_time = timings['match']
+                search_time = timings['search']
+                afk_time = timings['afk']
             else:
                 match_time, search_time, afk_time = '', '', ''
 
@@ -560,7 +568,6 @@ while running:
                 write(time_str, add_time=False)
 
             player_stats['map'] = score['map']
-            player_stats['match_score'] = score[team[0]], score[team[1]]
             player_stats['match_time'] = match_time
             player_stats['wait_time'] = search_time
             player_stats['afk_time'] = afk_time
@@ -593,17 +600,16 @@ while running:
                 if player_team is not None:
                     team = red(player_team) if player_team == 'T' else cyan(player_team)
                     write(f'You will play on {green(" ".join(saved_map.split("_")[1:]).title())} as {team} in the first half. '
-                          f'Last Games: {cs.match_win_list(cs.cfg["match_list_lenght"], cs.steam_id)}',
+                          f'Last Games: {cs.match_win_list(cs.cfg.match_list_lenght, cs.steam_id, time_difference=7_200)}',
                           add_time=True, push=cs.pushbullet_dict['urgency'] + 2, push_now=True, overwrite='12')
                     truth_table['still_in_warmup'] = True
                     truth_table['test_for_warmup'] = False
                     truth_table['players_still_connecting'] = True
                     time_table['warmup_started'] = time.time()
-                    if cs.cfg['player_webhook']:
-                        cs.request_status_command(hwnd, cs.cfg['taskbar_position'], key=cs.cfg['status_key'])
-                        player_check = {'content': f'?check {cs.steam_id}',
-                                        'avatar_url': cs.account['avatar_url']}
-                        send_discord_msg(player_check, cs.cfg['player_webhook'], username=f'{cs.account["name"]} - Player Info')
+                    if cs.cfg.server_ip:
+                        cs.request_status_command(hwnd, cs.cfg.taskbar_position, key=cs.cfg.status_key)
+                        thread = cs.MatchRequest()
+                        thread.start()
                     break
             elif saved_map:
                 write(f'You will play on {green(" ".join(saved_map.split("_")[1:]).title())}', overwrite='12')
