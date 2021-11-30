@@ -84,8 +84,6 @@ class CSGOStatsUpdater:
                     db.execute(sql_str, (sharecode,))
                 db.commit()
 
-        new_codes = [game for game in not_completed_games if game['queue_pos'] < self.cfg.max_queue_position]
-
         if completed_games:
             with sqlite3.connect(self.db_path) as db:
                 db.row_factory = sqlite3.Row
@@ -148,4 +146,4 @@ class CSGOStatsUpdater:
                     write('Failed to load URL in to clipboard', add_time=False)
 
             write(None, add_time=False, push=pushbullet_dict['urgency'], push_now=True, output=False)
-        return new_codes
+        return not_completed_games
