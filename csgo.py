@@ -1,7 +1,6 @@
 import re
 import statistics
 import time
-import webbrowser
 from threading import Thread
 
 import keyboard
@@ -37,22 +36,6 @@ def hk_upload_match():
     t.start()
 
 
-# noinspection PyShadowingNames
-def hk_new_tab():
-    if hwnd:
-        try:
-            csgo_window_status['new_tab'] = win32gui.GetWindowPlacement(hwnd)[1]
-        except BaseException as e:
-            if e.args[1] == 'GetWindowPlacement':
-                csgo_window_status['new_tab'] = 2
-    if csgo_window_status['new_tab'] != 2:
-        win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
-    webbrowser.open_new_tab(f'https://csgostats.gg/player/{cs.steam_id}#/live')
-    if csgo_window_status['new_tab'] != 2:
-        time.sleep(0.5)
-        win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
-
-
 def hk_switch_accounts():
     cs.current_steam_account += 1
     if cs.current_steam_account > len(cs.accounts) - 1:
@@ -71,6 +54,7 @@ def hk_discord_toggle():
     else:
         write('Discord output deactivated', add_time=False, color=FgColor.Red, overwrite='13')
     return
+
 
 def hk_force_restart():
     global gsi_server
@@ -199,8 +183,6 @@ if cs.cfg.activate_push_notification:
     keyboard.add_hotkey(cs.cfg.activate_push_notification, cs.activate_pushbullet)
 if cs.cfg.info_newest_match:
     keyboard.add_hotkey(cs.cfg.info_newest_match, hk_upload_match)
-if cs.cfg.open_live_tab:
-    keyboard.add_hotkey(cs.cfg.open_live_tab, hk_new_tab)
 if cs.cfg.switch_accounts:
     keyboard.add_hotkey(cs.cfg.switch_accounts, hk_switch_accounts)
 if cs.cfg.mute_csgo_toggle:
@@ -603,7 +585,7 @@ while running:
                     truth_table['test_for_warmup'] = False
                     truth_table['players_still_connecting'] = True
                     time_table['warmup_started'] = time.time()
-                    if cs.cfg.server_ip:
+                    if cs.cfg.status_key:
                         cs.request_status_command(hwnd, cs.cfg.taskbar_position, key=cs.cfg.status_key)
                         thread = cs.MatchRequest()
                         thread.start()
