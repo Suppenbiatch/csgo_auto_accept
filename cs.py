@@ -574,21 +574,12 @@ config.read('config.ini')
 try:
     @dataclass
     class ConfigItems:
-        activate_script: str = config.get('HotKeys', 'Activate Script')
-        activate_push_notification: str = config.get('HotKeys', 'Activate Push Notification')
-        info_newest_match: str = config.get('HotKeys', 'Get Info on newest Match')
-        mute_csgo_toggle: str = config.get('HotKeys', 'Mute CSGO')
-        switch_accounts: str = config.get('HotKeys', 'Switch accounts for csgostats.gg')
-        end_script: str = config.get('HotKeys', 'End Script')
-        discord_key: str = config.get('HotKeys', 'Discord Toggle')
-        minimize_key: str = config.get('HotKeys', 'Minimize CSGO')
-        cancel_csgostats: str = config.get('HotKeys', 'Cancel Match Retrying')
-        fetch_status: str = config.get('HotKeys', 'Fetch Status')
+        webhook_port = config.getint('HotKeys', 'WebHook Port')
 
         sleep_interval: float = config.getfloat('Script Settings', 'Interval')
         log_color: str = config.get('Script Settings', 'Log Color')
         forbidden_programs: str = config.get('Script Settings', 'Forbidden Programs')
-        taskbar_position: float = config.getfloat('Script Settings', 'Taskbar Factor')
+        taskbar_position: tuple = config.getfloat('Script Settings', 'Taskbar Factor')
         match_list_lenght: int = config.getint('Script Settings', 'Match History Lenght')
         steam_api_key: str = config.get('csgostats.gg', 'API Key')
         auto_retry_interval: int = config.getint('csgostats.gg', 'Auto-Retrying-Interval')
@@ -603,6 +594,12 @@ try:
             self.log_color = self.log_color.lower()
             if isinstance(self.secret, str):
                 self.secret = self.secret.encode()
+
+            if isinstance(self.taskbar_position, float):
+                if self.taskbar_position > 1.0:
+                    self.taskbar_position = task_bar(1.0 / self.taskbar_position)
+                else:
+                    self.taskbar_position = task_bar(self.taskbar_position)
 
 
     cfg: ConfigItems = ConfigItems()
@@ -651,10 +648,7 @@ if path_vars['csgo_path']:
         copyfile(os.path.join(os.getcwd(), 'GSI', 'gamestate_integration_GSI.cfg'), os.path.join(path_vars['csgo_path'], 'cfg', 'gamestate_integration_GSI.cfg'))
         write('Added GSI CONFIG to cfg folder. Counter-Strike needs to be restarted if running!', color=FgColor.Red)
 
-if cfg.taskbar_position > 1.0:
-    cfg.taskbar_position = 1.0 / cfg.taskbar_position
-    write(f'Taskbar Factor to big, using inverse {cfg.taskbar_position}')
-cfg.taskbar_position = task_bar(cfg.taskbar_position)
+
 
 window_ids = []
 

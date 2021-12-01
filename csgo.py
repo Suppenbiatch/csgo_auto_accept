@@ -1,9 +1,11 @@
+import http.server
+import queue
 import re
+import socketserver
 import statistics
 import time
 from threading import Thread
 
-import keyboard
 import win32api
 import win32con
 import win32gui
@@ -11,8 +13,68 @@ from color import uncolorize, FgColor, red, green, yellow, blue, magenta, cyan
 from playsound import playsound
 
 import cs
-from write import write
 from csgostats.csgostats_updater import CSGOStatsUpdater
+from write import write
+
+
+class WebHookHandler(http.server.BaseHTTPRequestHandler):
+    def log_request(self, code='-', size='-'):
+        return
+
+    def _set_response(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/html')
+        self.end_headers()
+
+    def do_GET(self):
+        self._set_response()
+        obj = re.search(r'^/(\w+)$', self.path)
+        if obj is not None:
+            q.put(obj.group(1))
+
+
+class WebServer(Thread):
+    def __init__(self, port: int):
+        self.port = port
+        super().__init__(name='WebHookServer', daemon=True)
+
+    def run(self) -> None:
+        with socketserver.TCPServer(("127.0.0.1", self.port), WebHookHandler) as httpd:
+            # print("serving at port", PORT)
+            httpd.serve_forever()
+
+
+class ResultParser(Thread):
+    def __init__(self, queue_):
+        self.queue = queue_
+        super().__init__(name='ResultParser', daemon=True)
+
+    def run(self) -> None:
+        while True:
+            while True:
+                try:
+                    item = q.get(block=False)
+                    if item == 'minimize':
+                        hk_minimize_csgo(cs.cfg.taskbar_position)
+                    elif item == 'activate':
+                        hk_activate()
+                    elif item == 'pushbullet':
+                        cs.activate_pushbullet()
+                    elif item == 'upload':
+                        hk_upload_match()
+                    elif item == 'switch_accounts':
+                        hk_switch_accounts()
+                    elif item == 'mute':
+                        cs.mute_csgo(2)
+                    elif item == 'discord_toggle':
+                        hk_discord_toggle()
+                    elif item == 'end':
+                        hk_kill_main_loop()
+                    elif item == 'fetch_status':
+                        hk_fetch_status()
+                except queue.Empty:
+                    break
+            time.sleep(0.1)
 
 
 def hk_activate():
@@ -56,13 +118,6 @@ def hk_discord_toggle():
     return
 
 
-def hk_force_restart():
-    global gsi_server
-    truth_table['gsi_first_launch'] = True
-    write('GSI Server restarting', color=FgColor.Yellow, overwrite='8')
-    gsi_server = cs.restart_gsi_server(gsi_server)
-
-
 def hk_kill_main_loop():
     global running
     running = False
@@ -85,14 +140,6 @@ def hk_minimize_csgo(reset_position: tuple):
         win32gui.ShowWindow(hwnd, win32con.SW_NORMAL)
     else:
         cs.minimize_csgo(hwnd, reset_position)
-    return
-
-
-def hk_cancel_csgostats_retrying():
-    global retryer, truth_table
-    retryer = []
-    truth_table['upload_thread_active'] = False
-    write('canceled csgostats.gg retrying', overwrite='4', color=FgColor.Yellow)
     return
 
 
@@ -149,7 +196,6 @@ truth_table = {'test_for_accept_button': False, 'test_for_warmup': False, 'test_
                'game_over': False, 'monitoring_since_start': False, 'players_still_connecting': False, 'first_game_over': True, 'disconnected_form_last': False, 'c4_round_first': True, 'steam_error': False,
                'game_minimized_freezetime': False, 'game_minimized_warmup': False, 'discord_output': True, 'gsi_first_launch': True, 'upload_thread_active': False}
 
-
 # remove console_read and timed_execution_time
 time_table = {'csgostats_retry': time.time(), 'search_started': time.time(), 'console_read': time.time(), 'timed_execution_time': time.time(), 'match_accepted': time.time(),
               'match_started': time.time(), 'freezetime_started': time.time(), 'join_warmup_time': 0.0, 'warmup_seconds': 0}
@@ -165,6 +211,12 @@ gsi_server = cs.restart_gsi_server(None)
 window_enum = cs.WindowEnumerator()
 window_enum.start()
 
+q = queue.Queue()
+webhook = WebServer(cs.cfg.webhook_port)
+webhook_parser = ResultParser(q)
+webhook.start()
+webhook_parser.start()
+
 hwnd, hwnd_old = 0, 0
 csgo_window_status = {'server_found': 2, 'new_tab': 2, 'in_game': 0}
 csgo = []
@@ -177,31 +229,11 @@ cs.mute_csgo(0)
 
 blue(), magenta()
 
-if cs.cfg.activate_script:
-    keyboard.add_hotkey(cs.cfg.activate_script, hk_activate)
-if cs.cfg.activate_push_notification:
-    keyboard.add_hotkey(cs.cfg.activate_push_notification, cs.activate_pushbullet)
-if cs.cfg.info_newest_match:
-    keyboard.add_hotkey(cs.cfg.info_newest_match, hk_upload_match)
-if cs.cfg.switch_accounts:
-    keyboard.add_hotkey(cs.cfg.switch_accounts, hk_switch_accounts)
-if cs.cfg.mute_csgo_toggle:
-    keyboard.add_hotkey(cs.cfg.mute_csgo_toggle, cs.mute_csgo, args=[2])  # LvL 2 is toggle
-if cs.cfg.discord_key:
-    keyboard.add_hotkey(cs.cfg.discord_key, hk_discord_toggle)
-if cs.cfg.end_script:
-    keyboard.add_hotkey(cs.cfg.end_script, hk_kill_main_loop)
-if cs.cfg.minimize_key:
-    keyboard.add_hotkey(cs.cfg.minimize_key, hk_minimize_csgo, args=[cs.cfg.taskbar_position])
-if cs.cfg.cancel_csgostats:
-    keyboard.add_hotkey(cs.cfg.cancel_csgostats, hk_cancel_csgostats_retrying)
-if cs.cfg.fetch_status:
-    keyboard.add_hotkey(cs.cfg.fetch_status, hk_fetch_status)
-
 write('READY', color=FgColor.Green)
 running = True
 
 while running:
+
     if retryer and not truth_table['upload_thread_active']:
         if time.time() - time_table['csgostats_retry'] > cs.cfg.auto_retry_interval:
             t = Thread(target=upload_matches, args=(False, None), name='UploadThread')
