@@ -547,9 +547,9 @@ while running:
                 write(time_str, add_time=False)
 
             player_stats['map'] = score['map']
-            player_stats['match_time'] = match_time
-            player_stats['wait_time'] = search_time
-            player_stats['afk_time'] = afk_time
+            player_stats['match_time'] = round(match_time)
+            player_stats['wait_time'] = round(search_time)
+            player_stats['afk_time'] = round(afk_time)
 
             t = Thread(target=upload_matches, args=(True, player_stats), name='UploadThread')
             t.start()
