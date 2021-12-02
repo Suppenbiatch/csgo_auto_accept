@@ -17,20 +17,18 @@ from shutil import copyfile
 from typing import List, Union
 
 import keyboard
-import pushbullet
 import requests
 import win32api
 import win32con
 import win32gui
 from PIL import ImageGrab, Image
-from color import FgColor
-from color import green, red, yellow, blue, magenta
+
 from pytz import utc
 
 from GSI import server
 from csgostats.Log import LogReader
 from utils import *
-from write import write, pushbullet_dict
+from write import *
 
 
 def mute_csgo(lvl: int):
@@ -107,7 +105,7 @@ def task_bar(factor: float = 2.0):
     taskbar_size = tuple(map(operator.sub, monitor['Monitor'], monitor['Work']))
     position_int = [(i, abs(x)) for i, x in enumerate(taskbar_size) if x]
     if len(position_int) != 1:
-        write('Taskbar location failed', color=FgColor.Yellow, add_time=False)
+        write(yellow('Taskbar location failed'), add_time=False)
         return 0, 0
     position_int = position_int[0]
     pos = position_int[0]
@@ -186,7 +184,7 @@ def get_accounts_from_cfg():
         steam_api_error = True
 
     if steam_api_error:
-        write('INVAILD STEAM API KEY or INTERNET CONNECTION ERROR, could not fetch usernames', color=FgColor.Red)
+        write(red('INVAILD STEAM API KEY or INTERNET CONNECTION ERROR, could not fetch usernames'))
         for num, val in enumerate(accounts):
             val['name'] = f'Unknown Name {num}'
             val['avatar_hash'] = f'Unknown Avatar {num}'
@@ -219,7 +217,7 @@ def get_csgo_path():
             csgo_path = os.path.join(library, 'common', 'Counter-Strike Global Offensive', 'csgo')
             break
     else:
-        write('DID NOT FIND CSGO PATH', add_time=False, color=FgColor.Red)
+        write(red('DID NOT FIND CSGO PATH'), add_time=False)
         csgo_path = ''
     global path_vars
     path_vars['csgo_path'] = csgo_path
@@ -251,13 +249,13 @@ def check_userdata_autoexec(steam_id_3: str):
         lines = autoexec.readlines()
         for autoexec_str in str_in_autoexec:
             if not any(autoexec_str.lower() in line.rstrip('\n').lower() for line in lines):
-                write(f'Added {autoexec_str} to "autoexec.cfg"', add_time=False, color=FgColor.Yellow)
-                write('RESTART Counter-Strike for the script to work', add_time=False, color=FgColor.Red)
+                write(yellow(f'Added {autoexec_str} to "autoexec.cfg"'), add_time=False)
+                write(red('RESTART Counter-Strike for the script to work'), add_time=False)
                 autoexec.write(f'\n{autoexec_str}\n')
 
     if os.path.exists(os.path.join(path_vars['csgo_path'], 'cfg', 'autoexec.cfg')):
-        write(f'YOU HAVE TO DELETE THE "autoexec.cfg" in {os.path.join(path_vars["csgo_path"], "cfg")} WITH AND MERGE IT WITH THE ONE IN {userdata_path}', add_time=False, color=FgColor.Red)
-        write(f'THE SCRIPT WONT WORK UNTIL THERE IS NO "autoexec.cfg" in {os.path.join(path_vars["csgo_path"], "cfg")}', add_time=False, color=FgColor.Red)
+        write(red(f'YOU HAVE TO DELETE THE "autoexec.cfg" in {os.path.join(path_vars["csgo_path"], "cfg")} WITH AND MERGE IT WITH THE ONE IN {userdata_path}'), add_time=False)
+        write(red(f'THE SCRIPT WONT WORK UNTIL THERE IS NO "autoexec.cfg" in {os.path.join(path_vars["csgo_path"], "cfg")}'), add_time=False)
 
 
 # noinspection PyShadowingNames
@@ -313,7 +311,7 @@ def get_new_sharecodes(game_id: str, stats=None):
             r = requests.get(steam_url, timeout=2)
             next_code = r.json()['result']['nextcode']
         except (KeyError, requests.exceptions.ConnectionError, requests.exceptions.Timeout, json.decoder.JSONDecodeError) as e:
-            write(f'STEAM API ERROR! Error: "{e}"', color=FgColor.Red)
+            write(red(f'STEAM API ERROR! Error: "{e}"'))
             break
         if r.status_code == 200:  # new match has been found
             sharecodes.append(next_code)
@@ -322,11 +320,11 @@ def get_new_sharecodes(game_id: str, stats=None):
         elif r.status_code == 202:  # no new match has been found
             if stats is None or len(sharecodes) > 1:
                 if stats_error is False:
-                    write('got a match code for the given stats', color=FgColor.Green)
+                    write(green('got a match code for the given stats'))
                 break
             else:
                 if stats_error is True:
-                    write('new match stats were given, yet steam api gave no new sharecode', color=FgColor.Yellow)
+                    write(yellow('new match stats were given, yet steam api gave no new sharecode'))
                     stats_error = False
                 time.sleep(2)
 
@@ -387,17 +385,16 @@ def read_console():
             'server_settings': str_in_list(['SetConVar: mp_'], console_lines, replace=True)}
 
 
-def activate_pushbullet():
-    if not pushbullet_dict['device']:
-        try:
-            pushbullet_dict['device'] = pushbullet.PushBullet(cfg.pushbullet_api_key).get_device(cfg.pushbullet_device_name)
-        except (pushbullet.errors.PushbulletError, pushbullet.errors.InvalidKeyError):
-            write('Pushbullet is wrongly configured.\nWrong API Key or DeviceName in config.ini\nRestart Script if changes to config.ini were made.')
-    if pushbullet_dict['device']:
-        pushbullet_dict['urgency'] += 1
-        if pushbullet_dict['urgency'] > len(pushbullet_dict['push_info']) - 1:
-            pushbullet_dict['urgency'] = 0
-        write(f'Pushing: {pushbullet_dict["push_info"][pushbullet_dict["urgency"]]}', overwrite='2')
+def activate_afk_message():
+    global afk_message
+    if not cfg.discord_user_id:
+        write(red('No User ID set in config'))
+        return
+    afk_message = not afk_message
+    if afk_message is True:
+        write(green('Sending AFK Messages'), overwrite='2')
+    else:
+        write(magenta('NOT sending AFK Messages'), overwrite='2')
 
 
 def round_start_msg(msg: str, round_phase: str, freezetime_start: float, old_window_status: bool, current_window_status: bool, scoreboard: dict, overwrite_key: str = '7'):
@@ -587,8 +584,7 @@ try:
         secret: bytes = config.get('csgostats.gg', 'Secret')
         server_ip: str = config.get('csgostats.gg', 'WebServer IP')
         server_port: int = config.getint('csgostats.gg', 'WebServer Port')
-        pushbullet_device_name: str = config.get('Pushbullet', 'Device Name')
-        pushbullet_api_key: str = config.get('Pushbullet', 'API Key')
+        discord_user_id: int = config.getint('Notifier', 'Discord User ID')
 
         def __post_init__(self):
             self.log_color = self.log_color.lower()
@@ -633,7 +629,7 @@ else:
             current_steam_account = account_number
             break
     else:
-        write(f'Could not find {steam_id} in config file, defaulting to account 0', color=FgColor.Red, add_time=False)
+        write(red(f'Could not find {steam_id} in config file, defaulting to account 0'), add_time=False)
         account = accounts[0]
         steam_id = account['steam_id']
         current_steam_account = 0
@@ -646,9 +642,10 @@ with open(os.path.join(path_vars['appdata_path'], 'console.log'), 'w', encoding=
 if path_vars['csgo_path']:
     if not os.path.exists(os.path.join(path_vars['csgo_path'], 'cfg', 'gamestate_integration_GSI.cfg')):
         copyfile(os.path.join(os.getcwd(), 'GSI', 'gamestate_integration_GSI.cfg'), os.path.join(path_vars['csgo_path'], 'cfg', 'gamestate_integration_GSI.cfg'))
-        write('Added GSI CONFIG to cfg folder. Counter-Strike needs to be restarted if running!', color=FgColor.Red)
+        write(red('Added GSI CONFIG to cfg folder. Counter-Strike needs to be restarted if running!'))
 
 
+afk_message = False
 
 window_ids = []
 

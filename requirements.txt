@@ -1,7 +1,8 @@
 Pillow>=8.2.0
 playsound>=1.2.2
-pushbullet.py>=0.12.0
 pyperclip>=1.8.2
 pywin32>=300
 color>=0.1
 requests>=2.25.1
+color-it>=2.1.3
+keyboard>=0.13.5
