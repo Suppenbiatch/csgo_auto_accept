@@ -230,7 +230,6 @@ game_state = {'map_phase': []}
 cs.mute_csgo(0)
 
 write(green('READY'))
-message_queue.put(green('READY'))
 running = True
 
 while running:
@@ -631,6 +630,8 @@ while running:
                           f'Last Games: {cs.match_win_list(cs.cfg.match_list_lenght, cs.steam_id, time_difference=7_200)}'
                     write(msg, add_time=True, overwrite='12')
                     if cs.afk_message is True:
+                        msg = f'You will play on {green(" ".join(saved_map.split("_")[1:]).title())} as {team} in the first half. ' \
+                              f'Last Games: {cs.match_win_list(cs.cfg.match_list_lenght, cs.steam_id, time_difference=7_200, replace_chars=True)}'
                         message_queue.put(msg)
 
                     truth_table['still_in_warmup'] = True

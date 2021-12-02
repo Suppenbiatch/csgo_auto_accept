@@ -88,7 +88,7 @@ class CSGOStatsUpdater:
                 db.row_factory = sqlite3.Row
                 for match in completed_games:
                     url = match.match_url()
-                    write(green(f'URL: {url}'), add_time=True, push=pushbullet_dict['urgency'])
+                    write(green(f'URL: {url}'), add_time=True)
                     try:
                         sql_data = match.sql_tuple(int(self.account['steam_id']))
                         sql_str = '''UPDATE matches SET id = ?,
@@ -143,6 +143,4 @@ class CSGOStatsUpdater:
                     pyperclip.copy(url)
                 except (pyperclip.PyperclipWindowsException, pyperclip.PyperclipTimeoutException):
                     write('Failed to load URL in to clipboard', add_time=False)
-
-            write(None, add_time=False, push=pushbullet_dict['urgency'], push_now=True, output=False)
         return not_completed_games

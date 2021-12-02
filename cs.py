@@ -494,7 +494,7 @@ class MatchRequest(threading.Thread):
             write(f'failed to send check match message to {repr(cfg.server_ip)} with status {r.status_code} - {r.text}')
 
 
-def match_win_list(number_of_matches: int, _steam_id, time_difference: int = 7_200):
+def match_win_list(number_of_matches: int, _steam_id, time_difference: int = 7_200, replace_chars: bool = False):
     with sqlite3.connect(path_vars['db_path']) as db:
         cur = db.execute("""SELECT outcome, timestamp FROM matches WHERE steam_id = ? ORDER BY timestamp DESC LIMIT ?""", (_steam_id, abs(number_of_matches)))
         items = cur.fetchall()
@@ -506,13 +506,17 @@ def match_win_list(number_of_matches: int, _steam_id, time_difference: int = 7_2
             timestamp = datetime.now(tz=utc).timestamp() - (60 * 60)
 
         if outcome == 'W':
-            outcome_lst.append((timestamp, green('\u2588')))
+            char = '\u2588' if not replace_chars else 'W'
+            outcome_lst.append((timestamp, green(char)))
         elif outcome == 'L':
-            outcome_lst.append((timestamp, red('\u2588')))
+            char = '\u2588' if not replace_chars else 'L'
+            outcome_lst.append((timestamp, red(char)))
         elif outcome == 'D':
-            outcome_lst.append((timestamp, blue('\u2588')))
+            char = '\u2588' if not replace_chars else 'W'
+            outcome_lst.append((timestamp, blue(char)))
         else:
-            outcome_lst.append((timestamp, magenta('\u2588')))
+            char = '\u2588' if not replace_chars else 'U'
+            outcome_lst.append((timestamp, magenta(char)))
 
     start = outcome_lst[0][0]
     group = 0
