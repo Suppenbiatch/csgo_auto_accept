@@ -4,14 +4,17 @@ import operator
 import os
 import random
 import re
+import sqlite3
 import sys
 import threading
 import time
 import winreg
+from dataclasses import dataclass
+from datetime import datetime
 from datetime import timedelta as td
+from pathlib import Path
 from shutil import copyfile
 from typing import List, Union
-from pathlib import Path
 
 import keyboard
 import pushbullet
@@ -22,8 +25,10 @@ import win32gui
 from PIL import ImageGrab, Image
 from color import FgColor
 from color import green, red, yellow, blue, magenta
+from pytz import utc
 
 from GSI import server
+from csgostats.Log import LogReader
 from utils import *
 from write import write, pushbullet_dict
 
@@ -166,7 +171,7 @@ def get_accounts_from_cfg():
     steam_ids = steam_ids.rstrip(',')
     steam_api_error = False
     try:
-        profiles = requests.get(f'http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key={cfg["steam_api_key"]}&steamids={steam_ids}')
+        profiles = requests.get(f'http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key={cfg.steam_api_key}&steamids={steam_ids}')
         if profiles.status_code == requests.status_codes.codes.ok:
             profiles = profiles.json()['response']['players']
             name_list = [(online_data['personaname'], online_data['avatarhash'], online_data['avatarfull']) for local_acc in accounts for online_data in profiles if online_data['steamid'] == local_acc['steam_id']]
@@ -238,8 +243,8 @@ def check_userdata_autoexec(steam_id_3: str):
     global path_vars, cfg
     userdata_path = os.path.join(path_vars['steam_path'], 'userdata', steam_id_3, '730', 'local', 'cfg')
     str_in_autoexec = ['developer 1', 'con_logfile "console_log.log"', 'con_filter_enable "2"',
-                       'con_filter_text_out "Player:"', 'con_filter_text "Damage"', f'log_color General {cfg["log_color"]}',
-                       f'bind "{cfg["status_key"]}" "status"' if cfg['status_key'] else '']
+                       'con_filter_text_out "Player:"', 'con_filter_text "Damage"', f'log_color General {cfg.log_color}',
+                       f'bind "{cfg.status_key}" "status"' if cfg.status_key else '']
     os.makedirs(userdata_path, exist_ok=True)
     with open(os.path.join(userdata_path, 'autoexec.cfg'), 'a+') as autoexec:
         autoexec.seek(0)
@@ -256,46 +261,46 @@ def check_userdata_autoexec(steam_id_3: str):
 
 
 # noinspection PyShadowingNames
-def get_avg_match_time(steam_id: str):
-    csv_path = csv_path_for_steamid(steam_id)
-    if os.path.isfile(csv_path):
-        data = get_csv_list(csv_path)
-    else:
-        data = []
-    match_time = [int(i['match_time']) for i in data if i['match_time']]
-    search_time = [int(i['wait_time']) for i in data if i['wait_time']]
-    afk_time = [int(i['afk_time']) for i in data if i['afk_time']]
-    afk_time_per_round = [int(i['afk_time']) / (int(i['team_score']) + int(i['enemy_score'])) for i in data if i['afk_time'] and i['team_score'] and i['enemy_score']]
+def get_avg_match_time(steam_id: int):
+    with sqlite3.connect(path_vars['db_path']) as db:
+        cur = db.execute("""SELECT AVG(match_time), SUM(match_time), AVG(wait_time), SUM(wait_time) FROM matches WHERE steam_id = ?""", (steam_id,))
+        match_avg, match_sum, search_avg, search_sum = cur.fetchone()
+        cur = db.execute("""SELECT SUM(afk_time), COUNT(afk_time), SUM(team_score + enemy_score) FROM matches WHERE steam_id = ? AND afk_time NOT NULL""", (steam_id,))
+        afk_sum, afk_count, rounds_sum = cur.fetchone()
+
+    afk_avg = afk_sum / afk_count
+    afk_per_round = afk_sum / rounds_sum
     return {
-        'match_time': (round(avg(match_time, 0)), sum(match_time)),
-        'search_time': (round(avg(search_time, 0)), sum(search_time)),
-        'afk_time': (round(avg(afk_time, 0)), sum(afk_time), round(avg(afk_time_per_round, 0)))
+        'match_time': (round(match_avg, 0), match_sum),
+        'search_time': (round(search_avg, 0), search_sum),
+        'afk_time': (round(afk_avg), afk_sum, round(afk_per_round, 0))
     }
 
 
+def add_first_match(path):
+    if not account['match_token']:
+        raise ValueError('Missing Match Token in Config')
+    now = datetime.now(tz=utc).timestamp()
+    create_table(path, account['match_token'], account['steam_id'], now)
+    return [account['match_token']]
+
+
 # noinspection PyShadowingNames
-def get_old_sharecodes(last_x: int = -1, from_x: str = ''):
+def get_old_sharecodes(last_x: int):
     if last_x >= 0:
         return []
-    global csv_header
-    csv_path = csv_path_for_steamid(steam_id)
-    game_dict = []
-    if os.path.isfile(csv_path):
-        game_dict = get_csv_list(csv_path)
-    if not os.path.isfile(csv_path) or not game_dict:
-        with open(csv_path, 'w') as last_game:
-            writer = csv.DictWriter(last_game, fieldnames=csv_header, delimiter=';', lineterminator='\n')
-            writer.writeheader()
-            writer.writerow({'sharecode': account['match_token']})
-            game_dict = [{'sharecode': account['match_token']}]
+    path = path_vars['db_path']
+    if os.path.isfile(path):
+        with sqlite3.connect(path) as db:
+            cur = db.execute("""SELECT sharecode FROM matches WHERE steam_id = ? ORDER BY timestamp DESC LIMIT ?""", (steam_id, abs(last_x)))
+            games = [sharecode for sharecode, in cur.fetchall()]
+        if len(games) == 0:
+            # table already exists, but its the first match for a user
+            games = add_first_match(path)
+    else:
+        games = add_first_match(path)
 
-    games = [i['sharecode'] for i in game_dict if i['sharecode']]
-    if from_x:
-        try:
-            return games[(len(games) - games.index(from_x)) * -1:]
-        except ValueError:
-            return []
-    return games[last_x:]
+    return games
 
 
 # noinspection PyShadowingNames
@@ -303,7 +308,7 @@ def get_new_sharecodes(game_id: str, stats=None):
     sharecodes = [game_id]
     stats_error = True
     while True:
-        steam_url = f'https://api.steampowered.com/ICSGOPlayers_730/GetNextMatchSharingCode/v1?key={cfg["steam_api_key"]}&steamid={steam_id}&steamidkey={account["auth_code"]}&knowncode={game_id}'
+        steam_url = f'https://api.steampowered.com/ICSGOPlayers_730/GetNextMatchSharingCode/v1?key={cfg.steam_api_key}&steamid={steam_id}&steamidkey={account["auth_code"]}&knowncode={game_id}'
         try:
             r = requests.get(steam_url, timeout=2)
             next_code = r.json()['result']['nextcode']
@@ -325,39 +330,30 @@ def get_new_sharecodes(game_id: str, stats=None):
                     stats_error = False
                 time.sleep(2)
 
-    global csv_header, csgo_stats_test_for
-    if len(sharecodes) > 1:
-        create_backup(csv_path_for_steamid(steam_id))
-        with open(csv_path_for_steamid(steam_id), 'a', newline='', encoding='utf-8') as last_game:
-            writer = csv.DictWriter(last_game, fieldnames=csv_header, delimiter=';', lineterminator='\n')
-            for i in sharecodes[1:-1]:  # Add all matches except the newest one without any additional information
-                row_dict = {'sharecode': i, 'match_id': '', 'map': '', 'team_score': '', 'enemy_score': '', 'wait_time': '', 'afk_time': '', 'mvps': '', 'points': '', 'kills': '', 'assists': '', 'deaths': ''}
-                writer.writerow(row_dict)
+    path = path_vars['db_path']
+    with sqlite3.connect(path) as db:
+        if len(sharecodes) > 1:
+            # > 1 is true if there is a new sharecode, first sharecode is the last supplied one
 
-            # Add the newest match with the given information
+            # add all matches expect the newest one without any extra data
+            db_data = [(sharecode, int(steam_id)) for sharecode in sharecodes[:-1]]
+            db.executemany("""INSERT OR IGNORE INTO matches (sharecode, steam_id) VALUES (?, ?)""", db_data)
+
             if stats is None:
-                stats = {'kills': '', 'assists': '', 'deaths': '', 'mvps': '', 'score': '', 'map': '', 'match_score': ('', ''), 'match_time': '', 'wait_time': '', 'afk_time': ''}
+                stats = {'map': None, 'match_time': None, 'wait_time': None, 'afk_time': None, 'mvps': None, 'score': None}
+            if 'mvps' not in stats:
+                stats = {'map': None, 'match_time': None, 'wait_time': None, 'afk_time': None, 'mvps': None, 'score': None}
 
-            if 'mvps' not in stats:  # gameover match stats are given, but player has never been seen (demo watching only)
-                for key, value in [('kills', ''), ('assists', ''), ('deaths', ''), ('mvps', ''), ('score', '')]:
-                    stats[key] = value
+            now = datetime.now(tz=utc).timestamp()
+            match_data = (sharecodes[-1], int(steam_id), stats['match_time'], stats['wait_time'], stats['afk_time'], stats['mvps'], stats['score'], now)
+            db.execute("""INSERT OR IGNORE INTO matches (sharecode, steam_id, match_time, wait_time, afk_time, mvps, points, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""", match_data)
+            db.commit()
 
-            row_dict = {'sharecode': sharecodes[-1], 'map': stats['map'], 'team_score': stats['match_score'][0], 'enemy_score': stats['match_score'][1],
-                        'match_time': stats['match_time'], 'wait_time': stats['wait_time'], 'afk_time': stats['afk_time'],
-                        'mvps': stats['mvps'], 'points': stats['score'], 'kills': stats['kills'], 'assists': stats['assists'], 'deaths': stats['deaths']}
-            writer.writerow(row_dict)
+        # Test if any tracked match has missing info
+        cur = db.execute("""SELECT sharecode FROM matches WHERE map IS NULL AND error = 0 and steam_id = ? ORDER BY timestamp ASC""", (int(steam_id),))
+        sharecodes = cur.fetchall()
 
-    # Test if any tracked match has missing info
-    sharecodes = []
-    data = list(reversed(get_csv_list(csv_path_for_steamid(steam_id))))
-    for match in data:
-        for item in match.items():
-            if item[0] in csgo_stats_test_for and not item[1]:
-                if match['sharecode']:
-                    sharecodes.insert(0, match['sharecode'])
-                break
-
-    return [{'sharecode': code, 'queue_pos': None} for code in sharecodes]
+    return [{'sharecode': code, 'queue_pos': None} for code, in sharecodes]
 
 
 # noinspection PyShadowingNames
@@ -369,7 +365,7 @@ def str_in_list(compare_strings: List[str], list_of_strings: List[str], replace:
 
 def check_for_forbidden_programs(process_list):
     titles = [i[1].lower() for i in process_list]
-    forbidden_programs = [i.lstrip(' ').lower() for i in cfg['forbidden_programs'].split(',')]
+    forbidden_programs = [i.lstrip(' ').lower() for i in cfg.forbidden_programs.split(',')]
     if forbidden_programs[0]:
         return any(name for name in titles for forbidden_name in forbidden_programs if forbidden_name == name)
     else:
@@ -394,7 +390,7 @@ def read_console():
 def activate_pushbullet():
     if not pushbullet_dict['device']:
         try:
-            pushbullet_dict['device'] = pushbullet.PushBullet(cfg['pushbullet_api_key']).get_device(cfg['pushbullet_device_name'])
+            pushbullet_dict['device'] = pushbullet.PushBullet(cfg.pushbullet_api_key).get_device(cfg.pushbullet_device_name)
         except (pushbullet.errors.PushbulletError, pushbullet.errors.InvalidKeyError):
             write('Pushbullet is wrongly configured.\nWrong API Key or DeviceName in config.ini\nRestart Script if changes to config.ini were made.')
     if pushbullet_dict['device']:
@@ -480,31 +476,37 @@ def request_status_command(hwnd, reset_position, key: str = 'F12'):
     return
 
 
-def match_win_list(number_of_matches: int, _steam_id, time_difference: int = 7_200):
-    data = get_csv_list(csv_path_for_steamid(_steam_id))
-    number_of_matches = abs(number_of_matches + 1) * -1
-    outcome_lst = []
-    for match in data[:number_of_matches:-1]:
-        outcome = match['outcome']
-        if not outcome:
-            if match['team_score'] and match['enemy_score']:
-                team = int(match['team_score'])
-                enemy = int(match['enemy_score'])
-            else:
-                team, enemy = 0, 0
+class MatchRequest(threading.Thread):
+    """Using a thread so we are not blocking the script while performing the request"""
 
-            if team > enemy:
-                outcome = 'W'
-            elif team < enemy:
-                outcome = 'L'
-            elif team == enemy and team == 15:
-                outcome = 'D'
-            else:
-                outcome = 'U'
-        if not match['timestamp']:
-            timestamp = int(time.time()) - (60 * 60)
-        else:
-            timestamp = int(match['timestamp'])
+    def __init__(self):
+        super().__init__()
+        self.name = 'MatchRequester'
+        self.daemon = True
+
+    def run(self) -> None:
+        time.sleep(1.0)
+        match_log = log_reader.get_log_info()
+        if match_log is None:
+            write(f'no new match log found')
+            return
+        data = match_log.to_web_request(cfg.secret, steam_id)
+        url = f"http://{cfg.server_ip}:{cfg.server_port}/check"
+        r = requests.post(url, json=data)
+        if r.status_code != 200:
+            write(f'failed to send check match message to {repr(cfg.server_ip)} with status {r.status_code} - {r.text}')
+
+
+def match_win_list(number_of_matches: int, _steam_id, time_difference: int = 7_200):
+    with sqlite3.connect(path_vars['db_path']) as db:
+        cur = db.execute("""SELECT outcome, timestamp FROM matches WHERE steam_id = ? ORDER BY timestamp DESC LIMIT ?""", (_steam_id, abs(number_of_matches)))
+        items = cur.fetchall()
+    outcome_lst = []
+    for outcome, timestamp in items:
+        if not outcome:
+            outcome = 'U'
+        if not timestamp:
+            timestamp = datetime.now(tz=utc).timestamp() - (60 * 60)
 
         if outcome == 'W':
             outcome_lst.append((timestamp, green('\u2588')))
@@ -548,7 +550,9 @@ class WindowEnumerator(threading.Thread):
         self._kill.set()
 
 
-path_vars = {'appdata_path': os.path.join(os.getenv('APPDATA'), 'CSGO AUTO ACCEPT'), 'mute_csgo_path': f'"{os.path.abspath(os.path.expanduser("sounds/nircmdc.exe"))}" muteappvolume csgo.exe'}
+path_vars = {'appdata_path': os.path.join(os.getenv('APPDATA'), 'CSGO AUTO ACCEPT'),
+             'mute_csgo_path': f'"{os.path.abspath(os.path.expanduser("sounds/nircmdc.exe"))}" muteappvolume csgo.exe',
+             'db_path': os.path.join(os.path.join(os.getenv('APPDATA'), 'CSGO AUTO ACCEPT', 'matches.db'))}
 
 try:
     os.mkdir(path_vars['appdata_path'])
@@ -568,24 +572,43 @@ config = configparser.ConfigParser()
 config.read('config.ini')
 
 try:
-    cfg = {'activate_script': config.get('HotKeys', 'Activate Script'), 'activate_push_notification': config.get('HotKeys', 'Activate Push Notification'),
-           'info_newest_match': config.get('HotKeys', 'Get Info on newest Match'), 'mute_csgo_toggle': config.get('HotKeys', 'Mute CSGO'),
-           'open_live_tab': config.get('HotKeys', 'Live Tab Key'), 'switch_accounts': config.get('HotKeys', 'Switch accounts for csgostats.gg'),
-           'end_script': config.get('HotKeys', 'End Script'), 'discord_key': config.get('HotKeys', 'Discord Toggle'), 'minimize_key': config.get('HotKeys', 'Minimize CSGO'),
-           'cancel_csgostats': config.get('HotKeys', 'Cancel Match Retrying'), 'sleep_interval': config.getfloat('Script Settings', 'Interval'),
+    @dataclass
+    class ConfigItems:
+        activate_script: str = config.get('HotKeys', 'Activate Script')
+        activate_push_notification: str = config.get('HotKeys', 'Activate Push Notification')
+        info_newest_match: str = config.get('HotKeys', 'Get Info on newest Match')
+        mute_csgo_toggle: str = config.get('HotKeys', 'Mute CSGO')
+        switch_accounts: str = config.get('HotKeys', 'Switch accounts for csgostats.gg')
+        end_script: str = config.get('HotKeys', 'End Script')
+        discord_key: str = config.get('HotKeys', 'Discord Toggle')
+        minimize_key: str = config.get('HotKeys', 'Minimize CSGO')
+        cancel_csgostats: str = config.get('HotKeys', 'Cancel Match Retrying')
+        fetch_status: str = config.get('HotKeys', 'Fetch Status')
 
-           'log_color': config.get('Script Settings', 'Log Color').lower(), 'forbidden_programs': config.get('Script Settings', 'Forbidden Programs'),
-           'taskbar_position': config.getfloat('Script Settings', 'Taskbar Factor'), 'match_list_lenght': config.getint('Script Settings', 'Match History Lenght'),
+        sleep_interval: float = config.getfloat('Script Settings', 'Interval')
+        log_color: str = config.get('Script Settings', 'Log Color')
+        forbidden_programs: str = config.get('Script Settings', 'Forbidden Programs')
+        taskbar_position: float = config.getfloat('Script Settings', 'Taskbar Factor')
+        match_list_lenght: int = config.getint('Script Settings', 'Match History Lenght')
+        steam_api_key: str = config.get('csgostats.gg', 'API Key')
+        auto_retry_interval: int = config.getint('csgostats.gg', 'Auto-Retrying-Interval')
+        status_key: str = config.get('csgostats.gg', 'Status Key')
+        secret: bytes = config.get('csgostats.gg', 'Secret')
+        server_ip: str = config.get('csgostats.gg', 'WebServer IP')
+        server_port: int = config.getint('csgostats.gg', 'WebServer Port')
+        pushbullet_device_name: str = config.get('Pushbullet', 'Device Name')
+        pushbullet_api_key: str = config.get('Pushbullet', 'API Key')
 
-           'steam_api_key': config.get('csgostats.gg', 'API Key'), 'max_queue_position': config.getint('csgostats.gg', 'Auto-Retrying for queue position below'),
-           'auto_retry_interval': config.getint('csgostats.gg', 'Auto-Retrying-Interval'), 'discord_url': config.get('csgostats.gg', 'Discord Webhook URL'),
-           'player_webhook': config.get('csgostats.gg', 'Player Info Webhook'), 'status_key': config.get('csgostats.gg', 'Status Key'),
+        def __post_init__(self):
+            self.log_color = self.log_color.lower()
+            if isinstance(self.secret, str):
+                self.secret = self.secret.encode()
 
-           'pushbullet_device_name': config.get('Pushbullet', 'Device Name'), 'pushbullet_api_key': config.get('Pushbullet', 'API Key')
-           }
+
+    cfg: ConfigItems = ConfigItems()
 except (configparser.NoOptionError, configparser.NoSectionError, ValueError) as e:
     write(f'ERROR IN CONFIG - {str(e)}')
-    cfg = {'ERROR': None}
+    cfg = None
     exit('REPAIR CONFIG')
 
 csv_header = ['sharecode', 'match_id', 'map', 'team_score', 'enemy_score', 'outcome', 'start_team',
@@ -628,15 +651,16 @@ if path_vars['csgo_path']:
         copyfile(os.path.join(os.getcwd(), 'GSI', 'gamestate_integration_GSI.cfg'), os.path.join(path_vars['csgo_path'], 'cfg', 'gamestate_integration_GSI.cfg'))
         write('Added GSI CONFIG to cfg folder. Counter-Strike needs to be restarted if running!', color=FgColor.Red)
 
-if cfg['taskbar_position'] > 1.0:
-    cfg['taskbar_position'] = 1.0 / cfg['taskbar_position']
-    write(f'Taskbar Factor to big, using inverse {cfg["taskbar_position"]}')
-cfg['taskbar_position'] = task_bar(cfg['taskbar_position'])
+if cfg.taskbar_position > 1.0:
+    cfg.taskbar_position = 1.0 / cfg.taskbar_position
+    write(f'Taskbar Factor to big, using inverse {cfg.taskbar_position}')
+cfg.taskbar_position = task_bar(cfg.taskbar_position)
 
 window_ids = []
 
-sleep_interval = cfg['sleep_interval']
+sleep_interval = cfg.sleep_interval
 sleep_interval_looking_for_accept = 0.05
+log_reader = LogReader(os.path.join(path_vars['appdata_path'], 'console.log'))
 
 if __name__ == '__main__':
     pass
