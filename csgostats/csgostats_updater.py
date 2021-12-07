@@ -5,12 +5,11 @@ from typing import List
 
 import pyperclip
 import requests
-from color import FgColor
 
 from csgostats.Match.Match import match_from_web_request
 from csgostats.objects.Errors import PlayerNotFoundError
 
-from write import write, pushbullet_dict
+from write import *
 
 
 class CSGOStatsUpdater:
@@ -29,7 +28,7 @@ class CSGOStatsUpdater:
 
         r = requests.post(f'http://{self.cfg.server_ip}:{self.cfg.server_port}/matches', json={'sharecodes': sharecodes})
         if r.status_code != 200:
-            write(f'ERROR: {r.status_code}, {r.text}', color=FgColor.Red)
+            write(red(f'ERROR: {r.status_code}, {r.text}'))
             return new_codes
         data = r.json()
 
@@ -40,7 +39,7 @@ class CSGOStatsUpdater:
             try:
                 raw_match: dict = data[sharecode]
             except KeyError:
-                write(f'{repr(sharecode)} not in response!', color=FgColor.Red)
+                write(red(f'{repr(sharecode)} not in response!'))
                 continue
             if raw_match['status'] == 'complete':
                 match = match_from_web_request(raw_match['object'], raw_match['key'], self.cfg.secret)
@@ -89,7 +88,7 @@ class CSGOStatsUpdater:
                 db.row_factory = sqlite3.Row
                 for match in completed_games:
                     url = match.match_url()
-                    write(f'URL: {url}', add_time=True, push=pushbullet_dict['urgency'], color=FgColor.Green)
+                    write(green(f'URL: {url}'), add_time=True)
                     try:
                         sql_data = match.sql_tuple(int(self.account['steam_id']))
                         sql_str = '''UPDATE matches SET id = ?,
@@ -144,6 +143,4 @@ class CSGOStatsUpdater:
                     pyperclip.copy(url)
                 except (pyperclip.PyperclipWindowsException, pyperclip.PyperclipTimeoutException):
                     write('Failed to load URL in to clipboard', add_time=False)
-
-            write(None, add_time=False, push=pushbullet_dict['urgency'], push_now=True, output=False)
         return not_completed_games

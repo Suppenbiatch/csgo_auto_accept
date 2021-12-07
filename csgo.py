@@ -1,18 +1,79 @@
+import http.server
+import queue
 import re
+import socketserver
 import statistics
 import time
 from threading import Thread
 
-import keyboard
 import win32api
 import win32con
 import win32gui
-from color import uncolorize, FgColor, red, green, yellow, blue, magenta, cyan
 from playsound import playsound
 
 import cs
-from write import write
 from csgostats.csgostats_updater import CSGOStatsUpdater
+from write import *
+
+
+class WebHookHandler(http.server.BaseHTTPRequestHandler):
+    def log_request(self, code='-', size='-'):
+        return
+
+    def _set_response(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/html')
+        self.end_headers()
+
+    def do_GET(self):
+        self._set_response()
+        obj = re.search(r'^/(\w+)$', self.path)
+        if obj is not None:
+            q.put(obj.group(1))
+
+
+class WebServer(Thread):
+    def __init__(self, port: int):
+        self.port = port
+        super().__init__(name='WebHookServer', daemon=True)
+
+    def run(self) -> None:
+        with socketserver.TCPServer(("127.0.0.1", self.port), WebHookHandler) as httpd:
+            # print("serving at port", PORT)
+            httpd.serve_forever()
+
+
+class ResultParser(Thread):
+    def __init__(self, queue_):
+        self.queue = queue_
+        super().__init__(name='ResultParser', daemon=True)
+
+    def run(self) -> None:
+        while True:
+            while True:
+                try:
+                    item = q.get(block=False)
+                    if item == 'minimize':
+                        hk_minimize_csgo(cs.cfg.taskbar_position)
+                    elif item == 'activate':
+                        hk_activate()
+                    elif item == 'pushbullet':
+                        cs.activate_afk_message()
+                    elif item == 'upload':
+                        hk_upload_match()
+                    elif item == 'switch_accounts':
+                        hk_switch_accounts()
+                    elif item == 'mute':
+                        cs.mute_csgo(2)
+                    elif item == 'discord_toggle':
+                        hk_discord_toggle()
+                    elif item == 'end':
+                        hk_kill_main_loop()
+                    elif item == 'fetch_status':
+                        hk_fetch_status()
+                except queue.Empty:
+                    break
+            time.sleep(0.1)
 
 
 def hk_activate():
@@ -50,17 +111,10 @@ def hk_switch_accounts():
 def hk_discord_toggle():
     truth_table['discord_output'] = not truth_table['discord_output']
     if truth_table['discord_output']:
-        write('Discord output activated', add_time=False, color=FgColor.Green, overwrite='13')
+        write(green('Discord output activated'), add_time=False, overwrite='13')
     else:
-        write('Discord output deactivated', add_time=False, color=FgColor.Red, overwrite='13')
+        write(red('Discord output deactivated'), add_time=False, overwrite='13')
     return
-
-
-def hk_force_restart():
-    global gsi_server
-    truth_table['gsi_first_launch'] = True
-    write('GSI Server restarting', color=FgColor.Yellow, overwrite='8')
-    gsi_server = cs.restart_gsi_server(gsi_server)
 
 
 def hk_kill_main_loop():
@@ -88,14 +142,6 @@ def hk_minimize_csgo(reset_position: tuple):
     return
 
 
-def hk_cancel_csgostats_retrying():
-    global retryer, truth_table
-    retryer = []
-    truth_table['upload_thread_active'] = False
-    write('canceled csgostats.gg retrying', overwrite='4', color=FgColor.Yellow)
-    return
-
-
 def hk_fetch_status():
     global hwnd
     if hwnd == 0:
@@ -108,23 +154,23 @@ def hk_fetch_status():
 def gsi_server_status():
     global gsi_server
     if gsi_server.running:
-        write('CS:GO GSI Server status: running', color=FgColor.Green, overwrite='8')
+        write(green('CS:GO GSI Server status: running'), overwrite='8')
     else:
-        write('CS:GO GSI Server status: not running', color=FgColor.Red, overwrite='8')
+        write(green('CS:GO GSI Server status: not running'), overwrite='8')
     return gsi_server.running
 
 
 def upload_matches(look_for_new: bool = True, stats=None):
     global retryer, time_table, truth_table
     if truth_table['upload_thread_active']:
-        write('Another Upload-Thread is still active', color=FgColor.Magenta)
+        write(magenta('Another Upload-Thread is still active'))
         return
     truth_table['upload_thread_active'] = True
     if look_for_new is True:
         try:
             latest_sharecode = cs.get_old_sharecodes(-1)
         except ValueError:
-            write('no match token in config, aborting', color=FgColor.Red)
+            write(red('no match token in config, aborting'))
             truth_table['upload_thread_active'] = False
             return
 
@@ -135,7 +181,7 @@ def upload_matches(look_for_new: bool = True, stats=None):
 
     time_table['csgostats_retry'] = time.time()
     if not retryer:
-        write('no new sharecodes found, aborting', color=FgColor.Yellow)
+        write(yellow('no new sharecodes found, aborting'))
         truth_table['upload_thread_active'] = False
         return
     retryer = updater.update_csgo_stats(retryer, discord_output=truth_table['discord_output'])
@@ -148,7 +194,6 @@ def upload_matches(look_for_new: bool = True, stats=None):
 truth_table = {'test_for_accept_button': False, 'test_for_warmup': False, 'test_for_success': False, 'testing': False, 'first_push': True, 'still_in_warmup': False, 'test_for_server': False, 'first_freezetime': True,
                'game_over': False, 'monitoring_since_start': False, 'players_still_connecting': False, 'first_game_over': True, 'disconnected_form_last': False, 'c4_round_first': True, 'steam_error': False,
                'game_minimized_freezetime': False, 'game_minimized_warmup': False, 'discord_output': True, 'gsi_first_launch': True, 'upload_thread_active': False}
-
 
 # remove console_read and timed_execution_time
 time_table = {'csgostats_retry': time.time(), 'search_started': time.time(), 'console_read': time.time(), 'timed_execution_time': time.time(), 'match_accepted': time.time(),
@@ -165,6 +210,15 @@ gsi_server = cs.restart_gsi_server(None)
 window_enum = cs.WindowEnumerator()
 window_enum.start()
 
+q = queue.Queue()
+webhook = WebServer(cs.cfg.webhook_port)
+webhook_parser = ResultParser(q)
+webhook.start()
+webhook_parser.start()
+
+afk_sender = SendDiscordMessage(cs.cfg.discord_user_id, cs.cfg.server_ip, cs.cfg.server_port, message_queue)
+afk_sender.start()
+
 hwnd, hwnd_old = 0, 0
 csgo_window_status = {'server_found': 2, 'new_tab': 2, 'in_game': 0}
 csgo = []
@@ -175,33 +229,11 @@ retryer = []
 game_state = {'map_phase': []}
 cs.mute_csgo(0)
 
-blue(), magenta()
-
-if cs.cfg.activate_script:
-    keyboard.add_hotkey(cs.cfg.activate_script, hk_activate)
-if cs.cfg.activate_push_notification:
-    keyboard.add_hotkey(cs.cfg.activate_push_notification, cs.activate_pushbullet)
-if cs.cfg.info_newest_match:
-    keyboard.add_hotkey(cs.cfg.info_newest_match, hk_upload_match)
-if cs.cfg.switch_accounts:
-    keyboard.add_hotkey(cs.cfg.switch_accounts, hk_switch_accounts)
-if cs.cfg.mute_csgo_toggle:
-    keyboard.add_hotkey(cs.cfg.mute_csgo_toggle, cs.mute_csgo, args=[2])  # LvL 2 is toggle
-if cs.cfg.discord_key:
-    keyboard.add_hotkey(cs.cfg.discord_key, hk_discord_toggle)
-if cs.cfg.end_script:
-    keyboard.add_hotkey(cs.cfg.end_script, hk_kill_main_loop)
-if cs.cfg.minimize_key:
-    keyboard.add_hotkey(cs.cfg.minimize_key, hk_minimize_csgo, args=[cs.cfg.taskbar_position])
-if cs.cfg.cancel_csgostats:
-    keyboard.add_hotkey(cs.cfg.cancel_csgostats, hk_cancel_csgostats_retrying)
-if cs.cfg.fetch_status:
-    keyboard.add_hotkey(cs.cfg.fetch_status, hk_fetch_status)
-
-write('READY', color=FgColor.Green)
+write(green('READY'))
 running = True
 
 while running:
+
     if retryer and not truth_table['upload_thread_active']:
         if time.time() - time_table['csgostats_retry'] > cs.cfg.auto_retry_interval:
             t = Thread(target=upload_matches, args=(False, None), name='UploadThread')
@@ -237,7 +269,7 @@ while running:
         truth_table['gsi_first_launch'] = True
 
     if truth_table['gsi_first_launch'] and gsi_server.running:
-        write('GSI Server running', overwrite='8', color=FgColor.Green)
+        write(green('GSI Server running'), overwrite='8')
         truth_table['gsi_first_launch'] = False
 
     if not gsi_server.running:
@@ -251,7 +283,7 @@ while running:
             if not truth_table['test_for_server']:
                 truth_table['test_for_server'] = True
                 time_table['search_started'] = time.time()
-                write(f'Looking for match: {truth_table["test_for_server"]}', overwrite='1', color=FgColor.Magenta)
+                write(magenta(f'Looking for match: {truth_table["test_for_server"]}'), overwrite='1')
             playsound('sounds/activated.wav', block=False)
             cs.mute_csgo(1)
         elif matchmaking['update'][-1] == '0' and truth_table['test_for_server']:
@@ -288,7 +320,7 @@ while running:
 
     if truth_table['test_for_accept_button'] or truth_table['test_for_success']:
         if cs.str_in_list(['Match confirmed'], matchmaking['msg']):
-            write(f'All Players accepted - Match has started - Took {cs.timedelta(time_table["search_started"])} since start', add_time=False, overwrite='11', color=FgColor.Green)
+            write(green(f'All Players accepted - Match has started - Took {cs.timedelta(time_table["search_started"])} since start'), add_time=False, overwrite='11')
             truth_table['test_for_warmup'] = True
             truth_table['first_game_over'], truth_table['game_over'] = True, False
             truth_table['disconnected_form_last'] = False
@@ -317,11 +349,17 @@ while running:
             cs.sleep_interval = cs.cfg.sleep_interval
             truth_table['test_for_success'] = False
             if 'Other players failed to connect' in matchmaking['msg']:
-                write('Match has not started! Continuing to search for a Server!', push=cs.pushbullet_dict['urgency'] + 1, push_now=True, overwrite='11', color=FgColor.Red)
+                msg = red('Match has not started! Continuing to search for a Server!')
+                write(msg, overwrite='11')
+                if cs.afk_message is True:
+                    message_queue.put(msg)
                 playsound('sounds/back_to_testing.wav', block=False)
                 cs.mute_csgo(1)
             elif 'Failed to ready up' in matchmaking['msg']:
-                write('You failed to accept! Restart searching!', push=cs.pushbullet_dict['urgency'] + 2, push_now=True, overwrite='11', color=FgColor.Red)
+                msg = red('You failed to accept! Restart searching!')
+                write(red('You failed to accept! Restart searching!'), overwrite='11')
+                if cs.afk_message is True:
+                    message_queue.put(msg)
                 playsound('sounds/failed_to_accept.wav')
                 cs.mute_csgo(0)
 
@@ -338,9 +376,13 @@ while running:
                 join_dict['ct_full'] = True
             if join_dict['t_full'] and join_dict['ct_full']:
                 best_of = red(f"BR{scoreboard['max_rounds']}")
-                write(f'Server full, All Players connected. '
-                      f'{best_of}, '
-                      f'Took {cs.timedelta(time_table["warmup_started"])} since match start.', push=cs.pushbullet_dict['urgency'] + 2, push_now=True, overwrite='7')
+                msg = f'Server full, All Players connected. ' \
+                      f'{best_of}, '  \
+                      f'Took {cs.timedelta(time_table["warmup_started"])} since match start.'
+                write(msg, overwrite='7')
+                if cs.afk_message is True:
+                    message_queue.put(msg)
+                red('You failed to accept! Restart searching!')
                 playsound('sounds/minute_warning.wav', block=True)
                 truth_table['players_still_connecting'] = False
                 join_dict['t_full'], join_dict['ct_full'] = False, False
@@ -348,7 +390,7 @@ while running:
 
     if any(True for i in matchmaking['server_abandon'] if 'Disconnect' in i):
         if not truth_table['game_over']:
-            write('Server disconnected', color=FgColor.Red)
+            write(red('Server disconnected'))
             playsound('sounds/fail.wav', block=False)
         gsi_server = cs.restart_gsi_server(gsi_server)
         truth_table['disconnected_form_last'] = True
@@ -386,7 +428,7 @@ while running:
             scoreboard['total_score'] = scoreboard['CT'] + scoreboard['T']
 
             scoreboard['team'] = red('T') if scoreboard['player']['team'] == 'T' else cyan('CT')
-            scoreboard['opposing_team'] = cyan('CT') if uncolorize(scoreboard['team']) == 'T' else red('T')
+            scoreboard['opposing_team'] = cyan('CT') if decolor(scoreboard['team']) == 'T' else red('T')
 
             afk_dict['round_values'].append(afk_dict['seconds_afk'])
             afk_dict['round_values'] = [round(time_afk, 3) for time_afk in afk_dict['round_values']]
@@ -401,7 +443,7 @@ while running:
                 scoreboard['last_round_info'] = scoreboard['last_round_info'][scoreboard['last_round_key']].split('_')[0].upper()
                 if int(scoreboard['last_round_key']) == scoreboard['max_rounds'] / 2:
                     scoreboard['last_round_info'] = 'T' if scoreboard['last_round_info'] == 'CT' else 'CT'
-                scoreboard['last_round_info'] = f'{scoreboard["team"]} {green("won")} the last round' if uncolorize(scoreboard['team']) == scoreboard['last_round_info'] else f'{scoreboard["team"]} {yellow("lost")} the last round'
+                scoreboard['last_round_info'] = f'{scoreboard["team"]} {green("won")} the last round' if decolor(scoreboard['team']) == scoreboard['last_round_info'] else f'{scoreboard["team"]} {yellow("lost")} the last round'
             except AttributeError:
                 scoreboard['last_round_info'] = f'You {scoreboard["team"]}, no info on the last round'
 
@@ -413,7 +455,7 @@ while running:
             else:
                 scoreboard['extra_round_info'] = ''
 
-            write(f'Freeze Time - {scoreboard["last_round_info"]} - {scoreboard[uncolorize(scoreboard["team"])]:02d}:{scoreboard[uncolorize(scoreboard["opposing_team"])]:02d}'
+            write(f'Freeze Time - {scoreboard["last_round_info"]} - {scoreboard[decolor(scoreboard["team"])]:02d}:{scoreboard[decolor(scoreboard["opposing_team"])]:02d}'
                   f'{scoreboard["extra_round_info"]}{scoreboard["c4"]} - AFK: {cs.timedelta(seconds=afk_dict["per_round"])}',
                   overwrite='7')
 
@@ -431,7 +473,7 @@ while running:
             playsound('sounds/ready_up.wav', block=False)
 
     if truth_table['game_minimized_freezetime']:
-        message = f'Freeze Time - {scoreboard["last_round_info"]} - {scoreboard[uncolorize(scoreboard["team"])]:02d}:{scoreboard[uncolorize(scoreboard["opposing_team"])]:02d}' \
+        message = f'Freeze Time - {scoreboard["last_round_info"]} - {scoreboard[decolor(scoreboard["team"])]:02d}:{scoreboard[decolor(scoreboard["opposing_team"])]:02d}' \
                   f'{scoreboard["extra_round_info"]}{scoreboard["c4"]} - AFK: {cs.timedelta(seconds=afk_dict["per_round"])}'
         truth_table['game_minimized_freezetime'] = cs.round_start_msg(message, game_state['round_phase'], time_table['freezetime_started'], truth_table['game_minimized_freezetime'], win32gui.GetWindowPlacement(hwnd)[1] == 2, scoreboard)
     elif truth_table['game_minimized_warmup']:
@@ -456,10 +498,13 @@ while running:
             truth_table['players_still_connecting'] = False
             team = red('T') if gsi_server.get_info('player', 'team') == 'T' else cyan('CT')
             time_table['warmup_seconds'] = int(time.time() - time_table['warmup_started'])
-            write('Warmup is over! Map: {map}, Team: {team}, Took: {time}'.format(team=team,
+            msg = 'Warmup is over! Map: {map}, Team: {team}, Took: {time}'.format(team=team,
                                                                                   map=green(' '.join(gsi_server.get_info('map', 'name').split('_')[1:]).title()),
-                                                                                  time=cs.timedelta(seconds=time_table['warmup_seconds'])),
-                  push=cs.pushbullet_dict['urgency'] + 2, push_now=True, overwrite='7')
+                                                                                  time=cs.timedelta(seconds=time_table['warmup_seconds']))
+            write(msg, overwrite='7')
+            if cs.afk_message is True:
+                message_queue.put(msg)
+
             time_table['match_started'] = time.time()
             time_table['freezetime_started'] = time.time()
             if win32gui.GetWindowPlacement(hwnd)[1] == 2:
@@ -471,7 +516,10 @@ while running:
 
         if game_state['map_phase'] is None:
             truth_table['still_in_warmup'] = False
-            write('Match did not start', overwrite='1', color=FgColor.Red, push=cs.pushbullet_dict['urgency'] + 2, push_now=True)
+            msg = red('Match did not start')
+            write(msg, overwrite='1')
+            if cs.afk_message is True:
+                message_queue.put(msg)
 
     if game_state['map_phase'] in ['live', 'warmup'] and not truth_table['game_over'] and not truth_table['disconnected_form_last']:
         try:
@@ -524,7 +572,7 @@ while running:
             afk_round = 0.0
         timings = {'match': time.time() - time_table['match_started'], 'search': time_table['match_accepted'] - time_table['search_started'], 'afk': sum(afk_dict['round_values']), 'afk_round': afk_round}
 
-        write(f'The match is over! - {score[team[0]]:02d}:{score[team[1]]:02d}', color=FgColor.Red)
+        write(red(f'The match is over! - {score[team[0]]:02d}:{score[team[1]]:02d}'))
 
         write(f'Match duration: {cs.time_output(timings["match"], average["match_time"][0])}', add_time=False)
         write(f'Search-time:    {cs.time_output(timings["search"], average["search_time"][0])}', add_time=False)
@@ -547,9 +595,9 @@ while running:
                 write(time_str, add_time=False)
 
             player_stats['map'] = score['map']
-            player_stats['match_time'] = round(match_time)
-            player_stats['wait_time'] = round(search_time)
-            player_stats['afk_time'] = round(afk_time)
+            player_stats['match_time'] = round(float(match_time))
+            player_stats['wait_time'] = round(float(search_time))
+            player_stats['afk_time'] = round(float(afk_time))
 
             t = Thread(target=upload_matches, args=(True, player_stats), name='UploadThread')
             t.start()
@@ -578,9 +626,14 @@ while running:
                 player_team = gsi_server.get_info('player', 'team')
                 if player_team is not None:
                     team = red(player_team) if player_team == 'T' else cyan(player_team)
-                    write(f'You will play on {green(" ".join(saved_map.split("_")[1:]).title())} as {team} in the first half. '
-                          f'Last Games: {cs.match_win_list(cs.cfg.match_list_lenght, cs.steam_id, time_difference=7_200)}',
-                          add_time=True, push=cs.pushbullet_dict['urgency'] + 2, push_now=True, overwrite='12')
+                    msg = f'You will play on {green(" ".join(saved_map.split("_")[1:]).title())} as {team} in the first half. ' \
+                          f'Last Games: {cs.match_win_list(cs.cfg.match_list_lenght, cs.steam_id, time_difference=7_200)}'
+                    write(msg, add_time=True, overwrite='12')
+                    if cs.afk_message is True:
+                        msg = f'You will play on {green(" ".join(saved_map.split("_")[1:]).title())} as {team} in the first half. ' \
+                              f'Last Games: {cs.match_win_list(cs.cfg.match_list_lenght, cs.steam_id, time_difference=7_200, replace_chars=True)}'
+                        message_queue.put(msg)
+
                     truth_table['still_in_warmup'] = True
                     truth_table['test_for_warmup'] = False
                     truth_table['players_still_connecting'] = True
@@ -594,7 +647,7 @@ while running:
                 write(f'You will play on {green(" ".join(saved_map.split("_")[1:]).title())}', overwrite='12')
                 game_mode = gsi_server.get_info('map', 'mode')
                 if game_mode not in ['competitive', 'wingman', None]:
-                    write(f'{game_mode} is not supported', color=FgColor.Yellow, overwrite='1')
+                    write(yellow(f'{game_mode} is not supported'), overwrite='1')
                     truth_table['test_for_warmup'] = False
                     truth_table['first_game_over'] = False
                     break
