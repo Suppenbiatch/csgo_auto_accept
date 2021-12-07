@@ -66,23 +66,13 @@ def set_mouse_position(location: tuple):
     win32api.mouse_event(win32con.MOUSEEVENTF_MOVE | win32con.MOUSEEVENTF_ABSOLUTE, position[0], position[1])
 
 
-def minimize_csgo(window_id: int, reset_position: tuple, current_position=None):
-    if current_position is None:
-        current_position = win32api.GetCursorPos()
-        if current_position == (0, 0):
-            current_position = (int(win32api.GetSystemMetrics(0) / 2), int(win32api.GetSystemMetrics(1) / 2))
-    win32gui.ShowWindow(window_id, win32con.SW_MINIMIZE)
-    click((0, 0), lmb=False)
-    time.sleep(0.15)
-    click(reset_position)
-    time.sleep(0.05)
-    set_mouse_position(current_position)
+def minimize_csgo(window_id: int):
+    win32gui.PostMessage(window_id, win32con.WM_SYSKEYUP, 0x1B, 0)
+    win32gui.PostMessage(window_id, win32con.WM_SYSKEYDOWN, 0x1B, 0)
 
 
 # noinspection PyShadowingNames
-def anti_afk(window_id: int, reset_position=None):
-    if reset_position is None:
-        reset_position = (0, 0)
+def anti_afk(window_id: int):
     current_cursor_position = win32api.GetCursorPos()
     screen_mid = (int(win32api.GetSystemMetrics(0) / 2), int(win32api.GetSystemMetrics(1) / 2))
     moves = int(win32api.GetSystemMetrics(1) / 3) + 1
@@ -97,7 +87,7 @@ def anti_afk(window_id: int, reset_position=None):
         win32api.mouse_event(win32con.MOUSEEVENTF_MOVE, 0, -8)
     time.sleep(0.075)
     set_mouse_position(current_cursor_position)
-    minimize_csgo(window_id, reset_position)
+    minimize_csgo(window_id)
 
 
 def task_bar(factor: float = 2.0):
@@ -469,7 +459,7 @@ def request_status_command(hwnd, reset_position, key: str = 'F12'):
     keyboard.send(key)
     time.sleep(0.1)
     if current_csgo_status == 2:
-        minimize_csgo(hwnd, reset_position, current_position)
+        minimize_csgo(hwnd)
     return
 
 

@@ -138,7 +138,7 @@ def hk_minimize_csgo(reset_position: tuple):
     if current_placement[1] == 2:
         win32gui.ShowWindow(hwnd, win32con.SW_NORMAL)
     else:
-        cs.minimize_csgo(hwnd, reset_position)
+        cs.minimize_csgo(hwnd)
     return
 
 
@@ -312,7 +312,7 @@ while running:
                 cs.click((int(win32api.GetSystemMetrics(0) / 2), int(win32api.GetSystemMetrics(1) / 2.4)))
             if csgo_window_status['server_found'] == 2:  # was minimized when a server was found
                 time.sleep(0.075)
-                cs.minimize_csgo(hwnd, cs.cfg.taskbar_position)
+                cs.minimize_csgo(hwnd)
             else:
                 cs.set_mouse_position(current_cursor_position)
 
@@ -540,7 +540,7 @@ while running:
                     afk_dict['round_phase'] = 'warmup'
                 if afk_dict['player_info']['steamid'] == cs.steam_id and afk_dict['player_info']['state']['health'] > 0 and afk_dict['round_phase'] not in ['freezetime', None]:
                     write('Ran Anti-Afk Script.', overwrite='10')
-                    cs.anti_afk(hwnd, cs.cfg.taskbar_position)
+                    cs.anti_afk(hwnd)
                     break
                 if win32gui.GetWindowPlacement(hwnd)[1] != 2:
                     break
