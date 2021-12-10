@@ -50,36 +50,34 @@ class ResultParser(Thread):
 
     def run(self) -> None:
         while True:
-            while True:
-                try:
-                    item = q.get(block=False)
-                    if item == 'minimize':
-                        hk_minimize_csgo(cs.cfg.taskbar_position)
-                    elif item == 'activate':
-                        hk_activate()
-                    elif item == 'pushbullet':
-                        cs.activate_afk_message()
-                    elif item == 'upload':
-                        hk_upload_match()
-                    elif item == 'switch_accounts':
-                        hk_switch_accounts()
-                    elif item == 'mute':
-                        cs.mute_csgo(2)
-                    elif item == 'discord_toggle':
-                        hk_discord_toggle()
-                    elif item == 'end':
-                        hk_kill_main_loop()
-                    elif item == 'fetch_status':
-                        hk_fetch_status()
-                except queue.Empty:
-                    break
-            time.sleep(0.1)
+            try:
+                item = q.get(block=True)
+                if item == 'minimize':
+                    hk_minimize_csgo()
+                elif item == 'activate':
+                    hk_activate()
+                elif item == 'pushbullet':
+                    cs.activate_afk_message()
+                elif item == 'upload':
+                    hk_upload_match()
+                elif item == 'switch_accounts':
+                    hk_switch_accounts()
+                elif item == 'mute':
+                    cs.mute_csgo(2)
+                elif item == 'discord_toggle':
+                    hk_discord_toggle()
+                elif item == 'end':
+                    hk_kill_main_loop()
+                elif item == 'fetch_status':
+                    hk_fetch_status()
+            except queue.Empty:
+                pass
 
 
 def hk_activate():
     if not game_state['map_phase'] in ['live', 'warmup']:
         truth_table['test_for_server'] = not truth_table['test_for_server']
-        write(f'Looking for game: {truth_table["test_for_server"]}', overwrite='1')
+        write(magenta(f'Looking for match: {truth_table["test_for_server"]}'), overwrite='1')
         if truth_table['test_for_server']:
             playsound('sounds/activated.wav', block=False)
             time_table['search_started'] = time.time()
@@ -122,7 +120,7 @@ def hk_kill_main_loop():
     running = False
 
 
-def hk_minimize_csgo(reset_position: tuple):
+def hk_minimize_csgo():
     global hwnd
     if hwnd == 0:
         return
@@ -146,7 +144,7 @@ def hk_fetch_status():
     global hwnd
     if hwnd == 0:
         return
-    cs.request_status_command(hwnd, cs.cfg.taskbar_position, key=cs.cfg.status_key)
+    cs.request_status_command(hwnd, cs.cfg.status_key)
     thread_ = cs.MatchRequest()
     thread_.start()
 
@@ -639,7 +637,7 @@ while running:
                     truth_table['players_still_connecting'] = True
                     time_table['warmup_started'] = time.time()
                     if cs.cfg.status_key:
-                        cs.request_status_command(hwnd, cs.cfg.taskbar_position, key=cs.cfg.status_key)
+                        cs.request_status_command(hwnd, cs.cfg.status_key)
                         thread = cs.MatchRequest()
                         thread.start()
                     break
