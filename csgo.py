@@ -243,7 +243,7 @@ while running:
             t = Thread(target=upload_matches, args=(False, None), name='UploadThread')
             t.start()
 
-    csgo = [(hwnd, title) for hwnd, title in cs.window_ids if 'counter-strike: global offensive' == title.lower()]
+    csgo = [(hwnd, title) for hwnd, title in cs.window_ids if 'counter-strike: global offensive' in title.lower()]
 
     if not csgo:
         time.sleep(0.5)
