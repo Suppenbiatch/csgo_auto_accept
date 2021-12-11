@@ -222,6 +222,12 @@ csgo_window_status = {'server_found': 2, 'new_tab': 2, 'in_game': 0}
 csgo = []
 
 updater = CSGOStatsUpdater(cs.cfg, cs.account, cs.path_vars['db_path'])
+server_online = updater.check_status()
+if server_online:
+    write(green('CSGO Discord Bot ONLINE'))
+else:
+    write(red('CSGO Discord Bot OFFLINE'))
+
 retryer = []
 
 game_state = {'map_phase': []}

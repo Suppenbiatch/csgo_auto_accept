@@ -23,6 +23,13 @@ class CSGOStatsUpdater:
     def new_account(self, account):
         self.account = account
 
+    def check_status(self):
+        try:
+            r = requests.get(f'http://{self.cfg.server_ip}:{self.cfg.server_port}/', timeout=0.5)
+            return r.status_code == 200
+        except requests.ConnectionError:
+            return False
+
     def update_csgo_stats(self, new_codes: List[dict], discord_output: bool = False):
         sharecodes = [match_dict['sharecode'] for match_dict in new_codes]
 
