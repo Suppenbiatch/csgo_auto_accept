@@ -364,7 +364,7 @@ def check_for_forbidden_programs(process_list):
 
 def read_console():
     log_path = os.path.join(path_vars['csgo_path'], 'console_log.log')
-    with open(log_path, 'r+', encoding='utf-8') as log:
+    with open(log_path, 'r+', encoding='utf-8', errors='ignore') as log:
         data = log.readlines()
         console_lines = [i.strip('\n') for i in data]
         if len(console_lines) >= 1:
