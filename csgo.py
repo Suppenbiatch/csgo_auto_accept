@@ -600,9 +600,21 @@ while running:
                 write(time_str, add_time=False)
 
             player_stats['map'] = score['map']
-            player_stats['match_time'] = round(float(match_time))
-            player_stats['wait_time'] = round(float(search_time))
-            player_stats['afk_time'] = round(float(afk_time))
+
+            try:
+                player_stats['match_time'] = round(float(match_time))
+            except TypeError:
+                player_stats['match_time'] = None
+
+            try:
+                player_stats['wait_time'] = round(float(search_time))
+            except TypeError:
+                player_stats['wait_time'] = None
+
+            try:
+                player_stats['afk_time'] = round(float(afk_time))
+            except TypeError:
+                player_stats['afk_time'] = None
 
             t = Thread(target=upload_matches, args=(True, player_stats), name='UploadThread')
             t.start()
