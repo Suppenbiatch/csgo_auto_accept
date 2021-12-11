@@ -10,7 +10,7 @@ __all__ = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'white', 'magen
 
 
 def red(text: str):
-    return color(text, Colors.red)
+    return color(text, (255, 0, 0))
 
 
 def orange(text: str):
@@ -18,7 +18,7 @@ def orange(text: str):
 
 
 def yellow(text: str):
-    return color(text, Colors.yellow)
+    return color(text, (255, 255, 0))
 
 
 def green(text: str):
@@ -124,3 +124,12 @@ class SendDiscordMessage(Thread):
                     pass
                 except BaseException as e:
                     write(red(f'sending message failed with {repr(e)}'))
+
+
+if __name__ == '__main__':
+    write(yellow('Hello World'))
+    write(f'{ColorsFG.BrightYellow}Hello World')
+    write(f'{ColorsFG.Yellow}Hello World')
+    write(f'{ColorsFG.Red}Hello World')
+    write(f'{ColorsFG.BrightRed}Hello World')
+    write(red('Hello World'))
