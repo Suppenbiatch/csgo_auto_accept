@@ -3,6 +3,7 @@ import queue
 import re
 import socketserver
 import statistics
+import subprocess
 import time
 from threading import Thread
 
@@ -220,6 +221,7 @@ afk_sender.start()
 hwnd, hwnd_old = 0, 0
 csgo_window_status = {'server_found': 2, 'new_tab': 2, 'in_game': 0}
 csgo = []
+subprocess.call('cls', shell=True)
 
 updater = CSGOStatsUpdater(cs.cfg, cs.account, cs.path_vars['db_path'])
 server_online = updater.check_status()
