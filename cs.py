@@ -1,10 +1,12 @@
 import configparser
+import csv
 import json
 import operator
 import os
 import random
 import re
 import sqlite3
+import subprocess
 import sys
 import threading
 import time
@@ -21,8 +23,8 @@ import requests
 import win32api
 import win32con
 import win32gui
+import win32process
 from PIL import ImageGrab, Image
-
 from pytz import utc
 
 from GSI import server
@@ -360,14 +362,18 @@ def check_for_forbidden_programs(process_list):
         return False
 
 
-# noinspection PyShadowingNames
 def read_console():
-    with open(os.path.join(path_vars['csgo_path'], 'console_log.log'), 'r+', encoding='utf-8', errors='ignore') as log:
-        console_lines = [i.strip('\n') for i in log.readlines()]
-        log.seek(0)
-        log.truncate()
-    with open(os.path.join(path_vars['appdata_path'], 'console.log'), 'a', encoding='utf-8') as debug_log:
-        [debug_log.write(i + '\n') for i in console_lines]
+    log_path = os.path.join(path_vars['csgo_path'], 'console_log.log')
+    with open(log_path, 'r+', encoding='utf-8') as log:
+        data = log.readlines()
+        console_lines = [i.strip('\n') for i in data]
+        if len(console_lines) >= 1:
+            log.seek(0, os.SEEK_SET)
+            log.truncate(0)
+            with open(os.path.join(path_vars['appdata_path'], 'console.log'), 'a', encoding='utf-8') as debug_log:
+                [debug_log.write(i + '\n') for i in console_lines]
+        else:
+            console_lines = []
     return {'msg': str_in_list(['Matchmaking message: '], console_lines, replace=True), 'update': str_in_list(['Matchmaking update: '], console_lines, replace=True),
             'players_accepted': str_in_list(['Server reservation2 is awaiting '], console_lines, replace=True), 'lobby_data': str_in_list(["LobbySetData: "], console_lines, replace=True),
             'server_found': str_in_list(['Matchmaking reservation confirmed: '], console_lines), 'server_ready': str_in_list(['ready-up!'], console_lines),
@@ -420,20 +426,33 @@ def time_output(current: Union[float, int], average: Union[float, int]):
 
 # noinspection PyShadowingNames
 def enum_cb(hwnd: int, results: list):
-    results.append((hwnd, win32gui.GetWindowText(hwnd)))
+    _, cpid = win32process.GetWindowThreadProcessId(hwnd)
+    name = win32gui.GetWindowText(hwnd)
+    results.append((hwnd, name, cpid))
 
 
-def email_decode(encoded_string):
-    r = int(encoded_string[:2], 16)
-    email = ''.join([chr(int(encoded_string[i:i + 2], 16) ^ r) for i in range(2, len(encoded_string), 2)])
-    return email
+def get_hwnd(exe_name: str = 'csgo.exe', window_name: str = 'counter-strike'):
+    r = subprocess.check_output(f'tasklist /FI "IMAGENAME EQ {exe_name}" /FO "CSV"', shell=False)
+    procs = [line.decode('utf-8', errors='ignore') for line in r.splitlines()]
+    data = list(csv.DictReader(procs))
+    if len(data) < 1:
+        raise ProcessNotFoundError(exe_name)
+    pid = int(data[0]["PID"])
+    for window_id, title, cpid in window_ids:
+        if cpid == pid:
+            if window_name in title.lower():
+                return window_id
+    raise WindowNotFoundError(window_name)
 
 
-def check_if_running(program_name: str = 'counter-strike: global offensive'):
-    ids = []
-    win32gui.EnumWindows(enum_cb, ids)
-    program = [(hwnd, title) for hwnd, title in ids if program_name.lower() == title.lower()]
-    return bool(program)
+class ProcessNotFoundError(BaseException):
+    def __init__(self, name):
+        super().__init__(f'no process found by {name}')
+
+
+class WindowNotFoundError(BaseException):
+    def __init__(self, name):
+        super().__init__(f'no window found for {name}')
 
 
 def restart_gsi_server(gsi_server: server.GSIServer = None):
@@ -441,7 +460,7 @@ def restart_gsi_server(gsi_server: server.GSIServer = None):
         gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
     elif gsi_server.running:
         gsi_server.shutdown()
-        if check_if_running():
+        if get_hwnd() is not None:
             gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
             gsi_server.start_server()
         else:
@@ -522,9 +541,10 @@ def match_win_list(number_of_matches: int, _steam_id, time_difference: int = 7_2
 # noinspection PyShadowingNames
 class WindowEnumerator(threading.Thread):
     def __init__(self, sleep_interval: float = 0.5):
-        super().__init__(name='WindowEnumerator', daemon=True)
+        super().__init__(name='WindowEnumerator')
         self._kill = threading.Event()
         self._interval = sleep_interval
+        self.daemon = True
 
     def run(self):
         global window_ids
@@ -535,6 +555,7 @@ class WindowEnumerator(threading.Thread):
             is_killed = self._kill.wait(self._interval)
             if is_killed:
                 break
+            time.sleep(0.5)
 
     def kill(self):
         self._kill.set()
@@ -597,7 +618,6 @@ except (configparser.NoOptionError, configparser.NoSectionError, ValueError) as 
     cfg = None
     exit('REPAIR CONFIG')
 
-
 accounts = []
 get_accounts_from_cfg()
 get_csgo_path()
@@ -628,7 +648,6 @@ if path_vars['csgo_path']:
     if not os.path.exists(os.path.join(path_vars['csgo_path'], 'cfg', 'gamestate_integration_GSI.cfg')):
         copyfile(os.path.join(os.getcwd(), 'GSI', 'gamestate_integration_GSI.cfg'), os.path.join(path_vars['csgo_path'], 'cfg', 'gamestate_integration_GSI.cfg'))
         write(red('Added GSI CONFIG to cfg folder. Counter-Strike needs to be restarted if running!'))
-
 
 afk_message = False
 

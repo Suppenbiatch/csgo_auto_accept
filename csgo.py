@@ -244,13 +244,12 @@ while running:
         if time.time() - time_table['csgostats_retry'] > cs.cfg.auto_retry_interval:
             t = Thread(target=upload_matches, args=(False, None), name='UploadThread')
             t.start()
-
-    csgo = [(hwnd, title) for hwnd, title in cs.window_ids if 'counter-strike: global offensive' in title.lower()]
-
-    if not csgo:
-        time.sleep(0.5)
-        continue
-    hwnd = csgo[0][0]
+    try:
+        hwnd = cs.get_hwnd()
+    except cs.ProcessNotFoundError:
+        pass
+    except cs.WindowNotFoundError:
+        pass
 
     if hwnd_old != hwnd:
         truth_table['test_for_server'] = False
