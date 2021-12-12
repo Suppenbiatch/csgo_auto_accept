@@ -6,7 +6,7 @@ from typing import Optional
 __all__ = ['create_table']
 
 
-def create_table(db_path, first_sharecode: Optional[str], steam_id: Optional[int], timestamp):
+def create_table(db_path, first_sharecode: Optional[str], steam_id: Optional[int]):
     if os.path.isfile(db_path):
         return
     with sqlite3.connect(db_path) as db:
@@ -48,5 +48,5 @@ def create_table(db_path, first_sharecode: Optional[str], steam_id: Optional[int
 );
 """)
         if first_sharecode is not None:
-            db.execute("""INSERT INTO matches (sharecode, steam_id, timestamp) VALUES (?, ?, ?)""", (first_sharecode, steam_id, timestamp))
+            db.execute("""INSERT INTO matches (sharecode, steam_id, timestamp) VALUES (?, ?, ?)""", (first_sharecode, steam_id, 0.0))
         db.commit()

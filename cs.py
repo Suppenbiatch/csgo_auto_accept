@@ -258,20 +258,29 @@ def get_avg_match_time(steam_id: int):
         cur = db.execute("""SELECT SUM(afk_time), COUNT(afk_time), SUM(team_score + enemy_score) FROM matches WHERE steam_id = ? AND afk_time NOT NULL""", (steam_id,))
         afk_sum, afk_count, rounds_sum = cur.fetchone()
 
-    afk_avg = afk_sum / afk_count
-    afk_per_round = afk_sum / rounds_sum
-    return {
-        'match_time': (round(match_avg, 0), match_sum),
-        'search_time': (round(search_avg, 0), search_sum),
-        'afk_time': (round(afk_avg), afk_sum, round(afk_per_round, 0))
-    }
+    data = {}
+    if match_avg is not None and match_sum is not None:
+        data['match_time'] = (round(match_avg, 0), match_sum)
+    else:
+        data['match_time'] = (0, 0)
+
+    if search_avg is not None and search_sum is not None:
+        data['search_time'] = (round(search_avg, 0), search_sum)
+    else:
+        data['search_time'] = (0, 0)
+
+    if afk_sum is not None and afk_count != 0:
+        data['afk_time'] = round(afk_sum / afk_count), afk_sum, round(afk_sum / rounds_sum, 0)
+    else:
+        data['afk_time'] = 0, 0, 0
+
+    return data
 
 
 def add_first_match(path):
     if not account['match_token']:
         raise ValueError('Missing Match Token in Config')
-    now = datetime.now(tz=utc).timestamp()
-    create_table(path, account['match_token'], account['steam_id'], now)
+    create_table(path, account['match_token'], account['steam_id'])
     return [account['match_token']]
 
 
@@ -326,8 +335,8 @@ def get_new_sharecodes(game_id: str, stats=None):
             # > 1 is true if there is a new sharecode, first sharecode is the last supplied one
 
             # add all matches expect the newest one without any extra data
-            db_data = [(sharecode, int(steam_id)) for sharecode in sharecodes[:-1]]
-            db.executemany("""INSERT OR IGNORE INTO matches (sharecode, steam_id) VALUES (?, ?)""", db_data)
+            db_data = [(sharecode, int(steam_id), 0.0) for sharecode in sharecodes[:-1]]
+            db.executemany("""INSERT OR IGNORE INTO matches (sharecode, steam_id, timestamp) VALUES (?, ?, ?)""", db_data)
 
             if stats is None:
                 stats = {'map': None, 'match_time': None, 'wait_time': None, 'afk_time': None, 'mvps': None, 'score': None}
@@ -658,6 +667,4 @@ sleep_interval_looking_for_accept = 0.05
 log_reader = LogReader(os.path.join(path_vars['appdata_path'], 'console.log'))
 
 if __name__ == '__main__':
-    while True:
-        pass
     pass
