@@ -127,9 +127,4 @@ class SendDiscordMessage(Thread):
 
 
 if __name__ == '__main__':
-    write(yellow('Hello World'))
-    write(f'{ColorsFG.BrightYellow}Hello World')
-    write(f'{ColorsFG.Yellow}Hello World')
-    write(f'{ColorsFG.Red}Hello World')
-    write(f'{ColorsFG.BrightRed}Hello World')
-    write(red('Hello World'))
+    pass

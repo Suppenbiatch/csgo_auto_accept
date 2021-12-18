@@ -32,11 +32,14 @@ class CSGOStatsUpdater:
 
     def update_csgo_stats(self, new_codes: List[dict], discord_output: bool = False):
         sharecodes = [match_dict['sharecode'] for match_dict in new_codes]
-
-        r = requests.post(f'http://{self.cfg.server_ip}:{self.cfg.server_port}/matches', json={'sharecodes': sharecodes})
-        if r.status_code != 200:
-            write(red(f'ERROR: {r.status_code}, {r.text}'))
-            return new_codes
+        try:
+            r = requests.post(f'http://{self.cfg.server_ip}:{self.cfg.server_port}/matches', json={'sharecodes': sharecodes})
+            if r.status_code != 200:
+                write(red(f'ERROR: {r.status_code}, {r.text}'))
+                return new_codes
+        except requests.ConnectionError:
+            write(red('CSGO Discord Bot OFFLINE'))
+            return []
         data = r.json()
 
         completed_games = []

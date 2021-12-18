@@ -380,7 +380,7 @@ while running:
             if i[0] == 'CTSlotsFree' and i[1] == 0:
                 join_dict['ct_full'] = True
             if join_dict['t_full'] and join_dict['ct_full']:
-                best_of = red(f"BR{scoreboard['max_rounds']}")
+                best_of = red(f"MR{scoreboard['max_rounds']}")
                 msg = f'Server full, All Players connected. ' \
                       f'{best_of}, '  \
                       f'Took {cs.timedelta(time_table["warmup_started"])} since match start.'
@@ -483,7 +483,7 @@ while running:
         truth_table['game_minimized_freezetime'] = cs.round_start_msg(message, game_state['round_phase'], time_table['freezetime_started'], truth_table['game_minimized_freezetime'], win32gui.GetWindowPlacement(hwnd)[1] == 2, scoreboard)
     elif truth_table['game_minimized_warmup']:
         try:
-            best_of = red(f"BR{scoreboard['max_rounds']}")
+            best_of = red(f"MR{scoreboard['max_rounds']}")
             message = f'Warmup is over! Map: {green(" ".join(gsi_server.get_info("map", "name").split("_")[1:]).title())}, Team: {team}, {best_of}, Took: {cs.timedelta(seconds=time_table["warmup_seconds"])}'
             truth_table['game_minimized_warmup'] = cs.round_start_msg(message, game_state['round_phase'], time_table['freezetime_started'], truth_table['game_minimized_warmup'], win32gui.GetWindowPlacement(hwnd)[1] == 2, scoreboard)
         except AttributeError:
@@ -591,7 +591,7 @@ while running:
                 search_time = timings['search']
                 afk_time = timings['afk']
             else:
-                match_time, search_time, afk_time = '', '', ''
+                match_time, search_time, afk_time = None, None, None
 
             total_time = (f'Time in competitive matchmaking: {cs.timedelta(seconds=average["match_time"][1])}',
                           f'Time in the searching queue: {cs.timedelta(seconds=average["search_time"][1])}',
@@ -647,8 +647,8 @@ while running:
                           f'Last Games: {cs.match_win_list(cs.cfg.match_list_lenght, cs.steam_id, time_difference=7_200)}'
                     write(msg, add_time=True, overwrite='12')
                     if cs.afk_message is True:
-                        msg = f'You will play on {green(" ".join(saved_map.split("_")[1:]).title())} as {team} in the first half. ' \
-                              f'Last Games: {cs.match_win_list(cs.cfg.match_list_lenght, cs.steam_id, time_difference=7_200, replace_chars=True)}'
+                        msg = f'You will play on `{" ".join(saved_map.split("_")[1:]).title()}` as `{team}` in the first half. ' \
+                              f'Last Games: `{cs.match_win_list(cs.cfg.match_list_lenght, cs.steam_id, time_difference=7_200, replace_chars=True)}`'
                         message_queue.put(msg)
 
                     truth_table['still_in_warmup'] = True

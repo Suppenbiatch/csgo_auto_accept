@@ -491,7 +491,7 @@ def request_status_command(hwnd, key: str = 'F12'):
 
 
 class MatchRequest(threading.Thread):
-    """Using a thread so we are not blocking the script while performing the request"""
+    """Using a thread, so we are not blocking the script while performing the request"""
 
     def __init__(self):
         super().__init__()
@@ -506,9 +506,13 @@ class MatchRequest(threading.Thread):
             return
         data = match_log.to_web_request(cfg.secret, steam_id)
         url = f"http://{cfg.server_ip}:{cfg.server_port}/check"
-        r = requests.post(url, json=data)
-        if r.status_code != 200:
-            write(f'failed to send check match message to {repr(cfg.server_ip)} with status {r.status_code} - {r.text}')
+        try:
+            r = requests.post(url, json=data)
+            if r.status_code != 200:
+                write(f'failed to send check match message to {repr(cfg.server_ip)} with status {r.status_code} - {r.text}')
+        except requests.ConnectionError:
+            write(red('CSGO Discord Bot OFFLINE'))
+        return
 
 
 def match_win_list(number_of_matches: int, _steam_id, time_difference: int = 7_200, replace_chars: bool = False):
@@ -529,7 +533,7 @@ def match_win_list(number_of_matches: int, _steam_id, time_difference: int = 7_2
             char = '\u2588' if not replace_chars else 'L'
             outcome_lst.append((timestamp, red(char)))
         elif outcome == 'D':
-            char = '\u2588' if not replace_chars else 'W'
+            char = '\u2588' if not replace_chars else 'D'
             outcome_lst.append((timestamp, blue(char)))
         else:
             char = '\u2588' if not replace_chars else 'U'
