@@ -70,7 +70,6 @@ class LogReader:
             for player_dict in players:
                 steam3, align_num = player_dict['uniqueid'].split(':')
                 steam_id = to_steam_id(steam3, align_num)
-                # player_dict['steam_id'] = steam_id
                 steam_ids.append(steam_id)
             server = _map = None
             for line in status:
@@ -81,3 +80,9 @@ class LogReader:
                     _map = re.search(r'map\s+:\s(.+)', line)
                     _map = _map.group(1) if _map is not None else None
             return LogInfo(server, _map, max_rounds, steam_ids)
+
+
+if __name__ == '__main__':
+    reader = LogReader(r"C:\Users\Suppe\Desktop\status.txt")
+    data = reader.get_log_info()
+    print(data)
