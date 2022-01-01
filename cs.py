@@ -69,8 +69,15 @@ def set_mouse_position(location: tuple):
 
 
 def minimize_csgo(window_id: int):
-    win32gui.PostMessage(window_id, win32con.WM_SYSKEYUP, 0x1B, 0)
-    win32gui.PostMessage(window_id, win32con.WM_SYSKEYDOWN, 0x1B, 0)
+    try:
+        win32gui.PostMessage(window_id, win32con.WM_SYSKEYUP, 0x1B, 0)
+        win32gui.PostMessage(window_id, win32con.WM_SYSKEYDOWN, 0x1B, 0)
+    except BaseException as e:
+        if e.args[0] == 1400:
+            pass
+        else:
+            raise e
+
 
 
 # noinspection PyShadowingNames
@@ -469,10 +476,11 @@ def restart_gsi_server(gsi_server: server.GSIServer = None):
         gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
     elif gsi_server.running:
         gsi_server.shutdown()
-        if get_hwnd() is not None:
+        try:
+            get_hwnd()
             gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
             gsi_server.start_server()
-        else:
+        except WindowNotFoundError:
             gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
     else:
         gsi_server.start_server()
