@@ -79,7 +79,6 @@ def minimize_csgo(window_id: int):
             raise e
 
 
-
 # noinspection PyShadowingNames
 def anti_afk(window_id: int):
     current_cursor_position = win32api.GetCursorPos()
@@ -409,26 +408,26 @@ def activate_afk_message():
         write(magenta('NOT sending AFK Messages'), overwrite='2')
 
 
-def round_start_msg(msg: str, round_phase: str, freezetime_start: float, old_window_status: bool, current_window_status: bool, scoreboard: dict, overwrite_key: str = '7'):
-    if old_window_status:
-        if current_window_status:
-            timer_stopped = ''
-        else:
-            old_window_status = False
-            timer_stopped = ' - ' + green('stopped')
+def round_start_msg(msg: str, round_phase: str, freezetime_start: float, current_window_status: bool, scoreboard: dict, overwrite_key: str = '7'):
+    if current_window_status:
+        timer_stopped = ''
+        old_window_status = True
+    else:
+        old_window_status = False
+        timer_stopped = ' - ' + green('stopped')
 
-        freeze_time = scoreboard['freeze_time']
-        buy_time = scoreboard['buy_time']
+    freeze_time = scoreboard['freeze_time']
+    buy_time = scoreboard['buy_time']
 
-        if round_phase == 'freezetime':
-            time_str = green(timedelta(seconds=time.time() - (freezetime_start + freeze_time)))
-        elif time.time() - freezetime_start > 35:
-            time_str = red(timedelta(then=freezetime_start))
-        else:
-            time_str = yellow(timedelta(seconds=time.time() - (freezetime_start + freeze_time + buy_time)))
+    if round_phase == 'freezetime':
+        time_str = green(timedelta(seconds=time.time() - (freezetime_start + freeze_time)))
+    elif time.time() - freezetime_start > 35:
+        time_str = red(timedelta(then=freezetime_start))
+    else:
+        time_str = yellow(timedelta(seconds=time.time() - (freezetime_start + freeze_time + buy_time)))
 
-        msg += f' - {time_str}{timer_stopped}'
-        write(msg, overwrite=overwrite_key)
+    msg += f' - {time_str}{timer_stopped}'
+    write(msg, overwrite=overwrite_key)
     return old_window_status
 
 
