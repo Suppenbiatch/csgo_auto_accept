@@ -221,7 +221,7 @@ def upload_matches(look_for_new: bool = True, stats=None):
         return
     retryer = updater.update_csgo_stats(retryer, discord_output=Truth.discord_output)
     Time.csgostats_retry = time.time()
-    Truth.discord_output = False
+    Truth.upload_thread_activ = False
     return
 
 
