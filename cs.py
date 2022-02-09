@@ -479,7 +479,7 @@ def restart_gsi_server(gsi_server: server.GSIServer = None):
             get_hwnd()
             gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
             gsi_server.start_server()
-        except WindowNotFoundError:
+        except (WindowNotFoundError, ProcessNotFoundError):
             gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
     else:
         gsi_server.start_server()
