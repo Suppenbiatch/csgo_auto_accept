@@ -70,8 +70,8 @@ def set_mouse_position(location: tuple):
 
 def minimize_csgo(window_id: int):
     try:
-        win32gui.PostMessage(window_id, win32con.WM_SYSKEYUP, 0x1B, 0)
         win32gui.PostMessage(window_id, win32con.WM_SYSKEYDOWN, 0x1B, 0)
+        win32gui.PostMessage(window_id, win32con.WM_SYSKEYUP, 0x1B, 0)
     except BaseException as e:
         if e.args[0] == 1400:
             pass
@@ -238,7 +238,7 @@ def get_current_steam_user():
 def check_userdata_autoexec(steam_id_3: str):
     global path_vars, cfg
     userdata_path = os.path.join(path_vars['steam_path'], 'userdata', steam_id_3, '730', 'local', 'cfg')
-    str_in_autoexec = ['developer 1', 'con_logfile "console_log.log"', 'con_filter_enable "2"',
+    str_in_autoexec = ['sv_max_allowed_developer 1', 'developer 1', 'con_logfile "console_log.log"', 'con_filter_enable "2"',
                        'con_filter_text_out "Player:"', 'con_filter_text "Damage"', f'log_color General {cfg.log_color}',
                        f'bind "{cfg.status_key}" "status"' if cfg.status_key else '']
     os.makedirs(userdata_path, exist_ok=True)
