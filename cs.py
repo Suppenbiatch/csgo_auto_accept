@@ -444,7 +444,7 @@ def activate_afk_message():
         write(magenta('NOT sending AFK Messages'), overwrite='2')
 
 
-def round_start_msg(msg: str, round_phase: str, freezetime_start: float, current_window_status: bool, scoreboard: dict, overwrite_key: str = '7'):
+def round_start_msg(msg: str, round_phase: str, freezetime_start: float, current_window_status: bool, scoreboard, overwrite_key: str = '7'):
     if current_window_status:
         timer_stopped = ''
         old_window_status = True
@@ -452,12 +452,12 @@ def round_start_msg(msg: str, round_phase: str, freezetime_start: float, current
         old_window_status = False
         timer_stopped = ' - ' + green('stopped')
 
-    freeze_time = scoreboard['freeze_time']
-    buy_time = scoreboard['buy_time']
+    freeze_time = scoreboard.freeze_time
+    buy_time = scoreboard.buy_time
 
     if round_phase == 'freezetime':
         time_str = green(timedelta(seconds=time.time() - (freezetime_start + freeze_time)))
-    elif time.time() - freezetime_start > 35:
+    elif time.time() - freezetime_start > freeze_time + buy_time:
         time_str = red(timedelta(then=freezetime_start))
     else:
         time_str = yellow(timedelta(seconds=time.time() - (freezetime_start + freeze_time + buy_time)))
@@ -633,6 +633,7 @@ config.read('config.ini')
 try:
     @dataclass
     class ConfigItems:
+        webhook_ip = config.get('HotKeys', 'WebHook IP')
         webhook_port = config.getint('HotKeys', 'WebHook Port')
 
         sleep_interval: float = config.getfloat('Script Settings', 'Interval')
@@ -648,6 +649,8 @@ try:
         server_port: int = config.getint('csgostats.gg', 'WebServer Port')
         discord_user_id: int = config.getint('Notifier', 'Discord User ID')
         telnet_port: int = config.getint('Script Settings', 'TelNet Port')
+        telnet_ip: str = config.get('Script Settings', 'TelNet IP')
+        autobuy: str = config.get('Script Settings', 'AutoBuy')
 
         def __post_init__(self):
             self.log_color = self.log_color.lower()

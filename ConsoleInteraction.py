@@ -39,10 +39,16 @@ class TelNetConsoleReader(threading.Thread):
         except ConnectionRefusedError:
             self.closed = True
             return
+
         self.closed = False
 
         while True:
-            data = self.tl.read_very_eager()
+            try:
+                data = self.tl.read_very_eager()
+            except EOFError:
+                self.closed = True
+                break
+
             if data != b'':
                 text = data.decode('utf-8', errors='replace').strip().splitlines()
                 for line in text:
@@ -73,14 +79,12 @@ def main():
         time.sleep(0.2)
 
     while True:
-        try:
+        while not tl_thread.received.empty():
             message = tl_thread.received.get_nowait()
             print(message)
-        except queue.Empty:
-            pass
-        if random.randint(0, 10) == 1:
+        if random.randint(0, 20) == 1:
+            tl_thread.send('status')
             print('send status command')
-            tl_thread.send.put_nowait('status')
         time.sleep(1)
 
 

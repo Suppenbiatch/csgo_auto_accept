@@ -10,7 +10,7 @@ import time
 from dataclasses import dataclass, field
 from threading import Thread
 from typing import List
-from urllib.parse import unquote
+from urllib.parse import unquote_plus
 
 import win32api
 import win32con
@@ -42,7 +42,7 @@ class WebHookHandler(http.server.BaseHTTPRequestHandler):
         if len(items) != 0:
             query = dict(items)
             for key, value in query.items():
-                _str = unquote(value)
+                _str = unquote_plus(value)
                 try:
                     value = json.loads(_str)
                 except json.JSONDecodeError:
@@ -54,12 +54,13 @@ class WebHookHandler(http.server.BaseHTTPRequestHandler):
 
 
 class WebServer(Thread):
-    def __init__(self, port: int):
+    def __init__(self, ip: str, port: int):
+        self.ip = ip
         self.port = port
         super().__init__(name='WebHookServer', daemon=True)
 
     def run(self) -> None:
-        with socketserver.TCPServer(("127.0.0.1", self.port), WebHookHandler) as httpd:
+        with socketserver.TCPServer((self.ip, self.port), WebHookHandler) as httpd:
             # print("serving at port", PORT)
             httpd.serve_forever()
 
@@ -121,7 +122,8 @@ class Truth:
     game_minimized_warmup: bool = False
     discord_output: bool = True
     gsi_first_launch: bool = True
-    upload_thread_activ: bool = False
+    upload_thread_active: bool = False
+    first_autobuy: bool = True
 
 
 @dataclass()
@@ -151,15 +153,43 @@ class AFK:
     anti_afk_active: bool = False
 
 
+@dataclass()
+class GameState:
+    map_phase: str = None
+    round_phase: str = None
+
+
+@dataclass()
+class Scoreboard:
+    CT: int = 0
+    T: int = 0
+    last_round_info: dict = None
+    last_round_winner: str = ''
+    last_round_key: str = '0'
+    last_round_text: str = ''
+    extra_round_info: str = ''
+    max_rounds: int = 30
+    buy_time: int = 20
+    freeze_time: int = 15
+    player: dict = None
+    weapons: List[str] = None
+    c4: str = ''
+    total_score: int = 0
+    team: str = ''
+    opposing_team: str = ''
+    current_weapons: List[str] = None
+    has_c4: bool = False
+
+
 def hk_activate():
-    if not game_state['map_phase'] in ['live', 'warmup']:
-        Truth.test_for_server = not Truth.test_for_server
-        write(magenta(f'Looking for match: {Truth.test_for_server}'), overwrite='1')
-        if Truth.test_for_server:
+    if game_state.map_phase not in ['live', 'warmup']:
+        truth.test_for_server = not truth.test_for_server
+        write(magenta(f'Looking for match: {truth.test_for_server}'), overwrite='1')
+        if truth.test_for_server:
             playsound('sounds/activated.wav', block=False)
-            Time.search_started = time.time()
+            times.search_started = time.time()
             cs.mute_csgo(1)
-        elif not Truth.test_for_server:
+        elif not truth.test_for_server:
             playsound('sounds/deactivated.wav', block=False)
             cs.mute_csgo(0)
 
@@ -183,8 +213,8 @@ def hk_switch_accounts():
 
 
 def hk_discord_toggle():
-    Truth.discord_output = not Truth.discord_output
-    if Truth.discord_output:
+    truth.discord_output = not truth.discord_output
+    if truth.discord_output:
         write(green('Discord output activated'), add_time=False, overwrite='13')
     else:
         write(red('Discord output deactivated'), add_time=False, overwrite='13')
@@ -262,16 +292,16 @@ def gsi_server_status():
 
 def upload_matches(look_for_new: bool = True, stats=None):
     global retryer
-    if Truth.upload_thread_activ:
+    if truth.upload_thread_activ:
         write(magenta('Another Upload-Thread is still active'))
         return
-    Truth.upload_thread_activ = True
+    truth.upload_thread_activ = True
     if look_for_new is True:
         try:
             latest_sharecode = cs.get_old_sharecodes(-1)
         except ValueError:
             write(red('no match token in config, aborting'))
-            Truth.upload_thread_activ = False
+            truth.upload_thread_activ = False
             return
 
         new_sharecodes = cs.get_new_sharecodes(latest_sharecode[0], stats=stats)
@@ -279,14 +309,14 @@ def upload_matches(look_for_new: bool = True, stats=None):
         for new_code in new_sharecodes:
             retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
 
-    Time.csgostats_retry = time.time()
+    times.csgostats_retry = time.time()
     if not retryer:
         write(yellow('no new sharecodes found, aborting'))
-        Truth.upload_thread_activ = False
+        truth.upload_thread_activ = False
         return
-    retryer = updater.update_csgo_stats(retryer, discord_output=Truth.discord_output)
-    Time.csgostats_retry = time.time()
-    Truth.upload_thread_activ = False
+    retryer = updater.update_csgo_stats(retryer, discord_output=truth.discord_output)
+    times.csgostats_retry = time.time()
+    truth.upload_thread_activ = False
     return
 
 
@@ -303,8 +333,11 @@ def read_telnet():
 
 
 afk = AFK()
+truth = Truth()
+times = Time()
+scoreboard = Scoreboard()
+
 join_dict = {'t_full': False, 'ct_full': False}
-scoreboard = {'CT': 0, 'T': 0, 'last_round_info': '', 'last_round_key': '0', 'extra_round_info': '', 'player': {}, 'max_rounds': 30, 'buy_time': 20, 'freeze_time': 15}
 team = yellow('Unknown')
 player_stats = {}
 
@@ -313,7 +346,7 @@ gsi_server = cs.restart_gsi_server(None)
 window_enum = cs.WindowEnumerator()
 window_enum.start()
 
-webhook = WebServer(cs.cfg.webhook_port)
+webhook = WebServer(cs.cfg.webhook_ip, cs.cfg.webhook_port)
 webhook_parser = ResultParser()
 webhook_parser.start()
 webhook.start()
@@ -321,7 +354,7 @@ webhook.start()
 afk_sender = SendDiscordMessage(cs.cfg.discord_user_id, cs.cfg.server_ip, cs.cfg.server_port, message_queue)
 afk_sender.start()
 
-telnet = TelNetConsoleReader('127.0.0.1', cs.cfg.telnet_port)  # start thread when game is running
+telnet = TelNetConsoleReader(cs.cfg.telnet_ip, cs.cfg.telnet_port)  # start thread when game is running
 
 hwnd, hwnd_old = 0, 0
 csgo_window_status = {'server_found': 2, 'new_tab': 2, 'in_game': 0}
@@ -336,8 +369,6 @@ else:
     write(red('CSGO Discord Bot OFFLINE'))
 
 retryer = []
-
-game_state = {'map_phase': []}
 cs.mute_csgo(0)
 
 write(green('READY'))
@@ -345,8 +376,8 @@ running = True
 
 while running:
 
-    if retryer and not Truth.upload_thread_activ:
-        if time.time() - Time.csgostats_retry > cs.cfg.auto_retry_interval:
+    if retryer and not truth.upload_thread_active:
+        if time.time() - times.csgostats_retry > cs.cfg.auto_retry_interval:
             t = Thread(target=upload_matches, args=(False, None), name='UploadThread')
             t.start()
     try:
@@ -357,7 +388,7 @@ while running:
         pass
 
     if hwnd_old != hwnd:
-        Truth.test_for_server = False
+        truth.test_for_server = False
         hwnd_old = hwnd
         cs.steam_id = cs.get_current_steam_user()
         try:
@@ -376,11 +407,11 @@ while running:
             playsound('sounds/fail.wav', block=False)
 
         gsi_server = cs.restart_gsi_server(gsi_server)
-        Truth.gsi_first_launch = True
+        truth.gsi_first_launch = True
 
-    if Truth.gsi_first_launch and gsi_server.running:
+    if truth.gsi_first_launch and gsi_server.running:
         write(green('GSI Server running'), overwrite='8')
-        Truth.gsi_first_launch = False
+        truth.gsi_first_launch = False
 
     if not gsi_server.running:
         time.sleep(cs.sleep_interval)
@@ -399,35 +430,39 @@ while running:
                 playsound('sounds/fail.wav')
                 exit('Check launch options')
             time.sleep(0.2)
+    elif telnet.closed is True:
+        write(red('TelNet connection closed, assuming game closed'))
+        gsi_server = cs.restart_gsi_server(gsi_server)
+        telnet = TelNetConsoleReader(cs.cfg.telnet_ip, cs.cfg.telnet_port)
 
     console = read_telnet()
 
     if console.update:
         if console.update[-1] == '1':
-            if not Truth.test_for_server:
-                Truth.test_for_server = True
-                Time.search_started = time.time()
-                write(magenta(f'Looking for match: {Truth.test_for_server}'), overwrite='1')
+            if not truth.test_for_server:
+                truth.test_for_server = True
+                times.search_started = time.time()
+                write(magenta(f'Looking for match: {truth.test_for_server}'), overwrite='1')
             playsound('sounds/activated.wav', block=False)
             cs.mute_csgo(1)
-        elif console.update[-1] == '0' and Truth.test_for_server:
+        elif console.update[-1] == '0' and truth.test_for_server:
             cs.mute_csgo(0)
 
-    if Truth.test_for_server:
+    if truth.test_for_server:
         if console.server_found:
             playsound('sounds/server_found.wav', block=False)
-            Truth.test_for_success = True
+            truth.test_for_success = True
         if console.server_ready:
-            Truth.test_for_accept_button = True
+            truth.test_for_accept_button = True
             cs.sleep_interval = cs.sleep_interval_looking_for_accept
             csgo_window_status['server_found'] = win32gui.GetWindowPlacement(hwnd)[1]
             win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
 
-    if Truth.test_for_accept_button:
+    if truth.test_for_accept_button:
         img = cs.get_screenshot(hwnd, (1300, 550, 1310, 570))
         accept_avg = cs.color_average(img, [(76, 175, 80), (90, 203, 94)])
         if cs.relate_list(accept_avg, (2, 2, 2)):
-            Truth.test_for_accept_button = False
+            truth.test_for_accept_button = False
             cs.sleep_interval = cs.cfg.sleep_interval
 
             current_cursor_position = win32api.GetCursorPos()
@@ -442,36 +477,36 @@ while running:
 
             playsound('sounds/accept_found.wav', block=False)
 
-    if Truth.test_for_accept_button or Truth.test_for_success:
+    if truth.test_for_accept_button or truth.test_for_success:
         if console.msg is not None:
             if 'Match confirmed' in console.msg:
-                write(green(f'All Players accepted - Match has started - Took {cs.timedelta(Time.search_started)} since start'), add_time=False, overwrite='11')
-                Truth.test_for_warmup = True
-                Truth.first_game_over = True
-                Truth.game_over = False
+                write(green(f'All Players accepted - Match has started - Took {cs.timedelta(times.search_started)} since start'), add_time=False, overwrite='11')
+                truth.test_for_warmup = True
+                truth.first_game_over = True
+                truth.game_over = False
 
-                Truth.disconnected_form_last = False
-                Truth.first_freezetime = False
-                Truth.test_for_server = False
-                Truth.test_for_accept_button = False
+                truth.disconnected_form_last = False
+                truth.first_freezetime = False
+                truth.test_for_server = False
+                truth.test_for_accept_button = False
 
                 cs.sleep_interval = cs.cfg.sleep_interval
-                Truth.test_for_success = False
-                Truth.monitoring_since_start = True
+                truth.test_for_success = False
+                truth.monitoring_since_start = True
                 cs.mute_csgo(0)
                 playsound('sounds/done_testing.wav', block=False)
-                Time.match_accepted = time.time()
+                times.match_accepted = time.time()
 
-                afk.time = Time.match_accepted
-                afk.start_time = Time.match_accepted
+                afk.time = times.match_accepted
+                afk.start_time = times.match_accepted
                 afk.seconds_afk = 0.0
                 afk.round_values = []
 
             if (item for item in console.msg for cmp in ('Other players failed to connect', 'Failed to ready up') if cmp in item):
-                Truth.test_for_server = True
-                Truth.test_for_accept_button = False
+                truth.test_for_server = True
+                truth.test_for_accept_button = False
                 cs.sleep_interval = cs.cfg.sleep_interval
-                Truth.test_for_success = False
+                truth.test_for_success = False
                 if 'Other players failed to connect' in console.msg:
                     msg = red('Match has not started! Continuing to search for a Server!')
                     write(msg, overwrite='11')
@@ -493,7 +528,7 @@ while running:
                 players_accepted = str(int(i[1]) - int(i[0]))
                 write(f'{players_accepted} Players of {i[1]} already accepted.', add_time=False, overwrite='11')
 
-    if Truth.players_still_connecting:
+    if truth.players_still_connecting:
         if console.lobby_data is not None:
             lobby_data = '\n'.join(console.lobby_data)
             lobby_info = cs.lobby_info.findall(lobby_data)
@@ -506,64 +541,64 @@ while running:
                 if i[0] == 'CTSlotsFree' and i[1] == 0:
                     join_dict['ct_full'] = True
                 if join_dict['t_full'] and join_dict['ct_full']:
-                    best_of = red(f"MR{scoreboard['max_rounds']}")
+                    best_of = red(f"MR{scoreboard.max_rounds}")
                     msg = f'Server full, All Players connected. ' \
                           f'{best_of}, ' \
-                          f'Took {cs.timedelta(Time.warmup_started)} since match start.'
+                          f'Took {cs.timedelta(times.warmup_started)} since match start.'
                     write(msg, overwrite='7')
                     if cs.afk_message is True:
                         message_queue.put(msg)
                     red('You failed to accept! Restart searching!')
                     playsound('sounds/minute_warning.wav', block=True)
-                    Truth.players_still_connecting = False
+                    truth.players_still_connecting = False
                     join_dict['t_full'], join_dict['ct_full'] = False, False
                     break
 
     if console.server_abandon is not None:
         if (msg for msg in console.server_abandon if 'Disconnect' in msg):
-            if not Truth.game_over:
+            if not truth.game_over:
                 write(red('Server disconnected'))
                 playsound('sounds/fail.wav', block=False)
             gsi_server = cs.restart_gsi_server(gsi_server)
-            Truth.disconnected_form_last = True
-            Truth.players_still_connecting = False
+            truth.disconnected_form_last = True
+            truth.players_still_connecting = False
             afk.time = time.time()
 
-    game_state = {'map_phase': gsi_server.get_info('map', 'phase'), 'round_phase': gsi_server.get_info('round', 'phase')}
+    game_state = GameState(gsi_server.get_info('map', 'phase'), gsi_server.get_info('round', 'phase'))
 
     if console.server_settings is not None:
         try:
-            scoreboard['max_rounds'] = [int(re.sub('\D', '', line)) for line in console.server_settings if 'maxrounds' in line][0]
+            scoreboard.max_rounds = [int(re.sub('\D', '', line)) for line in console.server_settings if 'maxrounds' in line][0]
         except IndexError:
             pass
         try:
-            scoreboard['buy_time'] = [int(re.sub('\D', '', line)) for line in console.server_settings if 'buytime' in line][0]
+            scoreboard.buy_time = [int(re.sub('\D', '', line)) for line in console.server_settings if 'buytime' in line][0]
         except IndexError:
             pass
         try:
-            scoreboard['freeze_time'] = [int(re.sub('\D', '', line)) for line in console.server_settings if 'freezetime' in line][0]
+            scoreboard.freeze_time = [int(re.sub('\D', '', line)) for line in console.server_settings if 'freezetime' in line][0]
         except IndexError:
             pass
 
-    if Truth.first_freezetime:
-        if game_state['map_phase'] == 'live' and game_state['round_phase'] == 'freezetime':
+    if truth.first_freezetime:
+        if game_state.map_phase == 'live' and game_state.round_phase == 'freezetime':
 
-            Truth.first_game_over = True
-            Truth.game_over = False
-            Truth.disconnected_form_last = False
-            Truth.first_freezetime = False
+            truth.first_game_over = True
+            truth.game_over = False
+            truth.disconnected_form_last = False
+            truth.first_freezetime = False
 
-            Time.freezetime_started = time.time()
-            scoreboard['CT'] = gsi_server.get_info('map', 'team_ct')['score']
-            scoreboard['T'] = gsi_server.get_info('map', 'team_t')['score']
-            scoreboard['last_round_info'] = gsi_server.get_info('map', 'round_wins')
-            scoreboard['player'] = gsi_server.get_info('player')
-            scoreboard['weapons'] = [inner for outer in scoreboard['player']['weapons'].values() for inner in outer.items()]
-            scoreboard['c4'] = ' - Bomb Carrier' if 'weapon_c4' in [i for _, i in scoreboard['weapons']] else ''
-            scoreboard['total_score'] = scoreboard['CT'] + scoreboard['T']
+            times.freezetime_started = time.time()
+            scoreboard.CT = gsi_server.get_info('map', 'team_ct')['score']
+            scoreboard.T = gsi_server.get_info('map', 'team_t')['score']
+            scoreboard.last_round_info = gsi_server.get_info('map', 'round_wins')
+            scoreboard.player = gsi_server.get_info('player')
+            scoreboard.weapons = [inner for outer in scoreboard.player['weapons'].values() for inner in outer.items()]
+            scoreboard.c4 = ' - Bomb Carrier' if 'weapon_c4' in [i for _, i in scoreboard.weapons] else ''
+            scoreboard.total_score = scoreboard.CT + scoreboard.T
 
-            scoreboard['team'] = red('T') if scoreboard['player']['team'] == 'T' else cyan('CT')
-            scoreboard['opposing_team'] = cyan('CT') if decolor(scoreboard['team']) == 'T' else red('T')
+            scoreboard.team = red('T') if scoreboard.player['team'] == 'T' else cyan('CT')
+            scoreboard.opposing_team = cyan('CT') if decolor(scoreboard.team) == 'T' else red('T')
 
             afk.round_values.append(round(afk.seconds_afk, 3))
 
@@ -574,89 +609,108 @@ while running:
             afk.seconds_afk = 0.0
 
             try:
-                scoreboard['last_round_key'] = list(scoreboard['last_round_info'].keys())[-1]
-                scoreboard['last_round_info'] = scoreboard['last_round_info'][scoreboard['last_round_key']].split('_')[0].upper()
-                if int(scoreboard['last_round_key']) == scoreboard['max_rounds'] / 2:
-                    scoreboard['last_round_info'] = 'T' if scoreboard['last_round_info'] == 'CT' else 'CT'
-                scoreboard['last_round_info'] = f'{scoreboard["team"]} {green("won")} the last round' if decolor(scoreboard['team']) == scoreboard['last_round_info'] else f'{scoreboard["team"]} {yellow("lost")} the last round'
+                scoreboard.last_round_key = list(scoreboard.last_round_info.keys())[-1]
+                scoreboard.last_round_winner = scoreboard.last_round_info[scoreboard.last_round_key].split('_')[0].upper()
+                if int(scoreboard.last_round_key) == scoreboard.max_rounds / 2:
+                    scoreboard.last_round_winner = 'T' if scoreboard.last_round_winner == 'CT' else 'CT'
+                scoreboard.last_round_text = f'{scoreboard.team} {green("won")} the last round' \
+                    if decolor(scoreboard.team) == scoreboard.last_round_winner \
+                    else f'{scoreboard.team} {yellow("lost")} the last round'
+
             except AttributeError:
-                scoreboard['last_round_info'] = f'You {scoreboard["team"]}, no info on the last round'
+                scoreboard.last_round_text = f'You {scoreboard.team}, no info on the last round'
 
-            if scoreboard['total_score'] == scoreboard['max_rounds'] / 2 - 1:
-                scoreboard['extra_round_info'] = yellow(' - Half-Time')
+            if scoreboard.total_score == scoreboard.max_rounds / 2 - 1:
+                scoreboard.extra_round_info = yellow(' - Half-Time')
                 playsound('sounds/ding.wav', block=True)
-            elif scoreboard['CT'] == scoreboard['max_rounds'] / 2 or scoreboard['T'] == scoreboard['max_rounds'] / 2:
-                scoreboard['extra_round_info'] = yellow(' - Match Point')
+            elif scoreboard.CT == scoreboard.max_rounds / 2 or scoreboard.T == scoreboard.max_rounds / 2:
+                scoreboard.extra_round_info = yellow(' - Match Point')
             else:
-                scoreboard['extra_round_info'] = ''
+                scoreboard.extra_round_info = ''
 
-            write(f'Freeze Time - {scoreboard["last_round_info"]} - {scoreboard[decolor(scoreboard["team"])]:02d}:{scoreboard[decolor(scoreboard["opposing_team"])]:02d}'
-                  f'{scoreboard["extra_round_info"]}{scoreboard["c4"]} - AFK: {cs.timedelta(seconds=afk.per_round)}',
+            write(f'Freeze Time - {scoreboard.last_round_text} - {getattr(scoreboard, decolor(scoreboard.team)):02d}:{getattr(scoreboard, decolor(scoreboard.opposing_team)):02d}'
+                  f'{scoreboard.extra_round_info}{scoreboard.c4} - AFK: {cs.timedelta(seconds=afk.per_round)}',
                   overwrite='7')
 
             if win32gui.GetWindowPlacement(hwnd)[1] == 2:
-                Truth.game_minimized_freezetime = True
+                truth.game_minimized_freezetime = True
                 playsound('sounds/ready_up.wav', block=True)
 
-        elif game_state['map_phase'] == 'live' and gsi_server.get_info('player', 'steamid') == cs.steam_id:
+        elif game_state.map_phase == 'live' and gsi_server.get_info('player', 'steamid') == cs.steam_id:
             player_stats = gsi_server.get_info('player', 'match_stats')
 
-    elif game_state['map_phase'] == 'live' and game_state['round_phase'] != 'freezetime':
-        Truth.first_freezetime = True
-        Truth.c4_round_first = True
-        if time.time() - Time.freezetime_started >= 20 and win32gui.GetWindowPlacement(hwnd)[1] == 2:
+    elif game_state.map_phase == 'live' and game_state.round_phase != 'freezetime':
+        truth.first_freezetime = True
+        truth.first_autobuy = True
+        truth.c4_round_first = True
+        if time.time() - times.freezetime_started >= 20 and win32gui.GetWindowPlacement(hwnd)[1] == 2:
             playsound('sounds/ready_up.wav', block=False)
 
-    if Truth.game_minimized_freezetime:
-        message = f'Freeze Time - {scoreboard["last_round_info"]} - {scoreboard[decolor(scoreboard["team"])]:02d}:{scoreboard[decolor(scoreboard["opposing_team"])]:02d}' \
-                  f'{scoreboard["extra_round_info"]}{scoreboard["c4"]} - AFK: {cs.timedelta(seconds=afk.per_round)}'
-        Truth.game_minimized_freezetime = cs.round_start_msg(message, game_state['round_phase'], Time.freezetime_started, win32gui.GetWindowPlacement(hwnd)[1] == 2, scoreboard)
-    elif Truth.game_minimized_warmup:
+    if truth.game_minimized_freezetime:
+        message = f'Freeze Time - {scoreboard.last_round_text} - {getattr(scoreboard, decolor(scoreboard.team)):02d}:{getattr(scoreboard, decolor(scoreboard.opposing_team)):02d}' \
+                  f'{scoreboard.extra_round_info}{scoreboard.c4} - AFK: {cs.timedelta(seconds=afk.per_round)}'
+        if time.time() - times.freezetime_started > scoreboard.freeze_time + scoreboard.buy_time - 2:
+            if cs.cfg.autobuy and truth.first_autobuy:
+                # requests.get(f'http://{cs.cfg.webhook_ip}:{cs.cfg.webhook_port}/console', params={'input': json.dumps([cs.cfg.autobuy])})
+                telnet.send(cs.cfg.autobuy)
+                truth.first_autobuy = False
+            if truth.first_autobuy is False:
+                message += f' - {cyan("AutoBuy")}'
+
+        truth.game_minimized_freezetime = cs.round_start_msg(message, game_state.round_phase, times.freezetime_started, win32gui.GetWindowPlacement(hwnd)[1] == 2, scoreboard)
+    elif truth.game_minimized_warmup:
         try:
-            best_of = red(f"MR{scoreboard['max_rounds']}")
-            message = f'Warmup is over! Map: {green(" ".join(gsi_server.get_info("map", "name").split("_")[1:]).title())}, Team: {team}, {best_of}, Took: {cs.timedelta(seconds=Time.warmup_seconds)}'
-            Truth.game_minimized_warmup = cs.round_start_msg(message, game_state['round_phase'], Time.freezetime_started, win32gui.GetWindowPlacement(hwnd)[1] == 2, scoreboard)
+            best_of = red(f"MR{scoreboard.max_rounds}")
+            message = f'Warmup is over! Map: {green(" ".join(gsi_server.get_info("map", "name").split("_")[1:]).title())}, Team: {team}, {best_of}, Took: {cs.timedelta(seconds=times.warmup_seconds)}'
+            if time.time() - times.freezetime_started > scoreboard.freeze_time + scoreboard.buy_time - 2:
+                if cs.cfg.autobuy and truth.first_autobuy:
+                    telnet.send(cs.cfg.autobuy)
+                    # requests.get(f'http://{cs.cfg.webhook_ip}:{cs.cfg.webhook_port}/console', params={'input': json.dumps([cs.cfg.autobuy])})
+                    truth.first_autobuy = False
+                if truth.first_autobuy is False:
+                    message += f' - {cyan("AutoBuy")}'
+            truth.game_minimized_warmup = cs.round_start_msg(message, game_state.round_phase, times.freezetime_started, win32gui.GetWindowPlacement(hwnd)[1] == 2, scoreboard)
         except AttributeError:
             pass
 
-    if game_state['round_phase'] == 'freezetime' and Truth.c4_round_first:
-        scoreboard['c_weapons'] = [inner for outer in gsi_server.get_info('player', 'weapons').values() for inner in outer.items()]
-        scoreboard['has_c4'] = True if 'weapon_c4' in [i for _, i in scoreboard['c_weapons']] else False
-        if scoreboard['has_c4']:
+    if game_state.round_phase == 'freezetime' and truth.c4_round_first:
+        scoreboard.current_weapons = [inner for outer in gsi_server.get_info('player', 'weapons').values() for inner in outer.items()]
+        scoreboard.has_c4 = True if 'weapon_c4' in [i for _, i in scoreboard.current_weapons] else False
+        if scoreboard.has_c4:
             playsound('sounds/ding.wav', block=False)
-            Truth.c4_round_first = False
+            truth.c4_round_first = False
 
-    if Truth.still_in_warmup:
-        if game_state['map_phase'] == 'live':
+    if truth.still_in_warmup:
+        if game_state.round_phase == 'live':
 
-            Truth.still_in_warmup = False
-            Truth.players_still_connecting = False
+            truth.still_in_warmup = False
+            truth.players_still_connecting = False
             team = red('T') if gsi_server.get_info('player', 'team') == 'T' else cyan('CT')
-            Time.warmup_seconds = int(time.time() - Time.warmup_started)
+            times.warmup_seconds = int(time.time() - times.warmup_started)
             msg = 'Warmup is over! Map: {map}, Team: {team}, Took: {time}'.format(team=team,
                                                                                   map=green(' '.join(gsi_server.get_info('map', 'name').split('_')[1:]).title()),
-                                                                                  time=cs.timedelta(seconds=Time.warmup_seconds))
+                                                                                  time=cs.timedelta(seconds=times.warmup_seconds))
             write(msg, overwrite='7')
             if cs.afk_message is True:
                 message_queue.put(msg)
 
-            Time.match_started = time.time()
-            Time.freezetime_started = time.time()
+            times.match_started = time.time()
+            times.freezetime_started = time.time()
             if win32gui.GetWindowPlacement(hwnd)[1] == 2:
-                Truth.game_minimized_warmup = True
+                truth.game_minimized_warmup = True
                 playsound('sounds/ready_up_warmup.wav', block=False)
             afk.start_time = time.time()
             afk.seconds_afk = 0.0
             afk.round_values = []
 
-        if game_state['map_phase'] is None:
-            Truth.still_in_warmup = False
+        if game_state.map_phase is None:
+            truth.still_in_warmup = False
             msg = red('Match did not start')
             write(msg, overwrite='1')
             if cs.afk_message is True:
                 message_queue.put(msg)
 
-    if game_state['map_phase'] in ['live', 'warmup'] and not Truth.game_over and not Truth.disconnected_form_last:
+    if game_state.map_phase in ['live', 'warmup'] and not truth.game_over and not truth.disconnected_form_last:
         try:
             csgo_window_status['in_game'] = win32gui.GetWindowPlacement(hwnd)[1]
         except BaseException as e:
@@ -678,14 +732,14 @@ while running:
         if csgo_window_status['in_game'] != 2:
             afk.start_time = time.time()
 
-        if game_state['map_phase'] == 'live' and csgo_window_status['in_game'] == 2:
+        if game_state.map_phase == 'live' and csgo_window_status['in_game'] == 2:
             afk.seconds_afk += time.time() - afk.start_time
             afk.start_time = time.time()
 
-    if game_state['map_phase'] == 'gameover':
-        Truth.game_over = True
+    if game_state.map_phase == 'gameover':
+        truth.game_over = True
 
-    if Truth.game_over and Truth.first_game_over:
+    if truth.game_over and truth.first_game_over:
         time.sleep(2)
         team = str(gsi_server.get_info('player', 'team')), 'CT' if gsi_server.get_info('player', 'team') == 'T' else 'T'
         score = {'CT': gsi_server.get_info('map', 'team_ct')['score'], 'T': gsi_server.get_info('map', 'team_t')['score'], 'map': ' '.join(gsi_server.get_info('map', 'name').split('_')[1:]).title()}
@@ -698,7 +752,7 @@ while running:
             afk_round = statistics.mean(afk.round_values)
         except statistics.StatisticsError:
             afk_round = 0.0
-        timings = {'match': time.time() - Time.match_started, 'search': Time.match_accepted - Time.search_started, 'afk': sum(afk.round_values), 'afk_round': afk_round}
+        timings = {'match': time.time() - times.match_started, 'search': times.match_accepted - times.search_started, 'afk': sum(afk.round_values), 'afk_round': afk_round}
 
         write(red(f'The match is over! - {score[team[0]]:02d}:{score[team[1]]:02d}'))
 
@@ -708,8 +762,8 @@ while running:
         write(f'AFK per Round:  {cs.time_output(timings["afk_round"], average["afk_time"][2])}', add_time=False)
         write(f'                {(timings["afk"] / timings["match"]):.1%} of match duration', add_time=False)
 
-        if gsi_server.get_info('map', 'mode') == 'competitive' and game_state['map_phase'] == 'gameover' and not Truth.test_for_warmup and not Truth.still_in_warmup:
-            if Truth.monitoring_since_start:
+        if gsi_server.get_info('map', 'mode') == 'competitive' and game_state.map_phase == 'gameover' and not truth.test_for_warmup and not truth.still_in_warmup:
+            if truth.monitoring_since_start:
                 match_time = timings['match']
                 search_time = timings['search']
                 afk_time = timings['afk']
@@ -742,22 +796,22 @@ while running:
             t = Thread(target=upload_matches, args=(True, player_stats), name='UploadThread')
             t.start()
 
-        Truth.game_over = False
-        Truth.first_game_over = False
-        Truth.monitoring_since_start = False
-        Time.match_started, Time.match_accepted = time.time(), time.time()
+        truth.game_over = False
+        truth.first_game_over = False
+        truth.monitoring_since_start = False
+        times.match_started, times.match_accepted = time.time(), time.time()
         afk.seconds_afk = 0.0
         afk.time = time.time()
         afk.round_values = []
 
-    if Truth.test_for_warmup:
-        Time.warmup_started = time.time()
+    if truth.test_for_warmup:
+        times.warmup_started = time.time()
         if console.map is not None:
             saved_map = console.map[-1]
         else:
             saved_map = ''
         while True:
-            Time.warmup_started = time.time()
+            times.warmup_started = time.time()
             if not saved_map:
                 console = read_telnet()
                 if console.map is not None:
@@ -774,10 +828,10 @@ while running:
                               f'Last Games: `{cs.match_win_list(cs.cfg.match_list_lenght, cs.steam_id, time_difference=7_200, replace_chars=True)}`'
                         message_queue.put(msg)
 
-                    Truth.still_in_warmup = True
-                    Truth.test_for_warmup = False
-                    Truth.players_still_connecting = True
-                    Time.warmup_started = time.time()
+                    truth.still_in_warmup = True
+                    truth.test_for_warmup = False
+                    truth.players_still_connecting = True
+                    times.warmup_started = time.time()
                     if cs.cfg.status_requester:
                         telnet.send('status')
                         thread = cs.MatchRequest()
@@ -788,8 +842,8 @@ while running:
                 game_mode = gsi_server.get_info('map', 'mode')
                 if game_mode not in ['competitive', 'wingman', None]:
                     write(yellow(f'{game_mode} is not supported'), overwrite='1')
-                    Truth.test_for_warmup = False
-                    Truth.first_game_over = False
+                    truth.test_for_warmup = False
+                    truth.first_game_over = False
                     break
             time.sleep(cs.sleep_interval)
     time.sleep(cs.sleep_interval)
