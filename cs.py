@@ -414,7 +414,7 @@ class ConsoleLog:
                         if check in _str:
                             if key not in replace_items:
                                 replace_items[key] = []
-                            replace_items[key].append(_str.replace(check, ''))
+                            replace_items[key].append(_str.replace(item[0], ''))
                             raise ItemFound()
                 except ItemFound:
                     break
