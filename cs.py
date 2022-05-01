@@ -18,7 +18,6 @@ from pathlib import Path
 from shutil import copyfile
 from typing import List, Union
 
-import keyboard
 import requests
 import win32api
 import win32con
@@ -27,6 +26,7 @@ import win32process
 from PIL import ImageGrab, Image
 from pytz import utc
 
+from ConsoleInteraction import TelNetConsoleReader
 from GSI import server
 from csgostats.Log import LogReader
 from utils import *
@@ -96,6 +96,15 @@ def anti_afk(window_id: int):
     time.sleep(0.075)
     set_mouse_position(current_cursor_position)
     minimize_csgo(window_id)
+
+
+def anti_afk_tel(tl: TelNetConsoleReader, is_active: bool):
+    if is_active:
+        tl.send('-right')
+        tl.send('-forward')
+    else:
+        tl.send('+right')
+        tl.send('+forward')
 
 
 def task_bar(factor: float = 2.0):
@@ -238,9 +247,7 @@ def get_current_steam_user():
 def check_userdata_autoexec(steam_id_3: str):
     global path_vars, cfg
     userdata_path = os.path.join(path_vars['steam_path'], 'userdata', steam_id_3, '730', 'local', 'cfg')
-    str_in_autoexec = ['sv_max_allowed_developer 1', 'developer 1', 'con_logfile "console_log.log"', 'con_filter_enable "2"',
-                       'con_filter_text_out "Player:"', 'con_filter_text "Damage"', f'log_color General {cfg.log_color}',
-                       f'bind "{cfg.status_key}" "status"' if cfg.status_key else '']
+    str_in_autoexec = ['sv_max_allowed_developer 1', 'developer 1']
     os.makedirs(userdata_path, exist_ok=True)
     with open(os.path.join(userdata_path, 'autoexec.cfg'), 'a+') as autoexec:
         autoexec.seek(0)
@@ -361,13 +368,6 @@ def get_new_sharecodes(game_id: str, stats=None):
     return [{'sharecode': code, 'queue_pos': None} for code, in sharecodes]
 
 
-# noinspection PyShadowingNames
-def str_in_list(compare_strings: List[str], list_of_strings: List[str], replace: bool = False):
-    replacement_str = '' if not replace else compare_strings[0]
-    matching = [string.replace(replacement_str, '') for string in list_of_strings for compare_str in compare_strings if compare_str in string]
-    return any(matching) if not replace else matching
-
-
 def check_for_forbidden_programs(process_list):
     titles = [i[1].lower() for i in process_list]
     forbidden_programs = [i.lstrip(' ').lower() for i in cfg.forbidden_programs.split(',')]
@@ -377,23 +377,59 @@ def check_for_forbidden_programs(process_list):
         return False
 
 
-def read_console():
-    log_path = os.path.join(path_vars['csgo_path'], 'console_log.log')
-    with open(log_path, 'r+', encoding='utf-8', errors='ignore') as log:
-        data = log.readlines()
-        console_lines = [i.strip('\n') for i in data]
-        if len(console_lines) >= 1:
-            log.seek(0, os.SEEK_SET)
-            log.truncate(0)
-            with open(os.path.join(path_vars['appdata_path'], 'console.log'), 'a', encoding='utf-8') as debug_log:
-                [debug_log.write(i + '\n') for i in console_lines]
-        else:
-            console_lines = []
-    return {'msg': str_in_list(['Matchmaking message: '], console_lines, replace=True), 'update': str_in_list(['Matchmaking update: '], console_lines, replace=True),
-            'players_accepted': str_in_list(['Server reservation2 is awaiting '], console_lines, replace=True), 'lobby_data': str_in_list(["LobbySetData: "], console_lines, replace=True),
-            'server_found': str_in_list(['Matchmaking reservation confirmed: '], console_lines), 'server_ready': str_in_list(['ready-up!'], console_lines),
-            'server_abandon': str_in_list(['Closing Steam Net Connection to =', 'Kicked by Console'], console_lines, replace=True), 'map': str_in_list(['Map: '], console_lines, replace=True),
-            'server_settings': str_in_list(['SetConVar: mp_'], console_lines, replace=True)}
+@dataclass()
+class ConsoleLog:
+    msg: List[str] = None
+    update: List[str] = None
+    players_accepted: List[str] = None
+    lobby_data: List[str] = None
+    server_abandon: List[str] = None
+    map: List[str] = None
+    server_settings: List[str] = None
+    server_found: bool = False
+    server_ready: bool = False
+
+    @classmethod
+    def from_log(cls, log_str: List[str]):
+        replace_items = {}
+        bool_items = {}
+
+        replace_checks = [('msg', 'Matchmaking message: '),
+                          ('update', 'Matchmaking update: '),
+                          ('players_accepted', 'Server reservation2 is awaiting '),
+                          ('lobby_data', 'LobbySetData: '),
+                          ('server_abandon', ['Closing Steam Net Connection to =', 'Kicked by Console']),
+                          ('map', 'Map: '),
+                          ('server_settings', 'SetConVar: mp_')]
+
+        bool_checks = [('server_found', 'Matchmaking reservation confirmed: '),
+                       ('server_ready', 'ready-up!')]
+
+        for _str in log_str:
+            for key, item in replace_checks:
+                if not isinstance(item, (list, tuple)):
+                    item = [item]
+                try:
+                    for check in item:
+                        if check in _str:
+                            if key not in replace_items:
+                                replace_items[key] = []
+                            replace_items[key].append(_str.replace(check, ''))
+                            raise ItemFound()
+                except ItemFound:
+                    break
+
+            for key, check in bool_checks:
+                if check in _str:
+                    bool_items[key] = True
+                    break
+
+        return cls(**{**replace_items, **bool_items})
+
+
+class ItemFound(BaseException):
+    def __init__(self):
+        super().__init__()
 
 
 def activate_afk_message():
@@ -486,17 +522,6 @@ def restart_gsi_server(gsi_server: server.GSIServer = None):
     return gsi_server
 
 
-def request_status_command(hwnd, key: str = 'F12'):
-    current_csgo_status = win32gui.GetWindowPlacement(hwnd)[1]
-    win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
-    time.sleep(0.15)
-    keyboard.send(key)
-    time.sleep(0.1)
-    if current_csgo_status == 2:
-        minimize_csgo(hwnd)
-    return
-
-
 class MatchRequest(threading.Thread):
     """Using a thread, so we are not blocking the script while performing the request"""
 
@@ -506,11 +531,14 @@ class MatchRequest(threading.Thread):
         self.daemon = True
 
     def run(self) -> None:
-        time.sleep(1.0)
-        match_log = log_reader.get_log_info()
-        if match_log is None:
-            write(f'no new match log found')
-            return
+        match_log = None
+        start = time.time()
+        while match_log is None:
+            match_log = log_reader.get_log_info()
+            if time.time() - start > 7.5:
+                write(yellow('found no match log after 7.5s'))
+                return
+            time.sleep(0.5)
         data = match_log.to_web_request(cfg.secret, steam_id)
         url = f"http://{cfg.server_ip}:{cfg.server_port}/check"
         try:
@@ -614,11 +642,12 @@ try:
         match_list_lenght: int = config.getint('Script Settings', 'Match History Lenght')
         steam_api_key: str = config.get('csgostats.gg', 'API Key')
         auto_retry_interval: int = config.getint('csgostats.gg', 'Auto-Retrying-Interval')
-        status_key: str = config.get('csgostats.gg', 'Status Key')
+        status_requester: str = config.getboolean('csgostats.gg', 'Status Requester')
         secret: bytes = config.get('csgostats.gg', 'Secret')
         server_ip: str = config.get('csgostats.gg', 'WebServer IP')
         server_port: int = config.getint('csgostats.gg', 'WebServer Port')
         discord_user_id: int = config.getint('Notifier', 'Discord User ID')
+        telnet_port: int = config.getint('Script Settings', 'TelNet Port')
 
         def __post_init__(self):
             self.log_color = self.log_color.lower()
@@ -659,10 +688,8 @@ else:
         steam_id = account['steam_id']
         current_steam_account = 0
 
-with open(os.path.join(path_vars['csgo_path'], 'console_log.log'), 'w', encoding='utf-8') as log:
-    log.write('')
-with open(os.path.join(path_vars['appdata_path'], 'console.log'), 'w', encoding='utf-8') as debug_log:
-    debug_log.write('')
+with open(os.path.join(path_vars['appdata_path'], 'console.log'), 'w', encoding='utf-8') as fp:
+    fp.write('')
 
 if path_vars['csgo_path']:
     if not os.path.exists(os.path.join(path_vars['csgo_path'], 'cfg', 'gamestate_integration_GSI.cfg')):
