@@ -247,19 +247,19 @@ def get_current_steam_user():
 def check_userdata_autoexec(steam_id_3: str):
     global path_vars, cfg
     userdata_path = os.path.join(path_vars['steam_path'], 'userdata', steam_id_3, '730', 'local', 'cfg')
-    str_in_autoexec = ['sv_max_allowed_developer 1', 'developer 1']
+    str_in_autoexec = ['sv_max_allowed_developer 1', 'developer 1', 'con_allownotify 0']
     os.makedirs(userdata_path, exist_ok=True)
     with open(os.path.join(userdata_path, 'autoexec.cfg'), 'a+') as autoexec:
         autoexec.seek(0)
         lines = autoexec.readlines()
         for autoexec_str in str_in_autoexec:
             if not any(autoexec_str.lower() in line.rstrip('\n').lower() for line in lines):
-                write(yellow(f'Added {autoexec_str} to "autoexec.cfg"'), add_time=False)
+                write(yellow(f'Added "{autoexec_str}" to "autoexec.cfg"'), add_time=False)
                 write(red('RESTART Counter-Strike for the script to work'), add_time=False)
                 autoexec.write(f'\n{autoexec_str}\n')
 
     if os.path.exists(os.path.join(path_vars['csgo_path'], 'cfg', 'autoexec.cfg')):
-        write(red(f'YOU HAVE TO DELETE THE "autoexec.cfg" in {os.path.join(path_vars["csgo_path"], "cfg")} WITH AND MERGE IT WITH THE ONE IN {userdata_path}'), add_time=False)
+        write(red(f'YOU HAVE TO DELETE THE "autoexec.cfg" in {os.path.join(path_vars["csgo_path"], "cfg")} AND MERGE IT WITH THE ONE IN {userdata_path}'), add_time=False)
         write(red(f'THE SCRIPT WONT WORK UNTIL THERE IS NO "autoexec.cfg" in {os.path.join(path_vars["csgo_path"], "cfg")}'), add_time=False)
 
 
@@ -427,11 +427,6 @@ class ConsoleLog:
         return cls(**{**replace_items, **bool_items})
 
 
-class ItemFound(BaseException):
-    def __init__(self):
-        super().__init__()
-
-
 def activate_afk_message():
     global afk_message
     if not cfg.discord_user_id:
@@ -504,6 +499,11 @@ class ProcessNotFoundError(BaseException):
 class WindowNotFoundError(BaseException):
     def __init__(self, name):
         super().__init__(f'no window found for {name}')
+
+
+class ItemFound(BaseException):
+    def __init__(self):
+        super().__init__()
 
 
 def restart_gsi_server(gsi_server: server.GSIServer = None):
@@ -588,7 +588,7 @@ def match_win_list(number_of_matches: int, _steam_id, time_difference: int = 7_2
 
 # noinspection PyShadowingNames
 class WindowEnumerator(threading.Thread):
-    def __init__(self, sleep_interval: float = 0.5):
+    def __init__(self, sleep_interval: float = 0.75):
         super().__init__(name='WindowEnumerator')
         self._kill = threading.Event()
         self._interval = sleep_interval
@@ -603,12 +603,12 @@ class WindowEnumerator(threading.Thread):
             is_killed = self._kill.wait(self._interval)
             if is_killed:
                 break
-            time.sleep(0.5)
 
     def kill(self):
         self._kill.set()
 
 
+subprocess.call('cls', shell=True)
 path_vars = {'appdata_path': os.path.join(os.getenv('APPDATA'), 'CSGO AUTO ACCEPT'),
              'mute_csgo_path': f'"{os.path.abspath(os.path.expanduser("sounds/nircmdc.exe"))}" muteappvolume csgo.exe',
              'db_path': os.path.join(os.path.join(os.getenv('APPDATA'), 'CSGO AUTO ACCEPT', 'matches.db'))}

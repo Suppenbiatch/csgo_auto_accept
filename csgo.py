@@ -5,7 +5,6 @@ import queue
 import re
 import socketserver
 import statistics
-import subprocess
 import time
 from dataclasses import dataclass, field
 from threading import Thread
@@ -359,7 +358,6 @@ telnet = TelNetConsoleReader(cs.cfg.telnet_ip, cs.cfg.telnet_port)  # start thre
 hwnd, hwnd_old = 0, 0
 csgo_window_status = {'server_found': 2, 'new_tab': 2, 'in_game': 0}
 csgo = []
-subprocess.call('cls', shell=True)
 
 updater = CSGOStatsUpdater(cs.cfg, cs.account, cs.path_vars['db_path'])
 server_online = updater.check_status()
@@ -563,6 +561,7 @@ while running:
             truth.disconnected_form_last = True
             truth.players_still_connecting = False
             afk.time = time.time()
+            hk_activate_devmode()
 
     game_state = GameState(gsi_server.get_info('map', 'phase'), gsi_server.get_info('round', 'phase'))
 
@@ -651,7 +650,6 @@ while running:
                   f'{scoreboard.extra_round_info}{scoreboard.c4} - AFK: {cs.timedelta(seconds=afk.per_round)}'
         if time.time() - times.freezetime_started > scoreboard.freeze_time + scoreboard.buy_time - 2:
             if cs.cfg.autobuy and truth.first_autobuy:
-                # requests.get(f'http://{cs.cfg.webhook_ip}:{cs.cfg.webhook_port}/console', params={'input': json.dumps([cs.cfg.autobuy])})
                 telnet.send(cs.cfg.autobuy)
                 truth.first_autobuy = False
             if truth.first_autobuy is False:
@@ -665,7 +663,6 @@ while running:
             if time.time() - times.freezetime_started > scoreboard.freeze_time + scoreboard.buy_time - 2:
                 if cs.cfg.autobuy and truth.first_autobuy:
                     telnet.send(cs.cfg.autobuy)
-                    # requests.get(f'http://{cs.cfg.webhook_ip}:{cs.cfg.webhook_port}/console', params={'input': json.dumps([cs.cfg.autobuy])})
                     truth.first_autobuy = False
                 if truth.first_autobuy is False:
                     message += f' - {cyan("AutoBuy")}'
