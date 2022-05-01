@@ -520,7 +520,7 @@ while running:
                     break
 
     if console.server_abandon is not None:
-        if 'Disconnect' in console.server_abandon:
+        if (msg for msg in console.server_abandon if 'Disconnect' in msg):
             if not Truth.game_over:
                 write(red('Server disconnected'))
                 playsound('sounds/fail.wav', block=False)

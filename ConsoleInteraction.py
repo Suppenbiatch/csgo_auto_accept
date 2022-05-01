@@ -44,7 +44,7 @@ class TelNetConsoleReader(threading.Thread):
         while True:
             data = self.tl.read_very_eager()
             if data != b'':
-                text = data.decode('utf-8').strip().splitlines()
+                text = data.decode('utf-8', errors='replace').strip().splitlines()
                 for line in text:
                     self.received.put(line)
 
@@ -56,7 +56,7 @@ class TelNetConsoleReader(threading.Thread):
                 self.tl.close()
                 self.tl = None
                 break
-            time.sleep(0.5)
+            time.sleep(0.1)
         return
 
 
