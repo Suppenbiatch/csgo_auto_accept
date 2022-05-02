@@ -100,7 +100,7 @@ class CSGOStatsUpdater:
                     url = match.match_url()
                     write(green(f'URL: {url}'), add_time=True)
                     try:
-                        sql_data = match.sql_tuple(int(self.account['steam_id']))
+                        sql_data = match.sql_tuple(int(self.account.steam_id))
                         sql_str = '''UPDATE matches SET id = ?,
                                                         map = ?,
                                                         team_score = ?,
@@ -141,9 +141,9 @@ class CSGOStatsUpdater:
                     discord_matches = []
                     for match in completed_games:
                         sql_str = """SELECT id, match_time, wait_time, afk_time, mvps, points FROM matches WHERE sharecode = ? AND steam_id = ?"""
-                        cur = db.execute(sql_str, (match.sharecode, int(self.account['steam_id'])))
+                        cur = db.execute(sql_str, (match.sharecode, int(self.account.steam_id)))
                         sql_match = dict(cur.fetchone())
-                        sql_match['steam_id'] = int(self.account['steam_id'])
+                        sql_match['steam_id'] = int(self.account.steam_id)
                         discord_matches.append(sql_match)
                     r = requests.post(f'http://{self.cfg.server_ip}:{self.cfg.server_port}/discord_msg', json=discord_matches)
                     if r.status_code != 200:

@@ -205,10 +205,10 @@ def hk_switch_accounts():
     if cs.current_steam_account > len(cs.accounts) - 1:
         cs.current_steam_account = 0
     cs.account = cs.accounts[cs.current_steam_account]
-    cs.steam_id = cs.account['steam_id']
-    cs.check_userdata_autoexec(cs.account['steam_id_3'])
+    cs.steam_id = cs.account.steam_id
+    cs.check_userdata_autoexec(cs.account.steam_id_3)
     updater.new_account(cs.account)
-    write(f'current account is: {cs.account["name"]}', add_time=False, overwrite='3')
+    write(f'current account is: {cs.account.name}', add_time=False, overwrite='3')
 
 
 def hk_discord_toggle():
@@ -324,7 +324,7 @@ def read_telnet():
     while not telnet.received.empty():
         console_strs.append(telnet.received.get_nowait())
 
-    with open(os.path.join(cs.path_vars['appdata_path'], 'console.log'), 'a', encoding='utf-8') as fp:
+    with open(os.path.join(cs.path_vars.appdata, 'console.log'), 'a', encoding='utf-8') as fp:
         for line in console_strs:
             fp.write(f'{line}\n')
 
@@ -359,7 +359,7 @@ hwnd, hwnd_old = 0, 0
 csgo_window_status = {'server_found': 2, 'new_tab': 2, 'in_game': 0}
 csgo = []
 
-updater = CSGOStatsUpdater(cs.cfg, cs.account, cs.path_vars['db_path'])
+updater = CSGOStatsUpdater(cs.cfg, cs.account, cs.path_vars.db)
 server_online = updater.check_status()
 if server_online:
     write(green('CSGO Discord Bot ONLINE'))
@@ -390,15 +390,14 @@ while running:
         hwnd_old = hwnd
         cs.steam_id = cs.get_current_steam_user()
         try:
-            cs.account = [i for i in cs.accounts if cs.steam_id == i['steam_id']][0]
-            cs.steam_id = cs.account['steam_id']
-            cs.check_userdata_autoexec(cs.account['steam_id_3'])
+            cs.account = [account for account in cs.accounts if cs.steam_id == account.steam_id][0]
+            cs.check_userdata_autoexec(cs.account.steam_id_3)
         except IndexError:
             write('Account is not in the config.ini!\nScript will not work properly!', add_time=False, overwrite='9')
             playsound('sounds/fail.wav', block=False)
             exit('Update config.ini!')
         updater.new_account(cs.account)
-        write(f'Current account is: {cs.account["name"]}', add_time=False, overwrite='9')
+        write(f'Current account is: {cs.account.name}', add_time=False, overwrite='9')
 
         if cs.check_for_forbidden_programs(cs.window_ids):
             write('A forbidden program is still running...', add_time=False)

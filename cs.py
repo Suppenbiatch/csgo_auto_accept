@@ -3,7 +3,6 @@ import csv
 import json
 import operator
 import os
-import random
 import re
 import sqlite3
 import subprocess
@@ -31,12 +30,13 @@ from GSI import server
 from csgostats.Log import LogReader
 from utils import *
 from write import *
+from objects.Account import get_accounts_from_cfg
 
 
 def mute_csgo(lvl: int):
     global path_vars
 
-    os.system(f'{path_vars["mute_csgo_path"]} {lvl}')
+    subprocess.run(f'{path_vars.mute_csgo} {lvl}')
     if lvl == 2:
         write('Mute toggled!', add_time=False)
 
@@ -161,77 +161,6 @@ def get_screenshot(window_id: int, area: tuple = (0, 0, 0, 0)):
 
 
 # noinspection PyShadowingNames
-def get_accounts_from_cfg():
-    steam_ids = ''
-    global accounts
-    for i in config.sections():
-        if i.startswith('Account'):
-            steam_id = config.get(i, 'Steam ID')
-            steam_id_3 = str(int(steam_id) - 76561197960265728)
-            auth_code = config.get(i, 'Authentication Code')
-            match_token = config.get(i, 'Match Token')
-            steam_ids += steam_id + ','
-            accounts.append({'steam_id': steam_id, 'steam_id_3': steam_id_3, 'auth_code': auth_code, 'match_token': match_token})
-
-    steam_ids = steam_ids.rstrip(',')
-    steam_api_error = False
-    try:
-        profiles = requests.get(f'http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key={cfg.steam_api_key}&steamids={steam_ids}')
-        if profiles.status_code == requests.status_codes.codes.ok:
-            profiles = profiles.json()['response']['players']
-            name_list = [(online_data['personaname'], online_data['avatarhash'], online_data['avatarfull']) for local_acc in accounts for online_data in profiles if online_data['steamid'] == local_acc['steam_id']]
-
-            for num, val in enumerate(accounts):
-                val['name'] = name_list[num][0]
-                val['avatar_hash'] = name_list[num][1]
-                val['avatar_url'] = name_list[num][2]
-        else:
-            steam_api_error = True
-    except (TimeoutError, requests.ConnectionError):
-        steam_api_error = True
-
-    if steam_api_error:
-        write(red('INVAILD STEAM API KEY or INTERNET CONNECTION ERROR, could not fetch usernames'))
-        for num, val in enumerate(accounts):
-            val['name'] = f'Unknown Name {num}'
-            val['avatar_hash'] = f'Unknown Avatar {num}'
-            val['avatar_url'] = 'https://i.imgur.com/MhAf20U.png'
-
-    colors_1 = ['00{:02x}ff', '00ff{:02x}', '{:02x}00ff', '{:02x}00ff', 'ff00{:02x}', 'ff{:02x}00']
-    colors_2 = ['{:02x}ffff', 'ff{:02x}ff', 'ffff{:02x}']
-    two_part_numbers = list(set(int(pattern.format(i), 16) for pattern in colors_1 for i in range(256)))
-    single_part_numbers = list(set(int(pattern.format(i), 16) for pattern in colors_2 for i in range(177)))
-    numbers = list(set(two_part_numbers + single_part_numbers))
-
-    for account in accounts:
-        random.seed(f'{account["name"]}_{account["steam_id"]}_{account["avatar_hash"]}', version=2)
-        account['color'] = numbers[random.randint(0, len(numbers))]
-
-
-# noinspection PyShadowingNames
-def get_csgo_path():
-    steam_reg_key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r'SOFTWARE\WOW6432Node\Valve\Steam')
-    steam_path = winreg.QueryValueEx(steam_reg_key, 'InstallPath')[0]
-    libraries = [os.path.join(steam_path, 'steamapps')]
-    with open(os.path.join(steam_path, 'steamapps', 'libraryfolders.vdf'), 'r', encoding='utf-8') as library_file:
-        for line in library_file:
-            folder_object = re.search(r'"path"\s*"(.+)"', line)
-            if folder_object is not None:
-                libraries.append(os.path.join(Path(folder_object.group(1)), 'steamapps'))
-
-    for library in libraries:
-        if os.path.exists(os.path.join(library, 'appmanifest_730.acf')):
-            csgo_path = os.path.join(library, 'common', 'Counter-Strike Global Offensive', 'csgo')
-            break
-    else:
-        write(red('DID NOT FIND CSGO PATH'), add_time=False)
-        csgo_path = ''
-    global path_vars
-    path_vars['csgo_path'] = csgo_path
-    path_vars['steam_path'] = steam_path
-
-
-# noinspection PyShadowingNames
 def get_current_steam_user():
     try:
         steam_reg_key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\Valve\Steam\ActiveProcess')
@@ -246,7 +175,7 @@ def get_current_steam_user():
 # noinspection PyShadowingNames
 def check_userdata_autoexec(steam_id_3: str):
     global path_vars, cfg
-    userdata_path = os.path.join(path_vars['steam_path'], 'userdata', steam_id_3, '730', 'local', 'cfg')
+    userdata_path = os.path.join(path_vars.steam, 'userdata', steam_id_3, '730', 'local', 'cfg')
     str_in_autoexec = ['sv_max_allowed_developer 1', 'developer 1', 'con_allownotify 0']
     os.makedirs(userdata_path, exist_ok=True)
     with open(os.path.join(userdata_path, 'autoexec.cfg'), 'a+') as autoexec:
@@ -258,14 +187,14 @@ def check_userdata_autoexec(steam_id_3: str):
                 write(red('RESTART Counter-Strike for the script to work'), add_time=False)
                 autoexec.write(f'\n{autoexec_str}\n')
 
-    if os.path.exists(os.path.join(path_vars['csgo_path'], 'cfg', 'autoexec.cfg')):
-        write(red(f'YOU HAVE TO DELETE THE "autoexec.cfg" in {os.path.join(path_vars["csgo_path"], "cfg")} AND MERGE IT WITH THE ONE IN {userdata_path}'), add_time=False)
-        write(red(f'THE SCRIPT WONT WORK UNTIL THERE IS NO "autoexec.cfg" in {os.path.join(path_vars["csgo_path"], "cfg")}'), add_time=False)
+    if os.path.exists(os.path.join(path_vars.csgo, 'cfg', 'autoexec.cfg')):
+        write(red(f'YOU HAVE TO DELETE THE "autoexec.cfg" in {os.path.join(path_vars.csgo, "cfg")} AND MERGE IT WITH THE ONE IN {userdata_path}'), add_time=False)
+        write(red(f'THE SCRIPT WONT WORK UNTIL THERE IS NO "autoexec.cfg" in {os.path.join(path_vars.csgo, "cfg")}'), add_time=False)
 
 
 # noinspection PyShadowingNames
 def get_avg_match_time(steam_id: int):
-    with sqlite3.connect(path_vars['db_path']) as db:
+    with sqlite3.connect(path_vars.db) as db:
         cur = db.execute("""SELECT AVG(match_time), SUM(match_time), AVG(wait_time), SUM(wait_time) FROM matches WHERE steam_id = ?""", (steam_id,))
         match_avg, match_sum, search_avg, search_sum = cur.fetchone()
         cur = db.execute("""SELECT SUM(afk_time), COUNT(afk_time), SUM(team_score + enemy_score) FROM matches WHERE steam_id = ? AND afk_time NOT NULL""", (steam_id,))
@@ -291,17 +220,17 @@ def get_avg_match_time(steam_id: int):
 
 
 def add_first_match(path):
-    if not account['match_token']:
+    if not account.match_token:
         raise ValueError('Missing Match Token in Config')
-    create_table(path, account['match_token'], account['steam_id'])
-    return [account['match_token']]
+    create_table(path, account.match_token, account.steam_id)
+    return [account.match_token]
 
 
 # noinspection PyShadowingNames
 def get_old_sharecodes(last_x: int):
     if last_x >= 0:
         return []
-    path = path_vars['db_path']
+    path = path_vars.db
     if os.path.isfile(path):
         with sqlite3.connect(path) as db:
             cur = db.execute("""SELECT sharecode FROM matches WHERE steam_id = ? ORDER BY timestamp DESC LIMIT ?""", (steam_id, abs(last_x)))
@@ -320,7 +249,7 @@ def get_new_sharecodes(game_id: str, stats=None):
     sharecodes = [game_id]
     stats_error = True
     while True:
-        steam_url = f'https://api.steampowered.com/ICSGOPlayers_730/GetNextMatchSharingCode/v1?key={cfg.steam_api_key}&steamid={steam_id}&steamidkey={account["auth_code"]}&knowncode={game_id}'
+        steam_url = f'https://api.steampowered.com/ICSGOPlayers_730/GetNextMatchSharingCode/v1?key={cfg.steam_api_key}&steamid={steam_id}&steamidkey={account.auth_code}&knowncode={game_id}'
         try:
             r = requests.get(steam_url, timeout=2)
             next_code = r.json()['result']['nextcode']
@@ -342,7 +271,7 @@ def get_new_sharecodes(game_id: str, stats=None):
                     stats_error = False
                 time.sleep(2)
 
-    path = path_vars['db_path']
+    path = path_vars.db
     with sqlite3.connect(path) as db:
         if len(sharecodes) > 1:
             # > 1 is true if there is a new sharecode, first sharecode is the last supplied one
@@ -551,7 +480,7 @@ class MatchRequest(threading.Thread):
 
 
 def match_win_list(number_of_matches: int, _steam_id, time_difference: int = 7_200, replace_chars: bool = False):
-    with sqlite3.connect(path_vars['db_path']) as db:
+    with sqlite3.connect(path_vars.db) as db:
         cur = db.execute("""SELECT outcome, timestamp FROM matches WHERE steam_id = ? ORDER BY timestamp DESC LIMIT ?""", (_steam_id, abs(number_of_matches)))
         items = cur.fetchall()
     outcome_lst = []
@@ -608,13 +537,42 @@ class WindowEnumerator(threading.Thread):
         self._kill.set()
 
 
-subprocess.call('cls', shell=True)
-path_vars = {'appdata_path': os.path.join(os.getenv('APPDATA'), 'CSGO AUTO ACCEPT'),
-             'mute_csgo_path': f'"{os.path.abspath(os.path.expanduser("sounds/nircmdc.exe"))}" muteappvolume csgo.exe',
-             'db_path': os.path.join(os.path.join(os.getenv('APPDATA'), 'CSGO AUTO ACCEPT', 'matches.db'))}
+@dataclass()
+class PathVars:
+    appdata: str = os.path.join(os.getenv('APPDATA'), 'CSGO AUTO ACCEPT')
+    mute_csgo: str = f'"{os.path.abspath(os.path.expanduser("sounds/nircmdc.exe"))}" muteappvolume csgo.exe'
+    db: str = os.path.join(os.path.join(os.getenv('APPDATA'), 'CSGO AUTO ACCEPT', 'matches.db'))
+    csgo: str = None
+    steam: str = None
+
+    def __post_init__(self):
+        steam_reg_key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r'SOFTWARE\WOW6432Node\Valve\Steam')
+        steam_path = winreg.QueryValueEx(steam_reg_key, 'InstallPath')[0]
+        libraries = [os.path.join(steam_path, 'steamapps')]
+        with open(os.path.join(steam_path, 'steamapps', 'libraryfolders.vdf'), 'r', encoding='utf-8') as library_file:
+            for line in library_file:
+                folder_object = re.search(r'"path"\s*"(.+)"', line)
+                if folder_object is not None:
+                    libraries.append(os.path.join(Path(folder_object.group(1)), 'steamapps'))
+
+        for library in libraries:
+            if os.path.exists(os.path.join(library, 'appmanifest_730.acf')):
+                csgo_path = os.path.join(library, 'common', 'Counter-Strike Global Offensive', 'csgo')
+                break
+        else:
+            write(red('DID NOT FIND CSGO PATH'), add_time=False)
+            csgo_path = ''
+        global path_vars
+        self.csgo = csgo_path
+        self.steam = steam_path
+
+
+subprocess.run('cls', shell=True)
+path_vars = PathVars()
+
 
 try:
-    os.mkdir(path_vars['appdata_path'])
+    os.mkdir(path_vars.appdata)
 except FileExistsError:
     pass
 
@@ -633,8 +591,8 @@ config.read('config.ini')
 try:
     @dataclass
     class ConfigItems:
-        webhook_ip = config.get('HotKeys', 'WebHook IP')
-        webhook_port = config.getint('HotKeys', 'WebHook Port')
+        webhook_ip: str = config.get('HotKeys', 'WebHook IP')
+        webhook_port: int = config.getint('HotKeys', 'WebHook Port')
 
         sleep_interval: float = config.getfloat('Script Settings', 'Interval')
         log_color: str = config.get('Script Settings', 'Log Color')
@@ -651,6 +609,8 @@ try:
         telnet_port: int = config.getint('Script Settings', 'TelNet Port')
         telnet_ip: str = config.get('Script Settings', 'TelNet IP')
         autobuy: str = config.get('Script Settings', 'AutoBuy')
+
+        parser: configparser.ConfigParser = config
 
         def __post_init__(self):
             self.log_color = self.log_color.lower()
@@ -670,33 +630,32 @@ except (configparser.NoOptionError, configparser.NoSectionError, ValueError) as 
     cfg = None
     exit('REPAIR CONFIG')
 
-accounts = []
-get_accounts_from_cfg()
-get_csgo_path()
+
+accounts = get_accounts_from_cfg(cfg.parser)
 steam_id = get_current_steam_user()
 
 if not steam_id:
     account = accounts[0]
-    steam_id = account['steam_id']
+    steam_id = account.steam_id
     current_steam_account = 0
 else:
     for account_number, cfg_account in enumerate(accounts):
-        if steam_id == cfg_account['steam_id']:
+        if steam_id == cfg_account.steam_id:
             account = cfg_account
             current_steam_account = account_number
             break
     else:
         write(red(f'Could not find {steam_id} in config file, defaulting to account 0'), add_time=False)
         account = accounts[0]
-        steam_id = account['steam_id']
+        steam_id = account.steam_id
         current_steam_account = 0
 
-with open(os.path.join(path_vars['appdata_path'], 'console.log'), 'w', encoding='utf-8') as fp:
+with open(os.path.join(path_vars.appdata, 'console.log'), 'w', encoding='utf-8') as fp:
     fp.write('')
 
-if path_vars['csgo_path']:
-    if not os.path.exists(os.path.join(path_vars['csgo_path'], 'cfg', 'gamestate_integration_GSI.cfg')):
-        copyfile(os.path.join(os.getcwd(), 'GSI', 'gamestate_integration_GSI.cfg'), os.path.join(path_vars['csgo_path'], 'cfg', 'gamestate_integration_GSI.cfg'))
+if path_vars.csgo:
+    if not os.path.exists(os.path.join(path_vars.csgo, 'cfg', 'gamestate_integration_GSI.cfg')):
+        copyfile(os.path.join(os.getcwd(), 'GSI', 'gamestate_integration_GSI.cfg'), os.path.join(path_vars.csgo, 'cfg', 'gamestate_integration_GSI.cfg'))
         write(red('Added GSI CONFIG to cfg folder. Counter-Strike needs to be restarted if running!'))
 
 afk_message = False
@@ -705,7 +664,7 @@ window_ids = []
 
 sleep_interval = cfg.sleep_interval
 sleep_interval_looking_for_accept = 0.05
-log_reader = LogReader(os.path.join(path_vars['appdata_path'], 'console.log'))
+log_reader = LogReader(os.path.join(path_vars.appdata, 'console.log'))
 
 if __name__ == '__main__':
     pass
