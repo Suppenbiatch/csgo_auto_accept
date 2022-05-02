@@ -6,7 +6,7 @@ from typing import List
 
 
 class SteamAccount(object):
-    def __init__(self, steam_id, auth_code: str, match_token: str):
+    def __init__(self, steam_id, auth_code: str, match_token: str, auto_buy: str):
         self.name = ''
         self.steam_id = str(steam_id)
         self.steam_id_3 = str(int(self.steam_id) - 76561197960265728)
@@ -14,6 +14,7 @@ class SteamAccount(object):
         self.match_token = str(match_token)
         self.avatar_url = 'https://i.imgur.com/MhAf20U.png'
         self.avatar_hash = ''
+        self.autobuy: str = auto_buy
         self.color = 0
 
     def __eq__(self, other):
@@ -38,7 +39,8 @@ def get_accounts_from_cfg(parser: ConfigParser) -> List[SteamAccount]:
             steam_id = parser.get(i, 'Steam ID')
             auth_code = parser.get(i, 'Authentication Code')
             match_token = parser.get(i, 'Match Token')
-            accounts.append(SteamAccount(steam_id, auth_code, match_token))
+            auto_buy = parser.get(i, 'AutoBuy')
+            accounts.append(SteamAccount(steam_id, auth_code, match_token, auto_buy))
     steam_ids = ','.join([account.steam_id for account in accounts])
     steam_api_key = parser.get('csgostats.gg', 'API Key')
     steam_api_error = False

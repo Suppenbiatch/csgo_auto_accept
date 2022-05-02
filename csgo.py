@@ -176,8 +176,8 @@ class Scoreboard:
     total_score: int = 0
     team: str = ''
     opposing_team: str = ''
-    current_weapons: List[str] = None
-    has_c4: bool = False
+    current_weapons: List[str] = None  # same as weapons
+    has_c4: bool = False  # same as c4
 
 
 def hk_activate():
@@ -291,16 +291,16 @@ def gsi_server_status():
 
 def upload_matches(look_for_new: bool = True, stats=None):
     global retryer
-    if truth.upload_thread_activ:
+    if truth.upload_thread_active:
         write(magenta('Another Upload-Thread is still active'))
         return
-    truth.upload_thread_activ = True
+    truth.upload_thread_active = True
     if look_for_new is True:
         try:
             latest_sharecode = cs.get_old_sharecodes(-1)
         except ValueError:
             write(red('no match token in config, aborting'))
-            truth.upload_thread_activ = False
+            truth.upload_thread_active = False
             return
 
         new_sharecodes = cs.get_new_sharecodes(latest_sharecode[0], stats=stats)
@@ -311,11 +311,11 @@ def upload_matches(look_for_new: bool = True, stats=None):
     times.csgostats_retry = time.time()
     if not retryer:
         write(yellow('no new sharecodes found, aborting'))
-        truth.upload_thread_activ = False
+        truth.upload_thread_active = False
         return
     retryer = updater.update_csgo_stats(retryer, discord_output=truth.discord_output)
     times.csgostats_retry = time.time()
-    truth.upload_thread_activ = False
+    truth.upload_thread_active = False
     return
 
 
@@ -591,6 +591,7 @@ while running:
             scoreboard.T = gsi_server.get_info('map', 'team_t')['score']
             scoreboard.last_round_info = gsi_server.get_info('map', 'round_wins')
             scoreboard.player = gsi_server.get_info('player')
+
             scoreboard.weapons = [inner for outer in scoreboard.player['weapons'].values() for inner in outer.items()]
             scoreboard.c4 = ' - Bomb Carrier' if 'weapon_c4' in [i for _, i in scoreboard.weapons] else ''
             scoreboard.total_score = scoreboard.CT + scoreboard.T
@@ -647,10 +648,17 @@ while running:
     if truth.game_minimized_freezetime:
         message = f'Freeze Time - {scoreboard.last_round_text} - {getattr(scoreboard, decolor(scoreboard.team)):02d}:{getattr(scoreboard, decolor(scoreboard.opposing_team)):02d}' \
                   f'{scoreboard.extra_round_info}{scoreboard.c4} - AFK: {cs.timedelta(seconds=afk.per_round)}'
+
         if time.time() - times.freezetime_started > scoreboard.freeze_time + scoreboard.buy_time - 2:
-            if cs.cfg.autobuy and truth.first_autobuy:
-                telnet.send(cs.cfg.autobuy)
-                truth.first_autobuy = False
+            if cs.account.autobuy and truth.first_autobuy:
+                main_weapons = ['Machine Gun', 'Rifle', 'Shotgun', 'SniperRifle', 'Submachine Gun']
+                for weapon in scoreboard.player['weapons'].values():
+                    if weapon.get('type') in main_weapons:
+                        break
+                else:
+                    # check if player has main weapon
+                    telnet.send(cs.account.autobuy)
+                    truth.first_autobuy = False
             if truth.first_autobuy is False:
                 message += f' - {cyan("AutoBuy")}'
 
@@ -660,8 +668,8 @@ while running:
             best_of = red(f"MR{scoreboard.max_rounds}")
             message = f'Warmup is over! Map: {green(" ".join(gsi_server.get_info("map", "name").split("_")[1:]).title())}, Team: {team}, {best_of}, Took: {cs.timedelta(seconds=times.warmup_seconds)}'
             if time.time() - times.freezetime_started > scoreboard.freeze_time + scoreboard.buy_time - 2:
-                if cs.cfg.autobuy and truth.first_autobuy:
-                    telnet.send(cs.cfg.autobuy)
+                if cs.account.autobuy and truth.first_autobuy:
+                    telnet.send(cs.account.autobuy)
                     truth.first_autobuy = False
                 if truth.first_autobuy is False:
                     message += f' - {cyan("AutoBuy")}'

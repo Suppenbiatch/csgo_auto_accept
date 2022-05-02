@@ -608,7 +608,6 @@ try:
         discord_user_id: int = config.getint('Notifier', 'Discord User ID')
         telnet_port: int = config.getint('Script Settings', 'TelNet Port')
         telnet_ip: str = config.get('Script Settings', 'TelNet IP')
-        autobuy: str = config.get('Script Settings', 'AutoBuy')
 
         parser: configparser.ConfigParser = config
 
