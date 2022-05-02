@@ -1,12 +1,13 @@
 import random
-from configparser import ConfigParser
+import re
+from configparser import ConfigParser, SectionProxy
 
 import requests
-from typing import List
+from typing import List, Tuple
 
 
 class SteamAccount(object):
-    def __init__(self, steam_id, auth_code: str, match_token: str, auto_buy: str):
+    def __init__(self, steam_id, auth_code: str, match_token: str, auto_buy):
         self.name = ''
         self.steam_id = str(steam_id)
         self.steam_id_3 = str(int(self.steam_id) - 76561197960265728)
@@ -14,7 +15,7 @@ class SteamAccount(object):
         self.match_token = str(match_token)
         self.avatar_url = 'https://i.imgur.com/MhAf20U.png'
         self.avatar_hash = ''
-        self.autobuy: str = auto_buy
+        self.autobuy: List[Tuple[int, str]] = auto_buy
         self.color = 0
 
     def __eq__(self, other):
@@ -36,10 +37,27 @@ def get_accounts_from_cfg(parser: ConfigParser) -> List[SteamAccount]:
     accounts = []
     for i in parser.sections():
         if i.lower().startswith('account'):
-            steam_id = parser.get(i, 'Steam ID')
-            auth_code = parser.get(i, 'Authentication Code')
-            match_token = parser.get(i, 'Match Token')
-            auto_buy = parser.get(i, 'AutoBuy')
+            section: SectionProxy = parser[i]
+            auto_buy = []
+            steam_id = section.get('Steam ID')
+            auth_code = section.get('Authentication Code')
+            match_token = section.get('Match Token')
+            for key, value in section.items():
+                equip_value = re.search(r'autobuy (\d+)', key)
+                if equip_value is not None:
+                    equip_value = int(equip_value.group(1))
+                    auto_buy.append((equip_value, value))
+
+            if not auto_buy:
+                if 'AutoBuy' in section:
+                    script = section.get('AutoBuy')
+                    if script:
+                        auto_buy = [(0, script)]
+            else:
+                auto_buy.sort(key=lambda x: x[0], reverse=True)
+            if not auto_buy:
+                auto_buy = None
+
             accounts.append(SteamAccount(steam_id, auth_code, match_token, auto_buy))
     steam_ids = ','.join([account.steam_id for account in accounts])
     steam_api_key = parser.get('csgostats.gg', 'API Key')

@@ -171,13 +171,16 @@ class Scoreboard:
     buy_time: int = 20
     freeze_time: int = 15
     player: dict = None
-    weapons: List[str] = None
+    weapons: List[dict] = None
     c4: str = ''
     total_score: int = 0
+    raw_team: str = ''
+    raw_opposing_team = ''
     team: str = ''
     opposing_team: str = ''
-    current_weapons: List[str] = None  # same as weapons
-    has_c4: bool = False  # same as c4
+    current_weapons: List[dict] = None  # same as weapons, will update until player has c4 or freeze time is over
+    has_c4: bool = False
+    money: int = 0
 
 
 def hk_activate():
@@ -526,6 +529,7 @@ while running:
                 write(f'{players_accepted} Players of {i[1]} already accepted.', add_time=False, overwrite='11')
 
     if truth.players_still_connecting:
+        # not working without developer 1
         if console.lobby_data is not None:
             lobby_data = '\n'.join(console.lobby_data)
             lobby_info = cs.lobby_info.findall(lobby_data)
@@ -592,12 +596,17 @@ while running:
             scoreboard.last_round_info = gsi_server.get_info('map', 'round_wins')
             scoreboard.player = gsi_server.get_info('player')
 
-            scoreboard.weapons = [inner for outer in scoreboard.player['weapons'].values() for inner in outer.items()]
-            scoreboard.c4 = ' - Bomb Carrier' if 'weapon_c4' in [i for _, i in scoreboard.weapons] else ''
+            scoreboard.money = scoreboard.player['state']['money']
+
+            scoreboard.weapons = list(scoreboard.player['weapons'].values())
+            scoreboard.c4 = ' - Bomb Carrier' if 'weapon_c4' in [weapon['name'] for weapon in scoreboard.weapons] else ''
             scoreboard.total_score = scoreboard.CT + scoreboard.T
 
-            scoreboard.team = red('T') if scoreboard.player['team'] == 'T' else cyan('CT')
-            scoreboard.opposing_team = cyan('CT') if decolor(scoreboard.team) == 'T' else red('T')
+            scoreboard.raw_team = scoreboard.player['team']
+            scoreboard.raw_opposing_team = 'CT' if scoreboard.raw_team == 'T' else 'T'
+
+            scoreboard.team = red('T') if scoreboard.raw_team == 'T' else cyan('CT')
+            scoreboard.opposing_team = cyan('CT') if scoreboard.raw_team == 'T' else red('T')
 
             afk.round_values.append(round(afk.seconds_afk, 3))
 
@@ -613,7 +622,7 @@ while running:
                 if int(scoreboard.last_round_key) == scoreboard.max_rounds / 2:
                     scoreboard.last_round_winner = 'T' if scoreboard.last_round_winner == 'CT' else 'CT'
                 scoreboard.last_round_text = f'{scoreboard.team} {green("won")} the last round' \
-                    if decolor(scoreboard.team) == scoreboard.last_round_winner \
+                    if scoreboard.raw_team == scoreboard.last_round_winner \
                     else f'{scoreboard.team} {yellow("lost")} the last round'
 
             except AttributeError:
@@ -627,7 +636,7 @@ while running:
             else:
                 scoreboard.extra_round_info = ''
 
-            write(f'Freeze Time - {scoreboard.last_round_text} - {getattr(scoreboard, decolor(scoreboard.team)):02d}:{getattr(scoreboard, decolor(scoreboard.opposing_team)):02d}'
+            write(f'Freeze Time - {scoreboard.last_round_text} - {getattr(scoreboard, scoreboard.raw_team):02d}:{getattr(scoreboard, scoreboard.raw_opposing_team):02d}'
                   f'{scoreboard.extra_round_info}{scoreboard.c4} - AFK: {cs.timedelta(seconds=afk.per_round)}',
                   overwrite='7')
 
@@ -646,19 +655,21 @@ while running:
             playsound('sounds/ready_up.wav', block=False)
 
     if truth.game_minimized_freezetime:
-        message = f'Freeze Time - {scoreboard.last_round_text} - {getattr(scoreboard, decolor(scoreboard.team)):02d}:{getattr(scoreboard, decolor(scoreboard.opposing_team)):02d}' \
+        scoreboard.money = gsi_server.get_info('player', 'state', 'money')
+        money = f'{scoreboard.money:,}$'
+
+        message = f'Freeze Time - {scoreboard.last_round_text} - {getattr(scoreboard, scoreboard.raw_team):02d}:{getattr(scoreboard, scoreboard.raw_opposing_team):02d} - {cyan(money)}' \
                   f'{scoreboard.extra_round_info}{scoreboard.c4} - AFK: {cs.timedelta(seconds=afk.per_round)}'
 
         if time.time() - times.freezetime_started > scoreboard.freeze_time + scoreboard.buy_time - 2:
-            if cs.account.autobuy and truth.first_autobuy:
+            if cs.account.autobuy is not None and truth.first_autobuy:
                 main_weapons = ['Machine Gun', 'Rifle', 'Shotgun', 'SniperRifle', 'Submachine Gun']
-                for weapon in scoreboard.player['weapons'].values():
-                    if weapon.get('type') in main_weapons:
-                        break
-                else:
-                    # check if player has main weapon
-                    telnet.send(cs.account.autobuy)
-                    truth.first_autobuy = False
+                if not any(weapon.get('type') in main_weapons for weapon in scoreboard.weapons):
+                    for min_money, script in cs.account.autobuy:
+                        if scoreboard.money >= min_money:
+                            telnet.send(script)
+                            truth.first_autobuy = False
+                            break
             if truth.first_autobuy is False:
                 message += f' - {cyan("AutoBuy")}'
 
@@ -678,15 +689,14 @@ while running:
             pass
 
     if game_state.round_phase == 'freezetime' and truth.c4_round_first:
-        scoreboard.current_weapons = [inner for outer in gsi_server.get_info('player', 'weapons').values() for inner in outer.items()]
-        scoreboard.has_c4 = True if 'weapon_c4' in [i for _, i in scoreboard.current_weapons] else False
+        scoreboard.current_weapons = list(gsi_server.get_info('player', 'weapons').values())
+        scoreboard.has_c4 = True if 'weapon_c4' in [weapon['name'] for weapon in scoreboard.current_weapons] else False
         if scoreboard.has_c4:
             playsound('sounds/ding.wav', block=False)
             truth.c4_round_first = False
 
     if truth.still_in_warmup:
-        if game_state.round_phase == 'live':
-
+        if game_state.map_phase == 'live':
             truth.still_in_warmup = False
             truth.players_still_connecting = False
             team = red('T') if gsi_server.get_info('player', 'team') == 'T' else cyan('CT')
