@@ -514,7 +514,7 @@ while running:
                 afk.seconds_afk = 0.0
                 afk.round_values = []
 
-            if (item for item in console.msg for cmp in ('Other players failed to connect', 'Failed to ready up') if cmp in item):
+            if list((item for item in console.msg for cmp in ('Other players failed to connect', 'Failed to ready up') if cmp in item)):
                 truth.test_for_server = True
                 truth.test_for_accept_button = False
                 cs.sleep_interval = cs.cfg.sleep_interval
@@ -568,7 +568,7 @@ while running:
                     break
 
     if console.server_abandon is not None:
-        if (msg for msg in console.server_abandon if 'Disconnect' in msg):
+        if list((msg for msg in console.server_abandon if 'Disconnect' in msg)):
             if not truth.game_over:
                 write(red('Server disconnected'))
                 playsound('sounds/fail.wav', block=False)
@@ -695,7 +695,7 @@ while running:
             message = f'Warmup is over! Map: {green(" ".join(gsi_server.get_info("map", "name").split("_")[1:]).title())}, Team: {team}, {best_of}, Took: {cs.timedelta(seconds=times.warmup_seconds)}'
             if time.time() - times.freezetime_started > scoreboard.freeze_time + scoreboard.buy_time - 2:
                 if cs.account.autobuy and truth.first_autobuy:
-                    telnet.send(cs.account.autobuy)
+                    telnet.send(cs.account.autobuy[-1])
                     truth.first_autobuy = False
                 if truth.first_autobuy is False:
                     message += f' - {cyan("AutoBuy")}'
