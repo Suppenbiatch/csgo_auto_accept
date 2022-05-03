@@ -79,25 +79,6 @@ def minimize_csgo(window_id: int):
             raise e
 
 
-# noinspection PyShadowingNames
-def anti_afk(window_id: int):
-    current_cursor_position = win32api.GetCursorPos()
-    screen_mid = (int(win32api.GetSystemMetrics(0) / 2), int(win32api.GetSystemMetrics(1) / 2))
-    moves = int(win32api.GetSystemMetrics(1) / 3) + 1
-    set_mouse_position(screen_mid)
-    win32gui.ShowWindow(window_id, win32con.SW_MAXIMIZE)
-    for _ in range(moves):
-        win32api.mouse_event(win32con.MOUSEEVENTF_MOVE, 0, -15)
-    click(screen_mid)
-    for _ in range(moves):
-        win32api.mouse_event(win32con.MOUSEEVENTF_MOVE, 0, 15)
-    for _ in range(int(moves / 1.07)):
-        win32api.mouse_event(win32con.MOUSEEVENTF_MOVE, 0, -8)
-    time.sleep(0.075)
-    set_mouse_position(current_cursor_position)
-    minimize_csgo(window_id)
-
-
 def anti_afk_tel(tl: TelNetConsoleReader, is_active: bool):
     if is_active:
         tl.send('-right')
@@ -105,26 +86,6 @@ def anti_afk_tel(tl: TelNetConsoleReader, is_active: bool):
     else:
         tl.send('+right')
         tl.send('+forward')
-
-
-def task_bar(factor: float = 2.0):
-    monitor = win32api.GetMonitorInfo(win32api.MonitorFromPoint((0, 0)))
-    taskbar_size = tuple(map(operator.sub, monitor['Monitor'], monitor['Work']))
-    position_int = [(i, abs(x)) for i, x in enumerate(taskbar_size) if x]
-    if len(position_int) != 1:
-        write(yellow('Taskbar location failed'), add_time=False)
-        return 0, 0
-    position_int = position_int[0]
-    pos = position_int[0]
-    if pos == 0:  # left
-        return int(position_int[1] / 2), int(monitor['Monitor'][3] * factor)
-    elif pos == 1:  # top
-        return int(monitor['Monitor'][2] * factor), int(position_int[1] / 2)
-    elif pos == 2:  # right
-        return monitor['Monitor'][2] - int(position_int[1] / 2), int(monitor['Monitor'][3] * factor)
-    elif pos == 3:  # bottom
-        return int(monitor['Monitor'][2] * factor), monitor['Monitor'][3] - int(position_int[1] / 2)
-    return 0, 0
 
 
 # noinspection PyShadowingNames
@@ -406,28 +367,21 @@ def enum_cb(hwnd: int, results: list):
     results.append((hwnd, name, cpid))
 
 
-def get_hwnd(exe_name: str = 'csgo.exe', window_name: str = 'counter-strike'):
+def is_program_alive(exe_name: str = 'csgo.exe'):
     r = subprocess.check_output(f'tasklist /FI "IMAGENAME EQ {exe_name}" /FO "CSV"', shell=False)
     procs = [line.decode('utf-8', errors='ignore') for line in r.splitlines()]
     data = list(csv.DictReader(procs))
-    if len(data) < 1:
-        raise ProcessNotFoundError(exe_name)
-    pid = int(data[0]["PID"])
-    for window_id, title, cpid in window_ids:
-        if cpid == pid:
-            if window_name in title.lower():
-                return window_id
-    raise WindowNotFoundError(window_name)
+    return len(data) >= 1
 
 
 class ProcessNotFoundError(BaseException):
     def __init__(self, name):
-        super().__init__(f'no process found by {name}')
+        super().__init__(f'no process found for "{name}"')
 
 
 class WindowNotFoundError(BaseException):
     def __init__(self, name):
-        super().__init__(f'no window found for {name}')
+        super().__init__(f'no window found for "{name}"')
 
 
 class ItemFound(BaseException):
@@ -440,11 +394,10 @@ def restart_gsi_server(gsi_server: server.GSIServer = None):
         gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
     elif gsi_server.running:
         gsi_server.shutdown()
-        try:
-            get_hwnd()
+        if is_program_alive():
             gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
             gsi_server.start_server()
-        except (WindowNotFoundError, ProcessNotFoundError):
+        else:
             gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
     else:
         gsi_server.start_server()
@@ -517,18 +470,33 @@ def match_win_list(number_of_matches: int, _steam_id, time_difference: int = 7_2
 
 # noinspection PyShadowingNames
 class WindowEnumerator(threading.Thread):
-    def __init__(self, sleep_interval: float = 0.75):
+    def __init__(self, exe_name: str, window_name: str, sleep_interval: float = 0.75):
         super().__init__(name='WindowEnumerator')
         self._kill = threading.Event()
         self._interval = sleep_interval
+        self._exe_name = exe_name
+        self._window_name = window_name.lower()
         self.daemon = True
 
+        self.window_ids = []
+        self.hwnd: int = 0
+
     def run(self):
-        global window_ids
+        # replace window ids with self
+        # add get hwnd + hwnd self
         while True:
-            current_ids = []
-            win32gui.EnumWindows(enum_cb, current_ids)
-            window_ids = current_ids
+            win32gui.EnumWindows(enum_cb, self.window_ids)
+
+            r = subprocess.check_output(f'tasklist /FI "IMAGENAME EQ {self._exe_name}" /FO "CSV"', shell=False)
+            procs = [line.decode('utf-8', errors='ignore') for line in r.splitlines()]
+            data = list(csv.DictReader(procs))
+            if len(data) >= 1:
+                pid = int(data[0]["PID"])
+                for window_id, title, cpid in self.window_ids:
+                    if cpid == pid:
+                        if self._window_name in title.lower():
+                            self.hwnd = window_id
+                            break
             is_killed = self._kill.wait(self._interval)
             if is_killed:
                 break
@@ -570,17 +538,7 @@ class PathVars:
 subprocess.run('cls', shell=True)
 path_vars = PathVars()
 
-
-try:
-    os.mkdir(path_vars.appdata)
-except FileExistsError:
-    pass
-
-overwrite_dict = {'key': '0', 'msg': '', 'end': '\n'}
-if not sys.stdout.isatty():
-    console_window = {'prefix': '\r', 'suffix': '', 'isatty': False}
-else:
-    console_window = {'prefix': '', 'suffix': '\r', 'isatty': True}
+os.makedirs(path_vars.appdata, exist_ok=True)
 
 lobby_info = re.compile(r"(?<!Machines' = '\d''members:num)(C?TSlotsFree|Players)' = '(\d+'?)")
 
@@ -588,41 +546,35 @@ lobby_info = re.compile(r"(?<!Machines' = '\d''members:num)(C?TSlotsFree|Players
 config = configparser.ConfigParser()
 config.read('config.ini')
 
+
+@dataclass
+class ConfigItems:
+    webhook_ip: str = config.get('HotKeys', 'WebHook IP')
+    webhook_port: int = config.getint('HotKeys', 'WebHook Port')
+
+    sleep_interval: float = config.getfloat('Script Settings', 'Interval')
+    forbidden_programs: str = config.get('Script Settings', 'Forbidden Programs')
+    match_list_length: int = config.getint('Script Settings', 'Match History Lenght')
+    telnet_ip: str = config.get('Script Settings', 'TelNet IP')
+    telnet_port: int = config.getint('Script Settings', 'TelNet Port')
+
+    steam_api_key: str = config.get('csgostats.gg', 'API Key')
+    auto_retry_interval: int = config.getint('csgostats.gg', 'Auto-Retrying-Interval')
+    status_requester: str = config.getboolean('csgostats.gg', 'Status Requester')
+    secret: bytes = config.get('csgostats.gg', 'Secret')
+    server_ip: str = config.get('csgostats.gg', 'WebServer IP')
+    server_port: int = config.getint('csgostats.gg', 'WebServer Port')
+
+    discord_user_id: int = config.getint('Notifier', 'Discord User ID')
+
+    parser: configparser.ConfigParser = config
+
+    def __post_init__(self):
+        if isinstance(self.secret, str):
+            self.secret = self.secret.encode()
+
+
 try:
-    @dataclass
-    class ConfigItems:
-        webhook_ip: str = config.get('HotKeys', 'WebHook IP')
-        webhook_port: int = config.getint('HotKeys', 'WebHook Port')
-
-        sleep_interval: float = config.getfloat('Script Settings', 'Interval')
-        log_color: str = config.get('Script Settings', 'Log Color')
-        forbidden_programs: str = config.get('Script Settings', 'Forbidden Programs')
-        taskbar_position: tuple = config.getfloat('Script Settings', 'Taskbar Factor')
-        match_list_lenght: int = config.getint('Script Settings', 'Match History Lenght')
-        steam_api_key: str = config.get('csgostats.gg', 'API Key')
-        auto_retry_interval: int = config.getint('csgostats.gg', 'Auto-Retrying-Interval')
-        status_requester: str = config.getboolean('csgostats.gg', 'Status Requester')
-        secret: bytes = config.get('csgostats.gg', 'Secret')
-        server_ip: str = config.get('csgostats.gg', 'WebServer IP')
-        server_port: int = config.getint('csgostats.gg', 'WebServer Port')
-        discord_user_id: int = config.getint('Notifier', 'Discord User ID')
-        telnet_port: int = config.getint('Script Settings', 'TelNet Port')
-        telnet_ip: str = config.get('Script Settings', 'TelNet IP')
-
-        parser: configparser.ConfigParser = config
-
-        def __post_init__(self):
-            self.log_color = self.log_color.lower()
-            if isinstance(self.secret, str):
-                self.secret = self.secret.encode()
-
-            if isinstance(self.taskbar_position, float):
-                if self.taskbar_position > 1.0:
-                    self.taskbar_position = task_bar(1.0 / self.taskbar_position)
-                else:
-                    self.taskbar_position = task_bar(self.taskbar_position)
-
-
     cfg: ConfigItems = ConfigItems()
 except (configparser.NoOptionError, configparser.NoSectionError, ValueError) as e:
     write(f'ERROR IN CONFIG - {str(e)}')
@@ -659,7 +611,6 @@ if path_vars.csgo:
 
 afk_message = False
 
-window_ids = []
 
 sleep_interval = cfg.sleep_interval
 sleep_interval_looking_for_accept = 0.05

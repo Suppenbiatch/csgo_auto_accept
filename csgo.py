@@ -345,7 +345,7 @@ player_stats = {}
 
 gsi_server = cs.restart_gsi_server(None)
 
-window_enum = cs.WindowEnumerator()
+window_enum = cs.WindowEnumerator('csgo.exe', 'counter-strike', sleep_interval=0.75)
 window_enum.start()
 
 webhook = WebServer(cs.cfg.webhook_ip, cs.cfg.webhook_port)
@@ -358,9 +358,8 @@ afk_sender.start()
 
 telnet = TelNetConsoleReader(cs.cfg.telnet_ip, cs.cfg.telnet_port)  # start thread when game is running
 
-hwnd, hwnd_old = 0, 0
+hwnd_old = 0
 csgo_window_status = {'server_found': 2, 'new_tab': 2, 'in_game': 0}
-csgo = []
 
 updater = CSGOStatsUpdater(cs.cfg, cs.account, cs.path_vars.db)
 server_online = updater.check_status()
@@ -376,17 +375,13 @@ write(green('READY'))
 running = True
 
 while running:
-
+    t1 = time.perf_counter()
     if retryer and not truth.upload_thread_active:
         if time.time() - times.csgostats_retry > cs.cfg.auto_retry_interval:
             t = Thread(target=upload_matches, args=(False, None), name='UploadThread')
             t.start()
-    try:
-        hwnd = cs.get_hwnd()
-    except cs.ProcessNotFoundError:
-        pass
-    except cs.WindowNotFoundError:
-        pass
+
+    hwnd = window_enum.hwnd
 
     if hwnd_old != hwnd:
         truth.test_for_server = False
@@ -402,7 +397,7 @@ while running:
         updater.new_account(cs.account)
         write(f'Current account is: {cs.account.name}', add_time=False, overwrite='9')
 
-        if cs.check_for_forbidden_programs(cs.window_ids):
+        if cs.check_for_forbidden_programs(window_enum.window_ids):
             write('A forbidden program is still running...', add_time=False)
             playsound('sounds/fail.wav', block=False)
 
@@ -570,15 +565,15 @@ while running:
 
     if console.server_settings is not None:
         try:
-            scoreboard.max_rounds = [int(re.sub('\D', '', line)) for line in console.server_settings if 'maxrounds' in line][0]
+            scoreboard.max_rounds = [int(re.sub(r'\D', '', line)) for line in console.server_settings if 'maxrounds' in line][0]
         except IndexError:
             pass
         try:
-            scoreboard.buy_time = [int(re.sub('\D', '', line)) for line in console.server_settings if 'buytime' in line][0]
+            scoreboard.buy_time = [int(re.sub(r'\D', '', line)) for line in console.server_settings if 'buytime' in line][0]
         except IndexError:
             pass
         try:
-            scoreboard.freeze_time = [int(re.sub('\D', '', line)) for line in console.server_settings if 'freezetime' in line][0]
+            scoreboard.freeze_time = [int(re.sub(r'\D', '', line)) for line in console.server_settings if 'freezetime' in line][0]
         except IndexError:
             pass
 
@@ -817,7 +812,8 @@ while running:
         afk.seconds_afk = 0.0
         afk.time = time.time()
         afk.round_values = []
-
+    t2 = time.perf_counter()
+    write(f'Loop Iteration: {t2 - t1:.04f}s', add_time=False)
     if truth.test_for_warmup:
         times.warmup_started = time.time()
         if console.map is not None:
@@ -835,11 +831,11 @@ while running:
                 if player_team is not None:
                     team = red(player_team) if player_team == 'T' else cyan(player_team)
                     msg = f'You will play on {green(" ".join(saved_map.split("_")[1:]).title())} as {team} in the first half. ' \
-                          f'Last Games: {cs.match_win_list(cs.cfg.match_list_lenght, cs.steam_id, time_difference=7_200)}'
+                          f'Last Games: {cs.match_win_list(cs.cfg.match_list_length, cs.steam_id, time_difference=7_200)}'
                     write(msg, add_time=True, overwrite='12')
                     if cs.afk_message is True:
                         msg = f'You will play on `{" ".join(saved_map.split("_")[1:]).title()}` as `{team}` in the first half. ' \
-                              f'Last Games: `{cs.match_win_list(cs.cfg.match_list_lenght, cs.steam_id, time_difference=7_200, replace_chars=True)}`'
+                              f'Last Games: `{cs.match_win_list(cs.cfg.match_list_length, cs.steam_id, time_difference=7_200, replace_chars=True)}`'
                         message_queue.put(msg)
 
                     truth.still_in_warmup = True
@@ -863,8 +859,8 @@ while running:
     time.sleep(cs.sleep_interval)
 
 window_enum.kill()
-if cs.overwrite_dict['end'] != '\n':
-    print('')
+telnet.close()
+print('')
 if gsi_server.running:
     gsi_server.shutdown()
 exit('ENDED BY USER')
