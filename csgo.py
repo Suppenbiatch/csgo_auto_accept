@@ -94,6 +94,8 @@ class ResultParser(Thread):
                 hk_activate_devmode()
             elif item.path == 'console':
                 hk_console(item.query)
+            elif item.path == 'autobuy':
+                hk_autobuy()
 
 
 @dataclass()
@@ -283,6 +285,21 @@ def hk_console(query: dict):
     return
 
 
+def hk_autobuy():
+
+    if cs.account.autobuy is None:
+        return
+    scoreboard.weapons = list(scoreboard.player['weapons'].values())
+    scoreboard.money = gsi_server.get_info('player', 'state', 'money')
+    if any(weapon.get('type') in main_weapons for weapon in scoreboard.weapons):
+        return
+    for min_money, script in cs.account.autobuy:
+        if scoreboard.money >= min_money:
+            telnet.send(script)
+            truth.first_autobuy = False
+            break
+
+
 def gsi_server_status():
     global gsi_server
     if gsi_server.running:
@@ -341,6 +358,7 @@ scoreboard = Scoreboard()
 
 join_dict = {'t_full': False, 'ct_full': False}
 team = yellow('Unknown')
+main_weapons = ['Machine Gun', 'Rifle', 'Shotgun', 'SniperRifle', 'Submachine Gun']
 player_stats = {}
 
 gsi_server = cs.restart_gsi_server(None)
@@ -591,6 +609,7 @@ while running:
             scoreboard.player = gsi_server.get_info('player')
 
             scoreboard.money = scoreboard.player['state']['money']
+            money = f'{scoreboard.money:,}$'
 
             scoreboard.weapons = list(scoreboard.player['weapons'].values())
             scoreboard.c4 = ' - Bomb Carrier' if 'weapon_c4' in [weapon['name'] for weapon in scoreboard.weapons] else ''
@@ -623,15 +642,16 @@ while running:
                 scoreboard.last_round_text = f'You {scoreboard.team}, no info on the last round'
 
             if scoreboard.total_score == scoreboard.max_rounds / 2 - 1:
-                scoreboard.extra_round_info = yellow(' - Half-Time')
+                scoreboard.extra_round_info = f' - {yellow("Half-Time")}'
                 playsound('sounds/ding.wav', block=True)
             elif scoreboard.CT == scoreboard.max_rounds / 2 or scoreboard.T == scoreboard.max_rounds / 2:
-                scoreboard.extra_round_info = yellow(' - Match Point')
+                scoreboard.extra_round_info = f' - {yellow("Match Point")}'
+
             else:
                 scoreboard.extra_round_info = ''
 
             write(f'Freeze Time - {scoreboard.last_round_text} - {getattr(scoreboard, scoreboard.raw_team):02d}:{getattr(scoreboard, scoreboard.raw_opposing_team):02d}'
-                  f'{scoreboard.extra_round_info}{scoreboard.c4} - AFK: {cs.timedelta(seconds=afk.per_round)}',
+                  f'{scoreboard.extra_round_info}{scoreboard.c4} - AFK: {cs.timedelta(seconds=afk.per_round)} - {purple(money)}',
                   overwrite='7')
 
             if win32gui.GetWindowPlacement(hwnd)[1] == 2:
@@ -652,20 +672,19 @@ while running:
         scoreboard.money = gsi_server.get_info('player', 'state', 'money')
         money = f'{scoreboard.money:,}$'
 
-        message = f'Freeze Time - {scoreboard.last_round_text} - {getattr(scoreboard, scoreboard.raw_team):02d}:{getattr(scoreboard, scoreboard.raw_opposing_team):02d} - {cyan(money)}' \
-                  f'{scoreboard.extra_round_info}{scoreboard.c4} - AFK: {cs.timedelta(seconds=afk.per_round)}'
+        message = f'Freeze Time - {scoreboard.last_round_text} - {getattr(scoreboard, scoreboard.raw_team):02d}:{getattr(scoreboard, scoreboard.raw_opposing_team):02d}' \
+                  f'{scoreboard.extra_round_info}{scoreboard.c4} - AFK: {cs.timedelta(seconds=afk.per_round)} - {purple(money)}'
 
         if time.time() - times.freezetime_started > scoreboard.freeze_time + scoreboard.buy_time - 2:
             if cs.account.autobuy is not None and truth.first_autobuy:
-                main_weapons = ['Machine Gun', 'Rifle', 'Shotgun', 'SniperRifle', 'Submachine Gun']
                 if not any(weapon.get('type') in main_weapons for weapon in scoreboard.weapons):
                     for min_money, script in cs.account.autobuy:
                         if scoreboard.money >= min_money:
                             telnet.send(script)
                             truth.first_autobuy = False
                             break
-            if truth.first_autobuy is False:
-                message += f' - {cyan("AutoBuy")}'
+        if truth.first_autobuy is False:
+            message += f' - {cyan("AutoBuy")}'
 
         truth.game_minimized_freezetime = cs.round_start_msg(message, game_state.round_phase, times.freezetime_started, win32gui.GetWindowPlacement(hwnd)[1] == 2, scoreboard)
     elif truth.game_minimized_warmup:
