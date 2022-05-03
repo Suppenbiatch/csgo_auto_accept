@@ -286,11 +286,11 @@ def hk_console(query: dict):
 
 
 def hk_autobuy():
-
     if cs.account.autobuy is None:
         return
+    scoreboard.player = gsi_server.get_info('player')
     scoreboard.weapons = list(scoreboard.player['weapons'].values())
-    scoreboard.money = gsi_server.get_info('player', 'state', 'money')
+    scoreboard.money = scoreboard.player['state']['money']
     if any(weapon.get('type') in main_weapons for weapon in scoreboard.weapons):
         return
     for min_money, script in cs.account.autobuy:
@@ -669,7 +669,9 @@ while running:
             playsound('sounds/ready_up.wav', block=False)
 
     if truth.game_minimized_freezetime:
-        scoreboard.money = gsi_server.get_info('player', 'state', 'money')
+        scoreboard.player = gsi_server.get_info('player')
+        scoreboard.weapons = list(scoreboard.player['weapons'].values())
+        scoreboard.money = scoreboard.player['state']['money']
         money = f'{scoreboard.money:,}$'
 
         message = f'Freeze Time - {scoreboard.last_round_text} - {getattr(scoreboard, scoreboard.raw_team):02d}:{getattr(scoreboard, scoreboard.raw_opposing_team):02d}' \
