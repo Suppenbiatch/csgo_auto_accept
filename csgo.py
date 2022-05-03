@@ -375,7 +375,6 @@ write(green('READY'))
 running = True
 
 while running:
-    t1 = time.perf_counter()
     if retryer and not truth.upload_thread_active:
         if time.time() - times.csgostats_retry > cs.cfg.auto_retry_interval:
             t = Thread(target=upload_matches, args=(False, None), name='UploadThread')
@@ -812,8 +811,7 @@ while running:
         afk.seconds_afk = 0.0
         afk.time = time.time()
         afk.round_values = []
-    t2 = time.perf_counter()
-    write(f'Loop Iteration: {t2 - t1:.04f}s', add_time=False)
+
     if truth.test_for_warmup:
         times.warmup_started = time.time()
         if console.map is not None:
