@@ -6,7 +6,7 @@ from threading import Thread
 import requests
 from colorit import *
 
-__all__ = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'white', 'magenta', 'cyan', 'decolor', 'write', 'message_queue', 'color', 'SendDiscordMessage']
+__all__ = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'white', 'magenta', 'cyan', 'decolor', 'write', 'color', 'SendDiscordMessage']
 
 
 def red(text: str):
@@ -100,21 +100,19 @@ if not sys.stdout.isatty():
 else:
     console_window = {'prefix': '', 'suffix': '\r', 'isatty': True}
 
-message_queue = queue.Queue()
-
 
 class SendDiscordMessage(Thread):
-    def __init__(self, user_id: int, bot_ip: str, bot_port: int, q: queue.Queue):
+    def __init__(self, user_id: int, bot_ip: str, bot_port: int):
         self.url = f'http://{bot_ip}:{bot_port}/afk_message'
         super().__init__(name='DiscordMessageRequester', daemon=True)
         self.user_id = user_id
-        self.q = q
+        self.queue = queue.Queue()
 
     def run(self) -> None:
         with requests.Session() as session:
             while True:
                 try:
-                    item = self.q.get(block=True)
+                    item = self.queue.get(block=True)
                     msg = f'{datetime.now():%H:%M:%S}: {decolor(str(item))}'
                     data = {'user_id': self.user_id, 'message': msg}
                     session.post(self.url, json=data)

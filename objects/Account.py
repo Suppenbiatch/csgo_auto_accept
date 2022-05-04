@@ -1,3 +1,4 @@
+import configparser
 import random
 import re
 from configparser import ConfigParser, SectionProxy
@@ -42,19 +43,23 @@ def get_accounts_from_cfg(parser: ConfigParser) -> List[SteamAccount]:
             steam_id = section.get('Steam ID')
             auth_code = section.get('Authentication Code')
             match_token = section.get('Match Token')
-            for key, value in section.items():
-                equip_value = re.search(r'autobuy (\d+)', key)
-                if equip_value is not None:
-                    equip_value = int(equip_value.group(1))
-                    auto_buy.append((equip_value, value))
 
-            if not auto_buy:
-                if 'AutoBuy' in section:
-                    script = section.get('AutoBuy')
-                    if script:
-                        auto_buy = [(0, script)]
-            else:
-                auto_buy.sort(key=lambda x: x[0], reverse=True)
+            for key, buy_script in section.items():
+                option = re.search(r'autobuy (\d+)(t|ct)?', key, flags=re.IGNORECASE)
+                if option is not None:
+                    equip_value = int(option.group(1))
+                    team = option.group(2)
+                    if team:
+                        team = (team.upper(),)
+                    else:
+                        team = ('T', 'CT')
+                    auto_buy.append((equip_value, buy_script, team))
+
+            script = section.get('autobuy', '')
+            if script:  # option is set
+                auto_buy.append((0, script, ('T', 'CT')))
+
+            auto_buy.sort(key=lambda x: x[0], reverse=True)
             if not auto_buy:
                 auto_buy = None
 
@@ -95,3 +100,11 @@ def get_accounts_from_cfg(parser: ConfigParser) -> List[SteamAccount]:
         account.color = numbers[random.randint(0, len(numbers))]
 
     return accounts
+
+
+if __name__ == '__main__':
+    def main():
+        config = ConfigParser()
+        config.read('../config.ini')
+        get_accounts_from_cfg(config)
+    main()

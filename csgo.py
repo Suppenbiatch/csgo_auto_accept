@@ -291,11 +291,12 @@ def hk_autobuy():
     scoreboard.player = gsi_server.get_info('player')
     scoreboard.weapons = list(scoreboard.player['weapons'].values())
     scoreboard.money = scoreboard.player['state']['money']
+    scoreboard.raw_team = scoreboard.player['team']
     if any(weapon.get('type') in main_weapons for weapon in scoreboard.weapons):
         return
-    for min_money, script in cs.account.autobuy:
-        if scoreboard.money >= min_money:
-            telnet.send(script)
+    for player_money, auto_script, target_team in cs.account.autobuy:
+        if scoreboard.money >= player_money and scoreboard.raw_team in target_team:
+            telnet.send(auto_script)
             truth.first_autobuy = False
             break
 
@@ -371,7 +372,7 @@ webhook_parser = ResultParser()
 webhook_parser.start()
 webhook.start()
 
-afk_sender = SendDiscordMessage(cs.cfg.discord_user_id, cs.cfg.server_ip, cs.cfg.server_port, message_queue)
+afk_sender = SendDiscordMessage(cs.cfg.discord_user_id, cs.cfg.server_ip, cs.cfg.server_port)
 afk_sender.start()
 
 telnet = TelNetConsoleReader(cs.cfg.telnet_ip, cs.cfg.telnet_port)  # start thread when game is running
@@ -523,14 +524,14 @@ while running:
                     msg = red('Match has not started! Continuing to search for a Server!')
                     write(msg, overwrite='11')
                     if cs.afk_message is True:
-                        message_queue.put(msg)
+                        afk_sender.queue.put(msg)
                     playsound('sounds/back_to_testing.wav', block=False)
                     cs.mute_csgo(1)
                 elif 'Failed to ready up' in console.msg:
                     msg = red('You failed to accept! Restart searching!')
-                    write(red('You failed to accept! Restart searching!'), overwrite='11')
+                    write(msg, overwrite='11')
                     if cs.afk_message is True:
-                        message_queue.put(msg)
+                        afk_sender.queue.put(msg)
                     playsound('sounds/failed_to_accept.wav')
                     cs.mute_csgo(0)
 
@@ -560,7 +561,7 @@ while running:
                           f'Took {cs.timedelta(times.warmup_started)} since match start.'
                     write(msg, overwrite='7')
                     if cs.afk_message is True:
-                        message_queue.put(msg)
+                        afk_sender.queue.put(msg)
                     red('You failed to accept! Restart searching!')
                     playsound('sounds/minute_warning.wav', block=True)
                     truth.players_still_connecting = False
@@ -672,23 +673,24 @@ while running:
         scoreboard.player = gsi_server.get_info('player')
         scoreboard.weapons = list(scoreboard.player['weapons'].values())
         scoreboard.money = scoreboard.player['state']['money']
-        money = f'{scoreboard.money:,}$'
+        scoreboard.raw_team = scoreboard.player['team']
 
+        money = f'{scoreboard.money:,}$'
         message = f'Freeze Time - {scoreboard.last_round_text} - {getattr(scoreboard, scoreboard.raw_team):02d}:{getattr(scoreboard, scoreboard.raw_opposing_team):02d}' \
                   f'{scoreboard.extra_round_info}{scoreboard.c4} - AFK: {cs.timedelta(seconds=afk.per_round)} - {purple(money)}'
 
         if time.time() - times.freezetime_started > scoreboard.freeze_time + scoreboard.buy_time - 2:
             if cs.account.autobuy is not None and truth.first_autobuy:
                 if not any(weapon.get('type') in main_weapons for weapon in scoreboard.weapons):
-                    for min_money, script in cs.account.autobuy:
-                        if scoreboard.money >= min_money:
+                    for min_money, script, autobuy_team in cs.account.autobuy:
+                        if scoreboard.money >= min_money and scoreboard.raw_team in autobuy_team:
                             telnet.send(script)
                             truth.first_autobuy = False
                             break
         if truth.first_autobuy is False:
             message += f' - {cyan("AutoBuy")}'
-
         truth.game_minimized_freezetime = cs.round_start_msg(message, game_state.round_phase, times.freezetime_started, win32gui.GetWindowPlacement(hwnd)[1] == 2, scoreboard)
+
     elif truth.game_minimized_warmup:
         try:
             best_of = red(f"MR{scoreboard.max_rounds}")
@@ -721,7 +723,7 @@ while running:
                                                                                   time=cs.timedelta(seconds=times.warmup_seconds))
             write(msg, overwrite='7')
             if cs.afk_message is True:
-                message_queue.put(msg)
+                afk_sender.queue.put(msg)
 
             times.match_started = time.time()
             times.freezetime_started = time.time()
@@ -737,7 +739,7 @@ while running:
             msg = red('Match did not start')
             write(msg, overwrite='1')
             if cs.afk_message is True:
-                message_queue.put(msg)
+                afk_sender.queue.put(msg)
 
     if game_state.map_phase in ['live', 'warmup'] and not truth.game_over and not truth.disconnected_form_last:
         try:
@@ -855,7 +857,7 @@ while running:
                     if cs.afk_message is True:
                         msg = f'You will play on `{" ".join(saved_map.split("_")[1:]).title()}` as `{team}` in the first half. ' \
                               f'Last Games: `{cs.match_win_list(cs.cfg.match_list_length, cs.steam_id, time_difference=7_200, replace_chars=True)}`'
-                        message_queue.put(msg)
+                        afk_sender.queue.put(msg)
 
                     truth.still_in_warmup = True
                     truth.test_for_warmup = False
