@@ -1,4 +1,3 @@
-import configparser
 import random
 import re
 from configparser import ConfigParser, SectionProxy
