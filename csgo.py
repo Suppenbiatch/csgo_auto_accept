@@ -601,6 +601,7 @@ while running:
             truth.first_game_over = True
             truth.game_over = False
             truth.disconnected_form_last = False
+            truth.first_autobuy = True
             truth.first_freezetime = False
 
             times.freezetime_started = time.time()
@@ -664,7 +665,6 @@ while running:
 
     elif game_state.map_phase == 'live' and game_state.round_phase != 'freezetime':
         truth.first_freezetime = True
-        truth.first_autobuy = True
         truth.c4_round_first = True
         if time.time() - times.freezetime_started >= 20 and win32gui.GetWindowPlacement(hwnd)[1] == 2:
             playsound('sounds/ready_up.wav', block=False)
@@ -697,7 +697,7 @@ while running:
             message = f'Warmup is over! Map: {green(" ".join(gsi_server.get_info("map", "name").split("_")[1:]).title())}, Team: {team}, {best_of}, Took: {cs.timedelta(seconds=times.warmup_seconds)}'
             if time.time() - times.freezetime_started > scoreboard.freeze_time + scoreboard.buy_time - 2:
                 if cs.account.autobuy and truth.first_autobuy:
-                    telnet.send(cs.account.autobuy[-1])
+                    telnet.send(cs.account.autobuy[-1][1])
                     truth.first_autobuy = False
                 if truth.first_autobuy is False:
                     message += f' - {cyan("AutoBuy")}'
