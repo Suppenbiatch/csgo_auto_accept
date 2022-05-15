@@ -574,8 +574,12 @@ while running:
                 write(red('Server disconnected'))
                 playsound('sounds/fail.wav', block=False)
             gsi_server = cs.restart_gsi_server(gsi_server)
+
             truth.disconnected_form_last = True
             truth.players_still_connecting = False
+            truth.game_minimized_warmup = False
+            truth.game_minimized_freezetime = False
+
             afk.time = time.time()
             hk_activate_devmode()
 
@@ -670,7 +674,10 @@ while running:
             playsound('sounds/ready_up.wav', block=False)
 
     if truth.game_minimized_freezetime:
-        scoreboard.player = gsi_server.get_info('player')
+        player = gsi_server.get_info('player')
+        if player and scoreboard.player['steamid'] == cs.steam_id:
+            scoreboard.player = player
+
         scoreboard.weapons = list(scoreboard.player['weapons'].values())
         scoreboard.money = scoreboard.player['state']['money']
         scoreboard.raw_team = scoreboard.player['team']
@@ -697,7 +704,7 @@ while running:
             message = f'Warmup is over! Map: {green(" ".join(gsi_server.get_info("map", "name").split("_")[1:]).title())}, Team: {team}, {best_of}, Took: {cs.timedelta(seconds=times.warmup_seconds)}'
             if time.time() - times.freezetime_started > scoreboard.freeze_time + scoreboard.buy_time - 2:
                 if cs.account.autobuy and truth.first_autobuy:
-                    telnet.send(cs.account.autobuy[-1][1])
+                    telnet.send(cs.account.autobuy[-1][1])  # use the lowest defined autobuy, ignoring teams
                     truth.first_autobuy = False
                 if truth.first_autobuy is False:
                     message += f' - {cyan("AutoBuy")}'
@@ -771,6 +778,8 @@ while running:
         truth.game_over = True
 
     if truth.game_over and truth.first_game_over:
+        truth.game_minimized_warmup = False
+        truth.game_minimized_freezetime = False
         time.sleep(2)
         team = str(gsi_server.get_info('player', 'team')), 'CT' if gsi_server.get_info('player', 'team') == 'T' else 'T'
         score = {'CT': gsi_server.get_info('map', 'team_ct')['score'], 'T': gsi_server.get_info('map', 'team_t')['score'], 'map': ' '.join(gsi_server.get_info('map', 'name').split('_')[1:]).title()}
