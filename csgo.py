@@ -288,7 +288,15 @@ def hk_console(query: dict):
 def hk_autobuy():
     if cs.account.autobuy is None:
         return
-    scoreboard.player = gsi_server.get_info('player')
+    p = gsi_server.get_info('player')
+    try:
+        if player and scoreboard.player['steamid'] == cs.steam_id:
+            scoreboard.player = p
+        else:
+            return
+    except NameError:
+        # globlus bad
+        return
     scoreboard.weapons = list(scoreboard.player['weapons'].values())
     scoreboard.money = scoreboard.player['state']['money']
     scoreboard.raw_team = scoreboard.player['team']

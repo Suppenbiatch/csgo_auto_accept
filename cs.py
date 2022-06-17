@@ -6,7 +6,6 @@ import os
 import re
 import sqlite3
 import subprocess
-import sys
 import threading
 import time
 import winreg
@@ -617,4 +616,7 @@ sleep_interval_looking_for_accept = 0.05
 log_reader = LogReader(os.path.join(path_vars.appdata, 'console.log'))
 
 if __name__ == '__main__':
+    print('')
+    r = match_win_list(16, 76561199014843546)
+    print(f'Last Games: {r}')
     pass
