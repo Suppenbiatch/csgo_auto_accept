@@ -27,7 +27,7 @@ After that you'll need to make changes to the config_clean.ini.
 	- `Notifier` section
 		- `Discord User ID`: A Discord User ID -> If set, enables to send afk messages via discord
 	- `HotKeys` section
-		- `WebHook IP`: `127.0.0.1` -> WebHooks can only be called from local device, `0.0.0.0` -> WebHooks can be calld from everywhere
+		- `WebHook IP`: `127.0.0.1` -> WebHooks can only be called from local device, `0.0.0.0` -> WebHooks can be called from everywhere
 		- `WebHook Port`: Port to be used for the WebHook Server
 	- `Script Settings`
 		- `TelNet IP`: "127.0.0.1" -> no idea why this is a config param
@@ -39,3 +39,17 @@ After that you'll need to make changes to the config_clean.ini.
 		- `AFK Reset Delay`: Seconds after tabbed in until the anti-afk script timer resets
 - Add `-netconport [port]` to the launch options of csgo, `port` needs to be same as set in `TelNet Port`
 - Add multiple accounts by creating a new section called `Account 2` until `Account X` with the same `keys` as `Account 1`
+
+- `WebHook Endpoints`:
+	- `minimize` -> minimizes and maximizes csgo via special ESC button emulation
+	- `activate` -> manually activates looking for match
+	- `pushbullet` -> activates afk messages send via discord
+	- `upload` -> manually starts upload thread to look for new matches and requests them via the discord bot backend
+	- `switch_accounts` -> if the script is already running and the user switches account use this to switch between accounts from config
+	- `mute` -> uses the windows audio mixer to mute csgo
+	- `discord_toggle` -> Disables/Enables discord output if a match is parsed by the discord bot
+	- `end` -> exits the script
+	- `fetch_status` -> manually invokes `status` via console and sends result to discord backend
+	- `autobuy` -> manually trigger autobuy script even if in-game
+	- `seek` -> manually seek to the end of the console log file
+	- `afk` -> manually activate anti-afk script
