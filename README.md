@@ -50,6 +50,10 @@ After that you'll need to make changes to the config_clean.ini.
 	- `discord_toggle` -> Disables/Enables discord output if a match is parsed by the discord bot
 	- `end` -> exits the script
 	- `fetch_status` -> manually invokes `status` via console and sends result to discord backend
+	- `dev_mode` -> manually set `developer 1` and `sv_max_allowed_developer 1` for the script to work 
+	- `console` -> accepts query parameter `ìnput` as dumped json of list of commands e.g. (/console?input="["say hello", "..."]")
 	- `autobuy` -> manually trigger autobuy script even if in-game
 	- `seek` -> manually seek to the end of the console log file
 	- `afk` -> manually activate anti-afk script
+	
+	- example call: `http://{WebHook IP}:{WebHook Port}/{Endpoint}` -> `http://127.0.0.1:8000/minimize`
