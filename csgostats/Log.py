@@ -81,6 +81,13 @@ class LogReader:
                     _map = _map.group(1) if _map is not None else None
             return LogInfo(server, _map, max_rounds, steam_ids)
 
+    def re_seek(self):
+        """Seeks to current file end"""
+        old_pos = self.read_pos
+        with open(self.path, 'rb') as fp:
+            self.read_pos = fp.seek(0, os.SEEK_END)
+        return self.read_pos, old_pos
+
 
 if __name__ == '__main__':
     reader = LogReader(r"C:\Users\Suppe\Desktop\status.txt")

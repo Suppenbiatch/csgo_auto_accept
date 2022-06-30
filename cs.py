@@ -556,6 +556,8 @@ class ConfigItems:
     match_list_length: int = config.getint('Script Settings', 'Match History Lenght')
     telnet_ip: str = config.get('Script Settings', 'TelNet IP')
     telnet_port: int = config.getint('Script Settings', 'TelNet Port')
+    anti_afk_delay: float = config.getfloat('Script Settings', 'Anti-AFK Delay')
+    afk_reset_delay: float = config.getfloat('Script Settings', 'AFK Reset Delay')
 
     steam_api_key: str = config.get('csgostats.gg', 'API Key')
     auto_retry_interval: int = config.getint('csgostats.gg', 'Auto-Retrying-Interval')

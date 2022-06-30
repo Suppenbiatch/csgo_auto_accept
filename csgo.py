@@ -96,6 +96,12 @@ class ResultParser(Thread):
                 hk_console(item.query)
             elif item.path == 'autobuy':
                 hk_autobuy()
+            elif item.path == 'seek':
+                new_pos, old_pos = cs.log_reader.re_seek()
+                write(f're-sought from {old_pos:,} to {new_pos:,}')
+            elif item.path == 'afk':
+                cs.anti_afk_tel(telnet, is_active=False)  # activate anti afk
+                afk.anti_afk_active = True
 
 
 @dataclass()
@@ -152,6 +158,13 @@ class AFK:
     state: dict = field(default_factory=dict)
     round_values: List[float] = field(default_factory=list)
     anti_afk_active: bool = False
+    since_last_afk: float = time
+
+
+@dataclass()
+class WindowStatus:
+    server_found: int = 2
+    in_game: int = 0
 
 
 @dataclass()
@@ -297,9 +310,12 @@ def hk_autobuy():
     except NameError:
         # globlus bad
         return
-    scoreboard.weapons = list(scoreboard.player['weapons'].values())
-    scoreboard.money = scoreboard.player['state']['money']
-    scoreboard.raw_team = scoreboard.player['team']
+    try:
+        scoreboard.weapons = list(scoreboard.player['weapons'].values())
+        scoreboard.money = scoreboard.player['state']['money']
+        scoreboard.raw_team = scoreboard.player['team']
+    except TypeError:
+        return
     if any(weapon.get('type') in main_weapons for weapon in scoreboard.weapons):
         return
     for player_money, auto_script, target_team in cs.account.autobuy:
@@ -386,7 +402,7 @@ afk_sender.start()
 telnet = TelNetConsoleReader(cs.cfg.telnet_ip, cs.cfg.telnet_port)  # start thread when game is running
 
 hwnd_old = 0
-csgo_window_status = {'server_found': 2, 'new_tab': 2, 'in_game': 0}
+window_status = WindowStatus()
 
 updater = CSGOStatsUpdater(cs.cfg, cs.account, cs.path_vars.db)
 server_online = updater.check_status()
@@ -476,7 +492,7 @@ while running:
         if console.server_ready:
             truth.test_for_accept_button = True
             cs.sleep_interval = cs.sleep_interval_looking_for_accept
-            csgo_window_status['server_found'] = win32gui.GetWindowPlacement(hwnd)[1]
+            window_status.server_found = win32gui.GetWindowPlacement(hwnd)[1]
             win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
 
     if truth.test_for_accept_button:
@@ -490,7 +506,7 @@ while running:
             for _ in range(5):
                 win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
                 cs.click((int(win32api.GetSystemMetrics(0) / 2), int(win32api.GetSystemMetrics(1) / 2.4)))
-            if csgo_window_status['server_found'] == 2:  # was minimized when a server was found
+            if window_status.server_found == 2:  # was minimized when a server was found
                 time.sleep(0.075)
                 cs.minimize_csgo(hwnd)
             else:
@@ -758,29 +774,40 @@ while running:
 
     if game_state.map_phase in ['live', 'warmup'] and not truth.game_over and not truth.disconnected_form_last:
         try:
-            csgo_window_status['in_game'] = win32gui.GetWindowPlacement(hwnd)[1]
+            window_status.in_game = win32gui.GetWindowPlacement(hwnd)[1]
         except BaseException as e:
             if e.args[1] == 'GetWindowPlacement':
-                csgo_window_status['in_game'] = 2
-        afk.still_afk.append(csgo_window_status['in_game'] == 2)  # True if minimized
+                window_status.in_game = 2
+
+        current_time = time.time()
+
+        afk.still_afk.append(window_status.in_game == 2)  # True if minimized
         afk.still_afk = [all(afk.still_afk)]  # True if was minimized and still is minimized
-        if not afk.still_afk[0]:
-            afk.still_afk = []
-            afk.time = time.time()
-            if afk.anti_afk_active:
+        if not afk.still_afk[0]:  # player has tabbed into game or still is in-game
+            afk.still_afk = []  # reset still_afk, if the player tabs out we do not want to wait for `afk_delay`
+            if afk.anti_afk_active:  # stop spinning
                 cs.anti_afk_tel(telnet, is_active=True)
                 afk.anti_afk_active = False
 
-        if time.time() - afk.time >= 180 and not afk.anti_afk_active:
-            cs.anti_afk_tel(telnet, is_active=False)  # activate anti afk
-            afk.anti_afk_active = True
+            if current_time - afk.since_last_afk >= cs.cfg.afk_reset_delay:
+                # player was in-game for more than `afk_delay`
+                # reset time until spinning starts
+                afk.time = current_time
+        else:
+            afk.since_last_afk = current_time
 
-        if csgo_window_status['in_game'] != 2:
-            afk.start_time = time.time()
+        if current_time - afk.time >= cs.cfg.anti_afk_delay and not afk.anti_afk_active:
+            if window_status.in_game == 2:
+                # only start spinning if player is tabbed out
+                afk.anti_afk_active = True
+                cs.anti_afk_tel(telnet, is_active=False)  # activate anti afk
 
-        if game_state.map_phase == 'live' and csgo_window_status['in_game'] == 2:
-            afk.seconds_afk += time.time() - afk.start_time
-            afk.start_time = time.time()
+        if window_status.in_game != 2:
+            afk.start_time = current_time
+
+        if game_state.map_phase == 'live' and window_status.in_game == 2:
+            afk.seconds_afk += current_time - afk.start_time
+            afk.start_time = current_time
 
     if game_state.map_phase == 'gameover':
         truth.game_over = True
