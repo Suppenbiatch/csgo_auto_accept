@@ -329,12 +329,14 @@ def activate_afk_message():
 
 
 def round_start_msg(msg: str, round_phase: str, freezetime_start: float, current_window_status: bool, scoreboard, overwrite_key: str = '7'):
-    if current_window_status:
-        timer_stopped = ''
+    if round_phase == 'freezetime':
+        # timer_stopped = ''
         old_window_status = True
+    elif current_window_status:
+        old_window_status = True
+        # timer_stopped = ' - ' + green('stopped')
     else:
         old_window_status = False
-        timer_stopped = ' - ' + green('stopped')
 
     freeze_time = scoreboard.freeze_time
     buy_time = scoreboard.buy_time
@@ -346,7 +348,7 @@ def round_start_msg(msg: str, round_phase: str, freezetime_start: float, current
     else:
         time_str = yellow(timedelta(seconds=time.time() - (freezetime_start + freeze_time + buy_time)))
 
-    msg += f' - {time_str}{timer_stopped}'
+    msg += f' - {time_str}'
     write(msg, overwrite=overwrite_key)
     return old_window_status
 

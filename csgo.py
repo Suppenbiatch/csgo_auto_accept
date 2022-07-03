@@ -196,6 +196,7 @@ class Scoreboard:
     current_weapons: List[dict] = None  # same as weapons, will update until player has c4 or freeze time is over
     has_c4: bool = False
     money: int = 0
+    round_message: str = ''
 
 
 def hk_activate():
@@ -299,11 +300,12 @@ def hk_console(query: dict):
 
 
 def hk_autobuy():
+    global gsi_server, scoreboard
     if cs.account.autobuy is None:
         return
     p = gsi_server.get_info('player')
     try:
-        if player and scoreboard.player['steamid'] == cs.steam_id:
+        if p and p['steamid'] == cs.steam_id:
             scoreboard.player = p
         else:
             return
@@ -697,32 +699,7 @@ while running:
         if time.time() - times.freezetime_started >= 20 and win32gui.GetWindowPlacement(hwnd)[1] == 2:
             playsound('sounds/ready_up.wav', block=False)
 
-    if truth.game_minimized_freezetime:
-        player = gsi_server.get_info('player')
-        if player and scoreboard.player['steamid'] == cs.steam_id:
-            scoreboard.player = player
-
-        scoreboard.weapons = list(scoreboard.player['weapons'].values())
-        scoreboard.money = scoreboard.player['state']['money']
-        scoreboard.raw_team = scoreboard.player['team']
-
-        money = f'{scoreboard.money:,}$'
-        message = f'Freeze Time - {scoreboard.last_round_text} - {getattr(scoreboard, scoreboard.raw_team):02d}:{getattr(scoreboard, scoreboard.raw_opposing_team):02d}' \
-                  f'{scoreboard.extra_round_info}{scoreboard.c4} - AFK: {cs.timedelta(seconds=afk.per_round)} - {purple(money)}'
-
-        if time.time() - times.freezetime_started > scoreboard.freeze_time + scoreboard.buy_time - 2:
-            if cs.account.autobuy is not None and truth.first_autobuy:
-                if not any(weapon.get('type') in main_weapons for weapon in scoreboard.weapons):
-                    for min_money, script, autobuy_team in cs.account.autobuy:
-                        if scoreboard.money >= min_money and scoreboard.raw_team in autobuy_team:
-                            telnet.send(script)
-                            truth.first_autobuy = False
-                            break
-        if truth.first_autobuy is False:
-            message += f' - {cyan("AutoBuy")}'
-        truth.game_minimized_freezetime = cs.round_start_msg(message, game_state.round_phase, times.freezetime_started, win32gui.GetWindowPlacement(hwnd)[1] == 2, scoreboard)
-
-    elif truth.game_minimized_warmup:
+    if truth.game_minimized_warmup:
         try:
             best_of = red(f"MR{scoreboard.max_rounds}")
             message = f'Warmup is over! Map: {green(" ".join(gsi_server.get_info("map", "name").split("_")[1:]).title())}, Team: {team}, {best_of}, Took: {cs.timedelta(seconds=times.warmup_seconds)}'
@@ -735,6 +712,47 @@ while running:
             truth.game_minimized_warmup = cs.round_start_msg(message, game_state.round_phase, times.freezetime_started, win32gui.GetWindowPlacement(hwnd)[1] == 2, scoreboard)
         except AttributeError:
             pass
+
+    elif game_state.map_phase == 'live':
+        scoreboard.player = gsi_server.get_info('player')
+        if scoreboard.player['steamid'] == cs.steam_id:
+            scoreboard.weapons = list(scoreboard.player['weapons'].values())
+            scoreboard.money = scoreboard.player['state']['money']
+            # not getting team as `last_round_text` and `score` is also missing
+
+            if scoreboard.raw_team and scoreboard.raw_opposing_team:
+                money = f'{scoreboard.money:,}$'
+                message = f'Freeze Time - {scoreboard.last_round_text} - {getattr(scoreboard, scoreboard.raw_team):02d}:{getattr(scoreboard, scoreboard.raw_opposing_team):02d}' \
+                          f'{scoreboard.extra_round_info}{scoreboard.c4} - AFK: {cs.timedelta(seconds=afk.per_round)} - {purple(money)}'
+
+                if time.time() - times.freezetime_started > scoreboard.freeze_time + scoreboard.buy_time - 2:
+                    if cs.account.autobuy is not None and truth.first_autobuy and truth.game_minimized_freezetime:
+                        if not any(weapon.get('type') in main_weapons for weapon in scoreboard.weapons):
+                            for min_money, script, autobuy_team in cs.account.autobuy:
+                                if scoreboard.money >= min_money and scoreboard.raw_team in autobuy_team:
+                                    telnet.send(script)
+                                    truth.first_autobuy = False
+                                    break
+                if truth.first_autobuy is False:
+                    message += f' - {cyan("AutoBuy")}'
+
+                health: int = scoreboard.player['state']['health']
+                if scoreboard.player['steamid'] != cs.steam_id:
+                    alive = f' - {red("0HP")}'
+                elif health == 0:
+                    alive = f' - {red("0HP")}'
+                else:
+                    alive = f' - {green(f"{health}HP")}'
+                message += alive
+
+                if truth.game_minimized_freezetime is True:
+                    truth.game_minimized_freezetime = cs.round_start_msg(message, game_state.round_phase, times.freezetime_started, win32gui.GetWindowPlacement(hwnd)[1] == 2, scoreboard)
+                    # returns true if in freezetime or not tabbed in
+                if truth.game_minimized_freezetime is False:
+                    # remove timer after player tabbed in-game, keep health up-to-date
+                    write(message, overwrite='7')
+        else:
+            truth.game_minimized_freezetime = False
 
     if game_state.round_phase == 'freezetime' and truth.c4_round_first:
         scoreboard.current_weapons = list(gsi_server.get_info('player', 'weapons').values())
