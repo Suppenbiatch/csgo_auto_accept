@@ -258,6 +258,9 @@ def get_new_sharecodes(game_id: str, stats=None):
 
 
 def check_for_forbidden_programs(process_list):
+    if cfg.forbidden_programs == 'None':
+        return False
+
     titles = [i[1].lower() for i in process_list]
     forbidden_programs = [i.lstrip(' ').lower() for i in cfg.forbidden_programs.split(',')]
     if forbidden_programs[0]:
