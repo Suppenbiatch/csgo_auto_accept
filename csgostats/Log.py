@@ -89,7 +89,11 @@ class LogReader:
         return self.read_pos, old_pos
 
 
-if __name__ == '__main__':
+def main():
     reader = LogReader(r"C:\Users\Suppe\Desktop\status.txt")
     data = reader.get_log_info()
     print(data)
+
+
+if __name__ == '__main__':
+    main()

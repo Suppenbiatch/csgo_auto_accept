@@ -350,6 +350,7 @@ def round_start_msg(msg: str, round_phase: str, freezetime_start: float, current
 
     msg += f' - {time_str}'
     write(msg, overwrite=overwrite_key)
+    scoreboard.round_message = msg
     return old_window_status
 
 

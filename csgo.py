@@ -750,7 +750,9 @@ while running:
                     # returns true if in freezetime or not tabbed in
                 if truth.game_minimized_freezetime is False:
                     # remove timer after player tabbed in-game, keep health up-to-date
-                    write(message, overwrite='7')
+                    if scoreboard.round_message != message:
+                        write(message, overwrite='7')
+                        scoreboard.round_message = message
         else:
             truth.game_minimized_freezetime = False
 
