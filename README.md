@@ -1,4 +1,4 @@
-# csgo_auto_accept
+1# csgo_auto_accept
 An Auto-Accept-Script for Counter-Strike Global Offensive
 
 To run one needs to clone the repo and have Python 3.X installed.
@@ -41,19 +41,20 @@ After that you'll need to make changes to the config_clean.ini.
 - Add multiple accounts by creating a new section called `Account 2` until `Account X` with the same `keys` as `Account 1`
 
 - `WebHook Endpoints`:
-	- `minimize` -> minimizes and maximizes csgo via special ESC button emulation
-	- `activate` -> manually activates looking for match
-	- `pushbullet` -> activates afk messages send via discord
-	- `upload` -> manually starts upload thread to look for new matches and requests them via the discord bot backend
-	- `switch_accounts` -> if the script is already running and the user switches account use this to switch between accounts from config
-	- `mute` -> uses the windows audio mixer to mute csgo
-	- `discord_toggle` -> Disables/Enables discord output if a match is parsed by the discord bot
-	- `end` -> exits the script
-	- `fetch_status` -> manually invokes `status` via console and sends result to discord backend
-	- `dev_mode` -> manually set `developer 1` and `sv_max_allowed_developer 1` for the script to work 
-	- `console` -> accepts query parameter `ìnput` as dumped json of list of commands e.g. (/console?input="["say hello", "..."]")
-	- `autobuy` -> manually trigger autobuy script even if in-game
-	- `seek` -> manually seek to the end of the console log file
-	- `afk` -> manually activate anti-afk script
+    - `minimize` -> minimizes and maximizes csgo via special ESC button emulation
+    - `activate` -> manually activates looking for match
+    - `pushbullet` -> activates afk messages send via discord
+    - `upload` -> manually starts upload thread to look for new matches and requests them via the discord bot backend
+    - `switch_accounts` -> if the script is already running and the user switches account use this to switch between accounts from config
+    - `mute` -> uses the windows audio mixer to mute csgo
+    - `discord_toggle` -> Disables/Enables discord output if a match is parsed by the discord bot
+    - `end` -> exits the script
+    - `fetch_status` -> manually invokes `status` via console and sends result to discord backend
+    - `dev_mode` -> manually set `developer 1` and `sv_max_allowed_developer 1` for the script to work 
+    - `console` -> accepts query parameter `ìnput` as dumped json of list of commands e.g. (/console?input="["say hello", "..."]")
+    - `autobuy` -> manually trigger autobuy script even if in-game
+    - `seek` -> manually seek to the end of the console log file
+    - `afk` -> manually activate anti-afk script
+    - `force_minimize` -> `min` or `max` as query parameter to force minimize or maximize the game, query key is ignored
 	
-	- example call: `http://{WebHook IP}:{WebHook Port}/{Endpoint}` -> `http://127.0.0.1:8000/minimize`
+    - example call: `http://{WebHook IP}:{WebHook Port}/{Endpoint}` -> `http://127.0.0.1:8000/minimize`

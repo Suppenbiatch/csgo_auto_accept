@@ -102,6 +102,14 @@ class ResultParser(Thread):
             elif item.path == 'afk':
                 cs.anti_afk_tel(telnet, is_active=False)  # activate anti afk
                 afk.anti_afk_active = True
+            elif item.path == 'force_minimize':
+                query = list(item.query.values())
+                if len(query) == 0:
+                    continue
+                if query[0].lower().startswith('min'):
+                    hk_minimize_csgo(force='min')
+                elif query[0].lower().startswith('max'):
+                    hk_minimize_csgo(force='max')
 
 
 @dataclass()
@@ -244,7 +252,7 @@ def hk_kill_main_loop():
     running = False
 
 
-def hk_minimize_csgo():
+def hk_minimize_csgo(force: str = None):
     global hwnd, afk, telnet
     if hwnd == 0:
         return
@@ -256,6 +264,13 @@ def hk_minimize_csgo():
         else:
             print(f'failed mini/maximizing csgo with {e}')
             return
+
+    if force == 'min':
+        cs.minimize_csgo(hwnd)
+        return
+    elif force == 'max':
+        win32gui.ShowWindow(hwnd, win32con.SW_NORMAL)
+        return
 
     if current_placement[1] == 2:
         if afk.anti_afk_active:
