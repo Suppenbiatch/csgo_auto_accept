@@ -403,10 +403,9 @@ team = yellow('Unknown')
 main_weapons = ['Machine Gun', 'Rifle', 'Shotgun', 'SniperRifle', 'Submachine Gun']
 player_stats = {}
 
-gsi_server = cs.restart_gsi_server(None)
-
 window_enum = cs.WindowEnumerator('csgo.exe', 'counter-strike', sleep_interval=0.75)
 window_enum.start()
+gsi_server = window_enum.restart_gsi_server(None)
 
 webhook = WebServer(cs.cfg.webhook_ip, cs.cfg.webhook_port)
 webhook_parser = ResultParser()
@@ -442,7 +441,7 @@ while running:
 
     hwnd = window_enum.hwnd
 
-    if hwnd_old != hwnd:
+    if hwnd != 0 and hwnd_old != hwnd:
         truth.test_for_server = False
         hwnd_old = hwnd
         cs.steam_id = cs.get_current_steam_user()
@@ -460,7 +459,7 @@ while running:
             write('A forbidden program is still running...', add_time=False)
             playsound('sounds/fail.wav', block=False)
 
-        gsi_server = cs.restart_gsi_server(gsi_server)
+        gsi_server = window_enum.restart_gsi_server(gsi_server)
         truth.gsi_first_launch = True
 
     if truth.gsi_first_launch and gsi_server.running:
@@ -486,7 +485,7 @@ while running:
             time.sleep(0.2)
     elif telnet.closed is True:
         write(red('TelNet connection closed, assuming game closed'))
-        gsi_server = cs.restart_gsi_server(gsi_server)
+        gsi_server = window_enum.restart_gsi_server(gsi_server)
         telnet = TelNetConsoleReader(cs.cfg.telnet_ip, cs.cfg.telnet_port)
 
     console = read_telnet()
@@ -614,7 +613,7 @@ while running:
             if not truth.game_over:
                 write(red('Server disconnected'))
                 playsound('sounds/fail.wav', block=False)
-            gsi_server = cs.restart_gsi_server(gsi_server)
+            gsi_server = window_enum.restart_gsi_server(gsi_server)
 
             truth.disconnected_form_last = True
             truth.players_still_connecting = False
@@ -958,7 +957,7 @@ while running:
             time.sleep(cs.sleep_interval)
     time.sleep(cs.sleep_interval)
 
-window_enum.kill()
+
 telnet.close()
 print('')
 if gsi_server.running:

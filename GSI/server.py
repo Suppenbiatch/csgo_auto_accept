@@ -19,11 +19,11 @@ class GSIServer(HTTPServer):
 
     def start_server(self):
         try:
-            thread = Thread(target=self.serve_forever, name='GSI-Server')
+            thread = Thread(target=self.serve_forever, name='GSI-Server', daemon=True)
             thread.start()
             # first_time = True
-        except:
-            print("\nCould not start server.")
+        except BaseException as e:
+            print(f"\nCould not start server. {repr(e)}")
 
     def get_info(self, target, *argv):
         try:

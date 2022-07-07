@@ -365,13 +365,6 @@ def time_output(current: Union[float, int], average: Union[float, int]):
         return f'{timedelta(seconds=current)}, {timedelta(seconds=difference)} {red("longer")}  than average of {timedelta(seconds=average)}'
 
 
-# noinspection PyShadowingNames
-def enum_cb(hwnd: int, results: list):
-    _, cpid = win32process.GetWindowThreadProcessId(hwnd)
-    name = win32gui.GetWindowText(hwnd)
-    results.append((hwnd, name, cpid))
-
-
 def is_program_alive(exe_name: str = 'csgo.exe'):
     r = subprocess.check_output(f'tasklist /FI "IMAGENAME EQ {exe_name}" /FO "CSV"', shell=False)
     procs = [line.decode('utf-8', errors='ignore') for line in r.splitlines()]
@@ -392,21 +385,6 @@ class WindowNotFoundError(BaseException):
 class ItemFound(BaseException):
     def __init__(self):
         super().__init__()
-
-
-def restart_gsi_server(gsi_server: server.GSIServer = None):
-    if gsi_server is None:
-        gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
-    elif gsi_server.running:
-        gsi_server.shutdown()
-        if is_program_alive():
-            gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
-            gsi_server.start_server()
-        else:
-            gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
-    else:
-        gsi_server.start_server()
-    return gsi_server
 
 
 class MatchRequest(threading.Thread):
@@ -476,38 +454,58 @@ def match_win_list(number_of_matches: int, _steam_id, time_difference: int = 7_2
 # noinspection PyShadowingNames
 class WindowEnumerator(threading.Thread):
     def __init__(self, exe_name: str, window_name: str, sleep_interval: float = 0.75):
-        super().__init__(name='WindowEnumerator')
-        self._kill = threading.Event()
+        super().__init__(name='WindowEnumerator', daemon=True)
         self._interval = sleep_interval
         self._exe_name = exe_name
         self._window_name = window_name.lower()
-        self.daemon = True
 
         self.window_ids = []
         self.hwnd: int = 0
 
-    def run(self):
-        # replace window ids with self
-        # add get hwnd + hwnd self
-        while True:
-            win32gui.EnumWindows(enum_cb, self.window_ids)
+    def get_hwnd(self):
+        win32gui.EnumWindows(self.enum_cb, self.window_ids)
+        r = subprocess.check_output(f'tasklist /FI "IMAGENAME EQ {self._exe_name}" /FO "CSV"', shell=False)
+        procs = [line.decode('utf-8', errors='ignore') for line in r.splitlines()]
+        data = list(csv.DictReader(procs))
+        if len(data) <= 0:
+            self.hwnd = 0
+            return self.hwnd
 
-            r = subprocess.check_output(f'tasklist /FI "IMAGENAME EQ {self._exe_name}" /FO "CSV"', shell=False)
-            procs = [line.decode('utf-8', errors='ignore') for line in r.splitlines()]
-            data = list(csv.DictReader(procs))
-            if len(data) >= 1:
-                pid = int(data[0]["PID"])
-                for window_id, title, cpid in self.window_ids:
-                    if cpid == pid:
-                        if self._window_name in title.lower():
-                            self.hwnd = window_id
-                            break
-            is_killed = self._kill.wait(self._interval)
-            if is_killed:
+        pid = int(data[0]["PID"])
+        for window_id, title, cpid in self.window_ids:
+            if cpid != pid:
+                continue
+            if self._window_name in title.lower():
+                self.hwnd = window_id
                 break
+        else:
+            self.hwnd = 0
+        return self.hwnd
 
-    def kill(self):
-        self._kill.set()
+    def run(self):
+        while True:
+            self.get_hwnd()
+            time.sleep(self._interval)
+
+    @staticmethod
+    def enum_cb(hwnd: int, results: list):
+        _, cpid = win32process.GetWindowThreadProcessId(hwnd)
+        name = win32gui.GetWindowText(hwnd)
+        results.append((hwnd, name, cpid))
+
+    def restart_gsi_server(self, gsi_server: server.GSIServer = None):
+        if gsi_server is None:
+            gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
+        elif gsi_server.running:
+            gsi_server.shutdown()
+            if self.get_hwnd() != 0:
+                gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
+                gsi_server.start_server()
+            else:
+                gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
+        else:
+            gsi_server.start_server()
+        return gsi_server
 
 
 @dataclass()

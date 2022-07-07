@@ -12,11 +12,10 @@ from typing import Optional
 
 class TelNetConsoleReader(threading.Thread):
     def __init__(self, ip: str, port: int):
-        super(TelNetConsoleReader, self).__init__()
+        super().__init__(name='ConsoleReader', daemon=True)
         self.received = queue.Queue()
         self.send_queue = queue.Queue()
-        self.daemon = True
-        self.name = 'ConsoleReader'
+
         self.ip = ip
         self.port = port
         self.tl = None
