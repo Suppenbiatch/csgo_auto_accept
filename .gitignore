@@ -2,7 +2,8 @@
 /venv/
 /.idea/
 /__pycache__/
-matches/
+/matches/
+/Logs/
 basics.py
 test.py
 cs_test.py
