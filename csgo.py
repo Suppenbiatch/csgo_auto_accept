@@ -67,6 +67,7 @@ class WebServer(Thread):
 class ResultParser(Thread):
     def __init__(self):
         self.queue = queue.Queue()
+        self.launch = time.time()
         super().__init__(name='ResultParser', daemon=True)
 
     def run(self) -> None:
@@ -87,6 +88,11 @@ class ResultParser(Thread):
             elif item.path == 'discord_toggle':
                 hk_discord_toggle()
             elif item.path == 'end':
+                query = item.query
+                delay = int(query.get('delay', 0))
+                if (time.time() - self.launch) < delay:
+                    write(orange('canceled exit request because of delay parameter'))
+                    continue
                 hk_kill_main_loop()
             elif item.path == 'fetch_status':
                 hk_fetch_status()
