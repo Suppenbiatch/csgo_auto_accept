@@ -48,7 +48,7 @@ After that you'll need to make changes to the config_clean.ini.
     - `switch_accounts` -> if the script is already running and the user switches account use this to switch between accounts from config
     - `mute` -> uses the windows audio mixer to mute csgo
     - `discord_toggle` -> Disables/Enables discord output if a match is parsed by the discord bot
-    - `end` -> exits the script
+    - `end` -> exits the script, `delay` query param ignores call if `startup - now < delay`
     - `fetch_status` -> manually invokes `status` via console and sends result to discord backend
     - `dev_mode` -> manually set `developer 1` and `sv_max_allowed_developer 1` for the script to work 
     - `console` -> accepts query parameter `ìnput` as dumped json of list of commands e.g. (/console?input="["say hello", "..."]")
@@ -58,3 +58,4 @@ After that you'll need to make changes to the config_clean.ini.
     - `force_minimize` -> `min` or `max` as query parameter to force minimize or maximize the game, query key is ignored
 	
     - example call: `http://{WebHook IP}:{WebHook Port}/{Endpoint}` -> `http://127.0.0.1:8000/minimize`
+    - example query call: `http://127.0.0.1:8000/end?delay=120`
