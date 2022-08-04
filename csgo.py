@@ -119,13 +119,13 @@ class ResultParser(Thread):
             elif item.path == 'clear_queue':
                 global retryer
                 if len(retryer) == 0:
-                    return
+                    continue
                 elif len(retryer) == 1:
                     write(orange(f'Removed 1 match from queue'))
                 else:
                     write(orange(f'Removed {len(retryer)} matches from queue'))
                 retryer = []
-                return
+                continue
 
 
 @dataclass()
