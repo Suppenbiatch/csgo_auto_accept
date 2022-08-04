@@ -116,6 +116,16 @@ class ResultParser(Thread):
                     hk_minimize_csgo(force='min')
                 elif query[0].lower().startswith('max'):
                     hk_minimize_csgo(force='max')
+            elif item.path == 'clear_queue':
+                global retryer
+                if len(retryer) == 0:
+                    return
+                elif len(retryer) == 1:
+                    write(orange(f'Removed 1 match from queue'))
+                else:
+                    write(orange(f'Removed {len(retryer)} matches from queue'))
+                retryer = []
+                return
 
 
 @dataclass()
