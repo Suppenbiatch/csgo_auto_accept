@@ -417,26 +417,48 @@ class MatchRequest(threading.Thread):
 
 def match_win_list(number_of_matches: int, _steam_id, time_difference: int = 7_200, replace_chars: bool = False):
     with sqlite3.connect(path_vars.db) as db:
-        cur = db.execute("""SELECT outcome, timestamp FROM matches WHERE steam_id = ? ORDER BY timestamp DESC LIMIT ?""", (_steam_id, abs(number_of_matches)))
+        cur = db.execute("""SELECT outcome, timestamp, team_score, enemy_score FROM matches WHERE steam_id = ? ORDER BY timestamp DESC LIMIT ?""", (_steam_id, abs(number_of_matches)))
         items = cur.fetchall()
     outcome_lst = []
-    for outcome, timestamp in items:
+    short_match_intro = datetime(year=2021, month=9, day=21, hour=1, tzinfo=utc).timestamp()
+    for outcome, timestamp, score_1, score_2 in items:
         if not outcome:
             outcome = 'U'
         if not timestamp:
             timestamp = datetime.now(tz=utc).timestamp() - (60 * 60)
 
+        if replace_chars:
+            char = ''
+        elif not score_1 or not score_2:
+            char = '\u2588'  # unknown
+        elif score_1 == 16 or score_2 == 16:
+            char = '\u2588'  # long match win
+        elif score_1 + score_2 == 30:
+            char = '\u2588'  # long match draw
+        elif timestamp < short_match_intro and (score_1 != 16 and score_2 != 16):
+            char = '\u2591'  # surrender
+        elif score_1 == 9 or score_2 == 9:
+            char = '\u2584'  # short match win (might be surrender)
+        elif score_1 == 8 and score_2 == 8 and outcome == 'D':
+            char = '\u2584'  # short match draw
+        else:
+            char = '\u2591'  # surrender
+
         if outcome == 'W':
-            char = '\u2588' if not replace_chars else 'W'
+            if not char:
+                char = 'W'
             outcome_lst.append((timestamp, green(char)))
         elif outcome == 'L':
-            char = '\u2588' if not replace_chars else 'L'
+            if not char:
+                char = 'L'
             outcome_lst.append((timestamp, red(char)))
         elif outcome == 'D':
-            char = '\u2588' if not replace_chars else 'D'
+            if not char:
+                char = 'D'
             outcome_lst.append((timestamp, blue(char)))
         else:
-            char = '\u2588' if not replace_chars else 'U'
+            if not char:
+                char = 'U'
             outcome_lst.append((timestamp, magenta(char)))
 
     start = outcome_lst[0][0]
@@ -623,6 +645,6 @@ log_reader = LogReader(os.path.join(path_vars.appdata, 'console.log'))
 
 if __name__ == '__main__':
     print('')
-    r = match_win_list(16, 76561199014843546)
+    r = match_win_list(2000, 76561199014843546)
     print(f'Last Games: {r}')
     pass
