@@ -436,13 +436,13 @@ def match_win_list(number_of_matches: int, _steam_id, time_difference: int = 7_2
         elif score_1 + score_2 == 30:
             char = '\u2588'  # long match draw
         elif timestamp < short_match_intro and (score_1 != 16 and score_2 != 16):
-            char = '\u2591'  # surrender
+            char = '\u2593'  # surrender
         elif score_1 == 9 or score_2 == 9:
             char = '\u2584'  # short match win (might be surrender)
         elif score_1 == 8 and score_2 == 8 and outcome == 'D':
             char = '\u2584'  # short match draw
         else:
-            char = '\u2591'  # surrender
+            char = '\u2593'  # surrender
 
         if outcome == 'W':
             if not char:
@@ -645,6 +645,6 @@ log_reader = LogReader(os.path.join(path_vars.appdata, 'console.log'))
 
 if __name__ == '__main__':
     print('')
-    r = match_win_list(2000, 76561199014843546)
-    print(f'Last Games: {r}')
+    r = match_win_list(4000, 76561199014843546)
+    print(r)
     pass
