@@ -44,7 +44,7 @@ class TelNetConsoleReader(threading.Thread):
         while True:
             try:
                 data = self.tl.read_very_eager()
-            except EOFError:
+            except (EOFError, ConnectionResetError):
                 self.closed = True
                 break
 

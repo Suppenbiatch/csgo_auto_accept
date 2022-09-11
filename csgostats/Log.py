@@ -41,8 +41,8 @@ class LogReader:
 
     def get_log_info(self):
         with open(self.path, 'rb') as fp:
-            fp.seek(0, os.SEEK_END)
-            end = fp.tell()
+            end = fp.seek(0, os.SEEK_END)
+            # end = fp.tell()
             if self.read_pos > end:
                 self.read_pos = 0
             fp.seek(self.read_pos, os.SEEK_SET)
@@ -90,9 +90,7 @@ class LogReader:
 
 
 def main():
-    reader = LogReader(r"C:\Users\Suppe\Desktop\status.txt")
-    data = reader.get_log_info()
-    print(data)
+    pass
 
 
 if __name__ == '__main__':
