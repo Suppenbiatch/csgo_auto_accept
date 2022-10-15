@@ -887,6 +887,13 @@ while running:
         write(f'AFK per Round:  {cs.time_output(timings["afk_round"], average["afk_time"][2])}', add_time=False)
         write(f'                {(timings["afk"] / timings["match"]):.1%} of match duration', add_time=False)
 
+        round_wins = cs.round_wins_since_reset(cs.steam_id)
+        round_wins += score[team[0]]
+        if round_wins <= 90:
+            write(f'Normal XP:      {round_wins}/100, {round_wins / 100:.0%}, {100 - round_wins} round wins missing', add_time=False)
+        elif round_wins <= 207:
+            write(f'Reduced XP:     {round_wins}/207, {round_wins / 207:.0%}, {207 - round_wins} round wins missing', add_time=False)
+
         if gsi_server.get_info('map', 'mode') == 'competitive' and game_state.map_phase == 'gameover' and not truth.test_for_warmup and not truth.still_in_warmup:
             if truth.monitoring_since_start:
                 match_time = timings['match']

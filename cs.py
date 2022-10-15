@@ -415,6 +415,17 @@ class MatchRequest(threading.Thread):
         return
 
 
+def round_wins_since_reset(_steam_id: int) -> int:
+    last_wednesday = datetime.now(tz=utc).replace(hour=0, minute=1, second=0, microsecond=0)
+    while last_wednesday.weekday() != 2:
+        last_wednesday -= td(days=1)
+
+    with sqlite3.connect(path_vars.db) as db:
+        cur = db.execute("""SELECT SUM(team_score) FROM matches WHERE steam_id = ? and timestamp > ?""", (_steam_id, int(last_wednesday.timestamp())))
+    r, = cur.fetchone()
+    return r or 0
+
+
 def match_win_list(number_of_matches: int, _steam_id, time_difference: int = 7_200, replace_chars: bool = False):
     with sqlite3.connect(path_vars.db) as db:
         cur = db.execute("""SELECT outcome, timestamp, team_score, enemy_score FROM matches WHERE steam_id = ? ORDER BY timestamp DESC LIMIT ?""", (_steam_id, abs(number_of_matches)))
@@ -644,7 +655,9 @@ sleep_interval_looking_for_accept = 0.05
 log_reader = LogReader(os.path.join(path_vars.appdata, 'console.log'))
 
 if __name__ == '__main__':
-    print('')
-    r = match_win_list(4000, 76561199014843546)
-    print(r)
-    pass
+    def main():
+        print('')
+        r = round_wins_since_reset(76561199014843546)
+        # r = match_win_list(4000, 76561199014843546)
+        print(r)
+    main()
