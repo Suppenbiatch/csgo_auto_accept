@@ -6,18 +6,21 @@ from threading import Thread
 import requests
 from colorit import *
 
-import logging
-
 __all__ = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'white', 'magenta', 'cyan', 'decolor', 'write', 'color', 'SendDiscordMessage']
 
-os.makedirs('Logs/', exist_ok=True)
-logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
-fmt = logging.Formatter('%(asctime)s - %(message)s')
-file_handler = logging.FileHandler(f'Logs/AALog-{datetime.utcnow():%Y%m%d-%H%M%S}.log', encoding='utf-8')
-file_handler.setFormatter(fmt)
-file_handler.setLevel(level=logging.INFO)
-logger.addHandler(file_handler)
+
+logging_active = False
+
+if logging_active:
+    import logging
+    os.makedirs('Logs/', exist_ok=True)
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+    fmt = logging.Formatter('%(asctime)s - %(message)s')
+    file_handler = logging.FileHandler(f'Logs/AALog-{datetime.utcnow():%Y%m%d-%H%M%S}.log', encoding='utf-8')
+    file_handler.setFormatter(fmt)
+    file_handler.setLevel(level=logging.INFO)
+    logger.addHandler(file_handler)
 
 
 def red(text: str):
@@ -101,7 +104,7 @@ def write(message, *, add_time: bool = True, overwrite: str = '0'):  # last over
             message = '\n' + message
 
     overwrite_dict = {'key': overwrite, 'msg': decolor(message), 'end': ending}
-    logger.info(org_message)
+    # logger.info(org_message)
     print(message, end=ending)
 
 
