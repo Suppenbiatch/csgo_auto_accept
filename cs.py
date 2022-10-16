@@ -1,8 +1,11 @@
 import configparser
 import csv
+import glob
+import hashlib
 import json
 import operator
 import os
+import random
 import re
 import sqlite3
 import subprocess
@@ -12,6 +15,7 @@ import winreg
 from dataclasses import dataclass
 from datetime import datetime
 from datetime import timedelta as td
+from enum import Enum
 from pathlib import Path
 from shutil import copyfile
 from typing import List, Union
@@ -27,9 +31,9 @@ from pytz import utc
 from ConsoleInteraction import TelNetConsoleReader
 from GSI import server
 from csgostats.Log import LogReader
+from objects.Account import get_accounts_from_cfg
 from utils import *
 from write import *
-from objects.Account import get_accounts_from_cfg
 
 
 def mute_csgo(lvl: int):
@@ -148,16 +152,23 @@ def check_userdata_autoexec(steam_id_3: str):
                 autoexec.write(f'\n{autoexec_str}\n')
 
     if os.path.exists(os.path.join(path_vars.csgo, 'cfg', 'autoexec.cfg')):
-        write(red(f'YOU HAVE TO DELETE THE "autoexec.cfg" in {os.path.join(path_vars.csgo, "cfg")} AND MERGE IT WITH THE ONE IN {userdata_path}'), add_time=False)
-        write(red(f'THE SCRIPT WONT WORK UNTIL THERE IS NO "autoexec.cfg" in {os.path.join(path_vars.csgo, "cfg")}'), add_time=False)
+        write(
+            red(f'YOU HAVE TO DELETE THE "autoexec.cfg" in {os.path.join(path_vars.csgo, "cfg")} AND MERGE IT WITH THE ONE IN {userdata_path}'),
+            add_time=False)
+        write(red(f'THE SCRIPT WONT WORK UNTIL THERE IS NO "autoexec.cfg" in {os.path.join(path_vars.csgo, "cfg")}'),
+              add_time=False)
 
 
 # noinspection PyShadowingNames
 def get_avg_match_time(steam_id: int):
     with sqlite3.connect(path_vars.db) as db:
-        cur = db.execute("""SELECT AVG(match_time), SUM(match_time), AVG(wait_time), SUM(wait_time) FROM matches WHERE steam_id = ?""", (steam_id,))
+        cur = db.execute(
+            """SELECT AVG(match_time), SUM(match_time), AVG(wait_time), SUM(wait_time) FROM matches WHERE steam_id = ?""",
+            (steam_id,))
         match_avg, match_sum, search_avg, search_sum = cur.fetchone()
-        cur = db.execute("""SELECT SUM(afk_time), COUNT(afk_time), SUM(team_score + enemy_score) FROM matches WHERE steam_id = ? AND afk_time NOT NULL""", (steam_id,))
+        cur = db.execute(
+            """SELECT SUM(afk_time), COUNT(afk_time), SUM(team_score + enemy_score) FROM matches WHERE steam_id = ? AND afk_time NOT NULL""",
+            (steam_id,))
         afk_sum, afk_count, rounds_sum = cur.fetchone()
 
     data = {}
@@ -193,7 +204,8 @@ def get_old_sharecodes(last_x: int):
     path = path_vars.db
     if os.path.isfile(path):
         with sqlite3.connect(path) as db:
-            cur = db.execute("""SELECT sharecode FROM matches WHERE steam_id = ? ORDER BY timestamp DESC LIMIT ?""", (steam_id, abs(last_x)))
+            cur = db.execute("""SELECT sharecode FROM matches WHERE steam_id = ? ORDER BY timestamp DESC LIMIT ?""",
+                             (steam_id, abs(last_x)))
             games = [sharecode for sharecode, in cur.fetchall()]
         if len(games) == 0:
             # table already exists, but its the first match for a user
@@ -213,7 +225,8 @@ def get_new_sharecodes(game_id: str, stats=None):
         try:
             r = requests.get(steam_url, timeout=2)
             next_code = r.json()['result']['nextcode']
-        except (KeyError, requests.exceptions.ConnectionError, requests.exceptions.Timeout, json.decoder.JSONDecodeError) as e:
+        except (
+        KeyError, requests.exceptions.ConnectionError, requests.exceptions.Timeout, json.decoder.JSONDecodeError) as e:
             write(red(f'STEAM API ERROR! Error: "{e}"'))
             break
         if r.status_code == 200:  # new match has been found
@@ -238,20 +251,29 @@ def get_new_sharecodes(game_id: str, stats=None):
 
             # add all matches expect the newest one without any extra data
             db_data = [(sharecode, int(steam_id), 0.0) for sharecode in sharecodes[:-1]]
-            db.executemany("""INSERT OR IGNORE INTO matches (sharecode, steam_id, timestamp) VALUES (?, ?, ?)""", db_data)
+            db.executemany("""INSERT OR IGNORE INTO matches (sharecode, steam_id, timestamp) VALUES (?, ?, ?)""",
+                           db_data)
 
             if stats is None:
-                stats = {'map': None, 'match_time': None, 'wait_time': None, 'afk_time': None, 'mvps': None, 'score': None}
+                stats = {'map': None, 'match_time': None, 'wait_time': None, 'afk_time': None, 'mvps': None,
+                         'score': None}
             if 'mvps' not in stats:
-                stats = {'map': None, 'match_time': None, 'wait_time': None, 'afk_time': None, 'mvps': None, 'score': None}
+                stats = {'map': None, 'match_time': None, 'wait_time': None, 'afk_time': None, 'mvps': None,
+                         'score': None}
 
             now = datetime.now(tz=utc).timestamp()
-            match_data = (sharecodes[-1], int(steam_id), stats['match_time'], stats['wait_time'], stats['afk_time'], stats['mvps'], stats['score'], now)
-            db.execute("""INSERT OR IGNORE INTO matches (sharecode, steam_id, match_time, wait_time, afk_time, mvps, points, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""", match_data)
+            match_data = (
+            sharecodes[-1], int(steam_id), stats['match_time'], stats['wait_time'], stats['afk_time'], stats['mvps'],
+            stats['score'], now)
+            db.execute(
+                """INSERT OR IGNORE INTO matches (sharecode, steam_id, match_time, wait_time, afk_time, mvps, points, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                match_data)
             db.commit()
 
         # Test if any tracked match has missing info
-        cur = db.execute("""SELECT sharecode FROM matches WHERE map IS NULL AND error = 0 and steam_id = ? ORDER BY timestamp ASC""", (int(steam_id),))
+        cur = db.execute(
+            """SELECT sharecode FROM matches WHERE map IS NULL AND error = 0 and steam_id = ? ORDER BY timestamp ASC""",
+            (int(steam_id),))
         sharecodes = cur.fetchall()
 
     return [{'sharecode': code, 'queue_pos': None} for code, in sharecodes]
@@ -331,7 +353,8 @@ def activate_afk_message():
         write(magenta('NOT sending AFK Messages'), overwrite='2')
 
 
-def round_start_msg(msg: str, round_phase: str, freezetime_start: float, current_window_status: bool, scoreboard, overwrite_key: str = '7'):
+def round_start_msg(msg: str, round_phase: str, freezetime_start: float, current_window_status: bool, scoreboard,
+                    overwrite_key: str = '7'):
     if round_phase == 'freezetime':
         # timer_stopped = ''
         old_window_status = True
@@ -409,7 +432,8 @@ class MatchRequest(threading.Thread):
         try:
             r = requests.post(url, json=data)
             if r.status_code != 200:
-                write(f'failed to send check match message to {repr(cfg.server_ip)} with status {r.status_code} - {r.text}')
+                write(
+                    f'failed to send check match message to {repr(cfg.server_ip)} with status {r.status_code} - {r.text}')
         except requests.ConnectionError:
             write(red('CSGO Discord Bot OFFLINE'))
         return
@@ -421,14 +445,17 @@ def round_wins_since_reset(_steam_id: int) -> int:
         last_wednesday -= td(days=1)
 
     with sqlite3.connect(path_vars.db) as db:
-        cur = db.execute("""SELECT SUM(team_score) FROM matches WHERE steam_id = ? and timestamp > ?""", (_steam_id, int(last_wednesday.timestamp())))
+        cur = db.execute("""SELECT SUM(team_score) FROM matches WHERE steam_id = ? and timestamp > ?""",
+                         (_steam_id, int(last_wednesday.timestamp())))
     r, = cur.fetchone()
     return r or 0
 
 
 def match_win_list(number_of_matches: int, _steam_id, time_difference: int = 7_200, replace_chars: bool = False):
     with sqlite3.connect(path_vars.db) as db:
-        cur = db.execute("""SELECT outcome, timestamp, team_score, enemy_score FROM matches WHERE steam_id = ? ORDER BY timestamp DESC LIMIT ?""", (_steam_id, abs(number_of_matches)))
+        cur = db.execute(
+            """SELECT outcome, timestamp, team_score, enemy_score FROM matches WHERE steam_id = ? ORDER BY timestamp DESC LIMIT ?""",
+            (_steam_id, abs(number_of_matches)))
         items = cur.fetchall()
     outcome_lst = []
     short_match_intro = datetime(year=2021, month=9, day=21, hour=1, tzinfo=utc).timestamp()
@@ -571,6 +598,99 @@ class PathVars:
         self.steam = steam_path
 
 
+@dataclass()
+class Sounds:
+    button_found: str = 'sounds/accept_found.wav'
+    activated: str = 'sounds/activated.wav'
+    not_all_accepted: str = 'sounds/back_to_testing.wav'
+    deactivated: str = 'sounds/deactivated.wav'
+    ding: str = 'sounds/ding.wav'
+    all_accepted: str = 'sounds/done_testing.wav'
+    fail: str = 'sounds/fail.wav'
+    accept_failed: str = 'sounds/failed_to_accept.wav'
+    minute_warning: str = 'sounds/minute_warning.wav'
+    ready: str = 'sounds/ready_up.wav'
+    server_found: str = 'sounds/server_found.wav'
+
+
+class SoundMatch(Enum):
+    button_found = 0
+    activated = 1
+    not_all_accepted = 2
+    ding = 3
+    all_accepted = 4
+    fail = 5
+    accept_failed = 6
+    ready = 7
+    serer_found = 8
+
+
+def get_sounds(get_web_sounds: bool = True):
+    if not cfg.web_sounds or not get_web_sounds:
+        return Sounds()
+    if cfg.web_sounds and get_web_sounds:
+        base = 'sounds/web_sounds'
+        os.makedirs(base, exist_ok=True)
+        files = [os.path.basename(path) for path in glob.glob(os.path.join(base, '*_*.wav'))]
+        file_hash = hashlib.sha256('#'.join(files).encode()).hexdigest()
+
+        url = f'http://{cfg.server_ip}:{cfg.server_port}/sound_hash'
+        base_url = f'http://{cfg.server_ip}:{cfg.server_port}/sounds/'
+        try:
+            r = requests.get(url, timeout=0.5)
+            if r.status_code != 200:
+                return get_sounds(False)
+        except (requests.ConnectionError, requests.ConnectTimeout):
+            write(yellow('Loading default sounds since server is not responding'))
+            return get_sounds(False)
+        info = r.json()
+        if file_hash != info['hash']:
+            write(f'Miss-matched hash between server sound files and local files!')
+            to_delete = []
+            for i, file in enumerate(files):
+                for s_file in info['items']:
+                    if file == s_file:
+                        break
+                else:
+                    to_delete.append((i, file))
+
+            to_delete.sort(key=lambda x: x[0], reverse=True)
+            for idx, filename in to_delete:
+                os.remove(os.path.join(base, filename))
+                write(f'removed {filename} from local since its no longer on the server')
+                files.pop(idx)
+
+            for s_file in info['items']:
+                for file in files:
+                    if s_file == file:
+                        break
+                else:
+                    r = requests.get(base_url + s_file)
+                    if r.status_code != 200:
+                        write(red(f'failed to download "{s_file}" from server'))
+                    write(f'added "{s_file}" to local sound bib')
+                    with open(os.path.join(base, s_file), 'wb') as fp:
+                        fp.write(r.content)
+        sorted_files = {}
+        for file in files:
+            obj = re.search(r'(\d)_\d+\.wav', file)
+            if obj is None:
+                write(f'failed to defer use case from "{file}"')
+                continue
+            use_case = int(obj.group(1))
+            if use_case not in sorted_files:
+                sorted_files[use_case] = [file]
+            else:
+                sorted_files[use_case].append(file)
+        out = Sounds()
+        random.seed(os.urandom(128))
+        for key, value in sorted_files.items():
+            use_case = SoundMatch(key)
+            random_sound = random.choice(value)
+            setattr(out, use_case.name, os.path.join(base, random_sound))
+        return out
+
+
 subprocess.run('cls', shell=True)
 path_vars = PathVars()
 
@@ -590,11 +710,12 @@ class ConfigItems:
 
     sleep_interval: float = config.getfloat('Script Settings', 'Interval')
     forbidden_programs: str = config.get('Script Settings', 'Forbidden Programs')
-    match_list_length: int = config.getint('Script Settings', 'Match History Lenght')
+    match_list_length: int = config.getint('Script Settings', 'Match History Length')
     telnet_ip: str = config.get('Script Settings', 'TelNet IP')
     telnet_port: int = config.getint('Script Settings', 'TelNet Port')
     anti_afk_delay: float = config.getfloat('Script Settings', 'Anti-AFK Delay')
     afk_reset_delay: float = config.getfloat('Script Settings', 'AFK Reset Delay')
+    web_sounds: bool = config.getboolean('Script Settings', 'Use Web Sounds')
 
     steam_api_key: str = config.get('csgostats.gg', 'API Key')
     auto_retry_interval: int = config.getint('csgostats.gg', 'Auto-Retrying-Interval')
@@ -619,9 +740,10 @@ except (configparser.NoOptionError, configparser.NoSectionError, ValueError) as 
     cfg = None
     exit('REPAIR CONFIG')
 
-
 accounts = get_accounts_from_cfg(cfg.parser)
 steam_id = get_current_steam_user()
+
+sounds = get_sounds()
 
 if not steam_id:
     account = accounts[0]
@@ -644,11 +766,11 @@ with open(os.path.join(path_vars.appdata, 'console.log'), 'w', encoding='utf-8')
 
 if path_vars.csgo:
     if not os.path.exists(os.path.join(path_vars.csgo, 'cfg', 'gamestate_integration_GSI.cfg')):
-        copyfile(os.path.join(os.getcwd(), 'GSI', 'gamestate_integration_GSI.cfg'), os.path.join(path_vars.csgo, 'cfg', 'gamestate_integration_GSI.cfg'))
+        copyfile(os.path.join(os.getcwd(), 'GSI', 'gamestate_integration_GSI.cfg'),
+                 os.path.join(path_vars.csgo, 'cfg', 'gamestate_integration_GSI.cfg'))
         write(red('Added GSI CONFIG to cfg folder. Counter-Strike needs to be restarted if running!'))
 
 afk_message = False
-
 
 sleep_interval = cfg.sleep_interval
 sleep_interval_looking_for_accept = 0.05
@@ -660,4 +782,6 @@ if __name__ == '__main__':
         r = round_wins_since_reset(76561199014843546)
         # r = match_win_list(4000, 76561199014843546)
         print(r)
+
+
     main()
