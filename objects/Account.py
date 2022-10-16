@@ -83,7 +83,7 @@ def get_accounts_from_cfg(parser: ConfigParser) -> List[SteamAccount]:
         steam_api_error = True
 
     if steam_api_error:
-        print('INVAILD STEAM API KEY or INTERNET CONNECTION ERROR, could not fetch usernames')
+        print('INVALID STEAM API KEY or INTERNET CONNECTION ERROR, could not fetch usernames')
         for num, account in enumerate(accounts):
             account.name = f'Unknown Name {num}'
             account.avatar_hash = f'Unknown Avatar {num}'
