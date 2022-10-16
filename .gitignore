@@ -4,6 +4,7 @@
 /__pycache__/
 /matches/
 /Logs/
+/sounds/web_sounds/
 basics.py
 test.py
 cs_test.py
@@ -13,3 +14,4 @@ config.ini
 *.ps1
 match_fixer.py
 csv_fixer.py
+
