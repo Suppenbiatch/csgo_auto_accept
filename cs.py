@@ -706,8 +706,9 @@ def get_sounds(get_web_sounds: bool = True):
         random.seed(os.urandom(128))
         for key, value in sorted_files.items():
             use_case = SoundMatch(key)
-            random_sound = random.choice(value)
-            setattr(out, use_case.name, os.path.join(base, random_sound))
+            if getattr(cfg.sound_usage, use_case.name):
+                random_sound = random.choice(value)
+                setattr(out, use_case.name, os.path.join(base, random_sound))
         return out
 
 
@@ -723,6 +724,19 @@ config = configparser.ConfigParser()
 config.read('config.ini')
 
 
+@dataclass()
+class UseSounds:
+    button_found: bool
+    activated: bool
+    not_all_accepted: bool
+    ding: bool
+    all_accepted: bool
+    fail: bool
+    accept_failed: bool
+    ready: bool
+    server_found: bool
+
+
 @dataclass
 class ConfigItems:
     webhook_ip: str = config.get('HotKeys', 'WebHook IP')
@@ -735,7 +749,6 @@ class ConfigItems:
     telnet_port: int = config.getint('Script Settings', 'TelNet Port')
     anti_afk_delay: float = config.getfloat('Script Settings', 'Anti-AFK Delay')
     afk_reset_delay: float = config.getfloat('Script Settings', 'AFK Reset Delay')
-    web_sounds: bool = config.getboolean('Script Settings', 'Use Web Sounds')
 
     steam_api_key: str = config.get('csgostats.gg', 'API Key')
     auto_retry_interval: int = config.getint('csgostats.gg', 'Auto-Retrying-Interval')
@@ -746,11 +759,26 @@ class ConfigItems:
 
     discord_user_id: int = config.getint('Notifier', 'Discord User ID')
 
+    web_sounds: bool = config.getboolean('Sounds', 'Use Web Sounds')
+    sound_usage: UseSounds = None
+
     parser: configparser.ConfigParser = config
 
     def __post_init__(self):
         if isinstance(self.secret, str):
             self.secret = self.secret.encode()
+        sound_data = [
+            self.parser.getboolean('Sounds', 'Use button_found'),
+            self.parser.getboolean('Sounds', 'Use activated'),
+            self.parser.getboolean('Sounds', 'Use not_all_accepted'),
+            self.parser.getboolean('Sounds', 'Use ding'),
+            self.parser.getboolean('Sounds', 'Use all_accepted'),
+            self.parser.getboolean('Sounds', 'Use fail'),
+            self.parser.getboolean('Sounds', 'Use accept_failed'),
+            self.parser.getboolean('Sounds', 'Use ready'),
+            self.parser.getboolean('Sounds', 'Use server_found'),
+        ]
+        self.sound_usage = UseSounds(*sound_data)
 
 
 try:
