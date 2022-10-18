@@ -5,6 +5,7 @@ import hashlib
 import json
 import operator
 import os
+import queue
 import random
 import re
 import sqlite3
@@ -20,6 +21,7 @@ from pathlib import Path
 from shutil import copyfile
 from typing import List, Union
 
+import playsound
 import requests
 import win32api
 import win32con
@@ -598,6 +600,23 @@ class PathVars:
         self.steam = steam_path
 
 
+class SoundPlayer(threading.Thread):
+    def __init__(self):
+        super(SoundPlayer, self).__init__()
+        self.queue = queue.Queue()
+        self.daemon = True
+        self.name = 'SoundPlayer'
+
+    def play(self, path: str, block: bool = True):
+        self.queue.put(path, block=True, timeout=None)
+        return
+
+    def run(self) -> None:
+        while True:
+            path = self.queue.get(block=True, timeout=None)
+            playsound.playsound(sound=path, block=True)
+
+
 @dataclass()
 class Sounds:
     button_found: str = 'sounds/accept_found.wav'
@@ -622,7 +641,7 @@ class SoundMatch(Enum):
     fail = 5
     accept_failed = 6
     ready = 7
-    serer_found = 8
+    server_found = 8
 
 
 def get_sounds(get_web_sounds: bool = True):
@@ -659,18 +678,19 @@ def get_sounds(get_web_sounds: bool = True):
                 os.remove(os.path.join(base, filename))
                 write(f'removed {filename} from local since its no longer on the server')
                 files.pop(idx)
-
-            for s_file in info['items']:
-                for file in files:
-                    if s_file == file:
-                        break
-                else:
-                    r = requests.get(base_url + s_file)
-                    if r.status_code != 200:
-                        write(red(f'failed to download "{s_file}" from server'))
-                    write(f'added "{s_file}" to local sound bib')
-                    with open(os.path.join(base, s_file), 'wb') as fp:
-                        fp.write(r.content)
+            with requests.Session() as session:
+                for s_file in info['items']:
+                    for file in files:
+                        if s_file == file:
+                            break
+                    else:
+                        r = session.get(base_url + s_file)
+                        if r.status_code != 200:
+                            write(red(f'failed to download "{s_file}" from server'))
+                        write(f'added "{s_file}" to local sound bib')
+                        with open(os.path.join(base, s_file), 'wb') as fp:
+                            fp.write(r.content)
+        files = [os.path.basename(path) for path in glob.glob(os.path.join(base, '*_*.wav'))]
         sorted_files = {}
         for file in files:
             obj = re.search(r'(\d)_\d+\.wav', file)
@@ -744,6 +764,8 @@ accounts = get_accounts_from_cfg(cfg.parser)
 steam_id = get_current_steam_user()
 
 sounds = get_sounds()
+sound_player = SoundPlayer()
+sound_player.start()
 
 if not steam_id:
     account = accounts[0]

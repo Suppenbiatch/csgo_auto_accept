@@ -14,7 +14,6 @@ from urllib.parse import unquote_plus
 import win32api
 import win32con
 import win32gui
-from playsound import playsound
 
 import cs
 from ConsoleInteraction import TelNetConsoleReader
@@ -233,11 +232,11 @@ def hk_activate():
         truth.test_for_server = not truth.test_for_server
         write(magenta(f'Looking for match: {truth.test_for_server}'), overwrite='1')
         if truth.test_for_server:
-            playsound(cs.sounds.activated, block=False)
+            cs.sound_player.play(cs.sounds.activated, block=False)
             times.search_started = time.time()
             cs.mute_csgo(1)
         elif not truth.test_for_server:
-            playsound(cs.sounds.deactivated, block=False)
+            cs.sound_player.play(cs.sounds.deactivated, block=False)
             cs.mute_csgo(0)
 
 
@@ -471,14 +470,14 @@ while running:
             cs.check_userdata_autoexec(cs.account.steam_id_3)
         except IndexError:
             write('Account is not in the config.ini!\nScript will not work properly!', add_time=False, overwrite='9')
-            playsound(cs.sounds.fail, block=False)
+            cs.sound_player.play(cs.sounds.fail, block=False)
             exit('Update config.ini!')
         updater.new_account(cs.account)
         write(f'Current account is: {cs.account.name}', add_time=False, overwrite='9')
 
         if cs.check_for_forbidden_programs(window_enum.window_ids):
             write('A forbidden program is still running...', add_time=False)
-            playsound(cs.sounds.fail, block=False)
+            cs.sound_player.play(cs.sounds.fail, block=False)
 
         gsi_server = window_enum.restart_gsi_server(gsi_server)
         truth.gsi_first_launch = True
@@ -501,7 +500,7 @@ while running:
                 break
             elif telnet.closed is True:
                 write(red(f'Failed to connect to the csgo client, make sure -netconport {cs.cfg.telnet_port} is set as a launch option'))
-                playsound(cs.sounds.fail)
+                cs.sound_player.play(cs.sounds.fail)
                 exit('Check launch options')
             time.sleep(0.2)
     elif telnet.closed is True:
@@ -517,14 +516,14 @@ while running:
                 truth.test_for_server = True
                 times.search_started = time.time()
                 write(magenta(f'Looking for match: {truth.test_for_server}'), overwrite='1')
-            playsound(cs.sounds.activated, block=False)
+            cs.sound_player.play(cs.sounds.activated, block=False)
             cs.mute_csgo(1)
         elif console.update[-1] == '0' and truth.test_for_server:
             cs.mute_csgo(0)
 
     if truth.test_for_server:
         if console.server_found:
-            playsound(cs.sounds.server_found, block=False)
+            cs.sound_player.play(cs.sounds.server_found, block=False)
             truth.test_for_success = True
         if console.server_ready:
             truth.test_for_accept_button = True
@@ -549,7 +548,7 @@ while running:
             else:
                 cs.set_mouse_position(current_cursor_position)
 
-            playsound(cs.sounds.button_found, block=False)
+            cs.sound_player.play(cs.sounds.button_found, block=False)
 
     if truth.test_for_accept_button or truth.test_for_success:
         if console.msg is not None:
@@ -568,7 +567,7 @@ while running:
                 truth.test_for_success = False
                 truth.monitoring_since_start = True
                 cs.mute_csgo(0)
-                playsound(cs.sounds.all_accepted, block=False)
+                cs.sound_player.play(cs.sounds.all_accepted, block=False)
                 times.match_accepted = time.time()
 
                 afk.time = times.match_accepted
@@ -586,14 +585,14 @@ while running:
                     write(msg, overwrite='11')
                     if cs.afk_message is True:
                         afk_sender.queue.put(msg)
-                    playsound(cs.sounds.not_all_accepted, block=False)
+                    cs.sound_player.play(cs.sounds.not_all_accepted, block=False)
                     cs.mute_csgo(1)
                 elif 'Failed to ready up' in console.msg:
                     msg = red('You or a group member failed to accept! Restart searching!')
                     write(msg, overwrite='11')
                     if cs.afk_message is True:
                         afk_sender.queue.put(msg)
-                    playsound(cs.sounds.accept_failed)
+                    cs.sound_player.play(cs.sounds.accept_failed)
                     cs.mute_csgo(0)
 
         if console.players_accepted is not None:
@@ -623,7 +622,7 @@ while running:
                     write(msg, overwrite='7')
                     if cs.afk_message is True:
                         afk_sender.queue.put(msg)
-                    playsound(cs.sounds.minute_warning, block=True)
+                    cs.sound_player.play(cs.sounds.minute_warning, block=True)
                     truth.players_still_connecting = False
                     join_dict['t_full'], join_dict['ct_full'] = False, False
                     break
@@ -632,7 +631,7 @@ while running:
         if list((msg for msg in console.server_abandon if 'Disconnect' in msg)):
             if not truth.game_over:
                 write(red('Server disconnected'))
-                playsound(cs.sounds.fail, block=False)
+                cs.sound_player.play(cs.sounds.fail, block=False)
             gsi_server = window_enum.restart_gsi_server(gsi_server)
 
             truth.disconnected_form_last = True
@@ -709,7 +708,7 @@ while running:
 
             if scoreboard.total_score == scoreboard.max_rounds / 2 - 1:
                 scoreboard.extra_round_info = f' - {yellow("Half-Time")}'
-                playsound(cs.sounds.ding, block=True)
+                cs.sound_player.play(cs.sounds.ding, block=True)
             elif scoreboard.CT == scoreboard.max_rounds / 2 or scoreboard.T == scoreboard.max_rounds / 2:
                 scoreboard.extra_round_info = f' - {yellow("Match Point")}'
 
@@ -722,7 +721,7 @@ while running:
 
             if win32gui.GetWindowPlacement(hwnd)[1] == 2:
                 truth.game_minimized_freezetime = True
-                playsound(cs.sounds.ready, block=True)
+                cs.sound_player.play(cs.sounds.ready, block=True)
 
         elif game_state.map_phase == 'live' and gsi_server.get_info('player', 'steamid') == cs.steam_id:
             player_stats = gsi_server.get_info('player', 'match_stats')
@@ -731,7 +730,7 @@ while running:
         truth.first_freezetime = True
         truth.c4_round_first = True
         if time.time() - times.freezetime_started >= 20 and win32gui.GetWindowPlacement(hwnd)[1] == 2:
-            playsound(cs.sounds.ready, block=False)
+            cs.sound_player.play(cs.sounds.ready, block=False)
 
     if truth.game_minimized_warmup:
         try:
@@ -794,7 +793,7 @@ while running:
         scoreboard.current_weapons = list(gsi_server.get_info('player', 'weapons').values())
         scoreboard.has_c4 = True if 'weapon_c4' in [weapon['name'] for weapon in scoreboard.current_weapons] else False
         if scoreboard.has_c4:
-            playsound(cs.sounds.ding, block=False)
+            cs.sound_player.play(cs.sounds.ding, block=False)
             truth.c4_round_first = False
 
     if truth.still_in_warmup:
@@ -814,7 +813,7 @@ while running:
             times.freezetime_started = time.time()
             if win32gui.GetWindowPlacement(hwnd)[1] == 2:
                 truth.game_minimized_warmup = True
-                playsound(cs.sounds.ready, block=False)
+                cs.sound_player.play(cs.sounds.ready, block=False)
             afk.start_time = time.time()
             afk.seconds_afk = 0.0
             afk.round_values = []
