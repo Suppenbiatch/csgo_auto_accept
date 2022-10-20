@@ -13,7 +13,7 @@ class CustomFormatter(logging.Formatter):
     red = "\x1b[31;20m"
     bold_red = "\x1b[31;1m"
     reset = "\x1b[0m"
-    format = "%(asctime)s - %(levelname)s - %(message)s"
+    format = "%(levelname)s - %(message)s"
 
     FORMATS = {
         logging.DEBUG: grey + format + reset,
@@ -29,7 +29,7 @@ class CustomFormatter(logging.Formatter):
         return formatter.format(record)
 
 
-logger = logging.getLogger()
+logger = logging.getLogger('ConfigValidator')
 logger.setLevel(logging.DEBUG)
 
 ch = logging.StreamHandler()
@@ -39,7 +39,8 @@ ch.setFormatter(CustomFormatter())
 logger.addHandler(ch)
 
 
-def main():
+def fix_config():
+
     user_cfg = ConfigParser()
     default_cfg = ConfigParser()
     default_cfg.read(default_config)
@@ -112,6 +113,10 @@ def check_section(default_cfg: ConfigParser, user_cfg: ConfigParser, section_key
         if key not in def_section:
             logger.warning(f'Removing un-used key "{key}" = "{value}" in {section_key}')
             del user_cfg[section_key][key]
+
+
+def main():
+    fix_config()
 
 
 if __name__ == '__main__':

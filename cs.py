@@ -13,7 +13,7 @@ import subprocess
 import threading
 import time
 import winreg
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from datetime import timedelta as td
 from enum import Enum
@@ -36,6 +36,7 @@ from csgostats.Log import LogReader
 from objects.Account import get_accounts_from_cfg
 from utils import *
 from write import *
+from ConfigValidator import fix_config
 
 
 def mute_csgo(lvl: int):
@@ -718,10 +719,7 @@ path_vars = PathVars()
 os.makedirs(path_vars.appdata, exist_ok=True)
 
 lobby_info = re.compile(r"(?<!Machines' = '\d''members:num)(C?TSlotsFree|Players)' = '(\d+'?)")
-
-# CONFIG HANDLING
 config = configparser.ConfigParser()
-config.read('config.ini')
 
 
 @dataclass()
@@ -739,54 +737,87 @@ class UseSounds:
 
 @dataclass
 class ConfigItems:
-    webhook_ip: str = config.get('HotKeys', 'WebHook IP')
-    webhook_port: int = config.getint('HotKeys', 'WebHook Port')
+    webhook_ip: str
+    webhook_port: int
 
-    sleep_interval: float = config.getfloat('Script Settings', 'Interval')
-    forbidden_programs: str = config.get('Script Settings', 'Forbidden Programs')
-    match_list_length: int = config.getint('Script Settings', 'Match History Length')
-    telnet_ip: str = config.get('Script Settings', 'TelNet IP')
-    telnet_port: int = config.getint('Script Settings', 'TelNet Port')
-    anti_afk_delay: float = config.getfloat('Script Settings', 'Anti-AFK Delay')
-    afk_reset_delay: float = config.getfloat('Script Settings', 'AFK Reset Delay')
+    sleep_interval: float
+    forbidden_programs: str
+    match_list_length: int
+    telnet_ip: str
+    telnet_port: int
+    anti_afk_delay: float
+    afk_reset_delay: float
 
-    steam_api_key: str = config.get('csgostats.gg', 'API Key')
-    auto_retry_interval: int = config.getint('csgostats.gg', 'Auto-Retrying-Interval')
-    status_requester: str = config.getboolean('csgostats.gg', 'Status Requester')
-    secret: bytes = config.get('csgostats.gg', 'Secret')
-    server_ip: str = config.get('csgostats.gg', 'WebServer IP')
-    server_port: int = config.getint('csgostats.gg', 'WebServer Port')
+    steam_api_key: str
+    auto_retry_interval: int
+    status_requester: str
+    secret: bytes
+    server_ip: str
+    server_port: int
 
-    discord_user_id: int = config.getint('Notifier', 'Discord User ID')
+    discord_user_id: int
 
-    web_sounds: bool = config.getboolean('Sounds', 'Use Web Sounds')
-    sound_usage: UseSounds = None
+    web_sounds: bool
+    sound_usage: UseSounds
 
-    parser: configparser.ConfigParser = config
+    parser: configparser.ConfigParser
 
-    def __post_init__(self):
-        if isinstance(self.secret, str):
-            self.secret = self.secret.encode()
+
+def get_cfg(recursion: bool = False):
+
+    config.read('config.ini')
+    data = {}
+    try:
+        data['webhook_ip'] = config.get('HotKeys', 'WebHook IP')
+        data['webhook_port'] = config.getint('HotKeys', 'WebHook Port')
+
+        data['sleep_interval'] = config.getfloat('Script Settings', 'Interval')
+        data['forbidden_programs'] = config.get('Script Settings', 'Forbidden Programs')
+        data['match_list_length'] = config.getint('Script Settings', 'Match History Length')
+        data['telnet_ip'] = config.get('Script Settings', 'TelNet IP')
+        data['telnet_port'] = config.getint('Script Settings', 'TelNet Port')
+        data['anti_afk_delay'] = config.getfloat('Script Settings', 'Anti-AFK Delay')
+        data['afk_reset_delay'] = config.getfloat('Script Settings', 'AFK Reset Delay')
+
+        data['steam_api_key'] = config.get('csgostats.gg', 'API Key')
+        data['auto_retry_interval'] = config.getint('csgostats.gg', 'Auto-Retrying-Interval')
+        data['status_requester'] = config.getboolean('csgostats.gg', 'Status Requester')
+        data['secret'] = config.get('csgostats.gg', 'Secret')
+        data['server_ip'] = config.get('csgostats.gg', 'WebServer IP')
+        data['server_port'] = config.getint('csgostats.gg', 'WebServer Port')
+
+        data['discord_user_id'] = config.getint('Notifier', 'Discord User ID')
+
+        data['web_sounds'] = config.getboolean('Sounds', 'Use Web Sounds')
+
         sound_data = [
-            self.parser.getboolean('Sounds', 'Use button_found'),
-            self.parser.getboolean('Sounds', 'Use activated'),
-            self.parser.getboolean('Sounds', 'Use not_all_accepted'),
-            self.parser.getboolean('Sounds', 'Use ding'),
-            self.parser.getboolean('Sounds', 'Use all_accepted'),
-            self.parser.getboolean('Sounds', 'Use fail'),
-            self.parser.getboolean('Sounds', 'Use accept_failed'),
-            self.parser.getboolean('Sounds', 'Use ready'),
-            self.parser.getboolean('Sounds', 'Use server_found'),
+            config.getboolean('Sounds', 'Use button_found'),
+            config.getboolean('Sounds', 'Use activated'),
+            config.getboolean('Sounds', 'Use not_all_accepted'),
+            config.getboolean('Sounds', 'Use ding'),
+            config.getboolean('Sounds', 'Use all_accepted'),
+            config.getboolean('Sounds', 'Use fail'),
+            config.getboolean('Sounds', 'Use accept_failed'),
+            config.getboolean('Sounds', 'Use ready'),
+            config.getboolean('Sounds', 'Use server_found'),
         ]
-        self.sound_usage = UseSounds(*sound_data)
+        data['sound_usage'] = UseSounds(*sound_data)
+        data['parser'] = config
+
+        config_items: ConfigItems = ConfigItems(**data)
+        return config_items
+    except (configparser.NoOptionError, configparser.NoSectionError, ValueError) as e:
+        if recursion is True:
+            write(f'failed to fix config with default values!')
+            exit()
+        write(f'ERROR IN CONFIG - {str(e)}')
+        write(f'trying to fix it!', add_time=False)
+        write('', add_time=False)
+        fix_config()
+        return get_cfg(recursion=True)
 
 
-try:
-    cfg: ConfigItems = ConfigItems()
-except (configparser.NoOptionError, configparser.NoSectionError, ValueError) as e:
-    write(f'ERROR IN CONFIG - {str(e)}')
-    cfg = None
-    exit('REPAIR CONFIG')
+cfg = get_cfg()
 
 accounts = get_accounts_from_cfg(cfg.parser)
 steam_id = get_current_steam_user()
