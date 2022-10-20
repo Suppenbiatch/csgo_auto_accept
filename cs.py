@@ -13,7 +13,7 @@ import subprocess
 import threading
 import time
 import winreg
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from datetime import timedelta as td
 from enum import Enum
@@ -713,15 +713,6 @@ def get_sounds(get_web_sounds: bool = True):
         return out
 
 
-subprocess.run('cls', shell=True)
-path_vars = PathVars()
-
-os.makedirs(path_vars.appdata, exist_ok=True)
-
-lobby_info = re.compile(r"(?<!Machines' = '\d''members:num)(C?TSlotsFree|Players)' = '(\d+'?)")
-config = configparser.ConfigParser()
-
-
 @dataclass()
 class UseSounds:
     button_found: bool
@@ -761,6 +752,13 @@ class ConfigItems:
     sound_usage: UseSounds
 
     parser: configparser.ConfigParser
+
+
+subprocess.run('cls', shell=True)
+path_vars = PathVars()
+os.makedirs(path_vars.appdata, exist_ok=True)
+
+config = configparser.ConfigParser()
 
 
 def get_cfg(recursion: bool = False):
@@ -856,6 +854,8 @@ afk_message = False
 sleep_interval = cfg.sleep_interval
 sleep_interval_looking_for_accept = 0.05
 log_reader = LogReader(os.path.join(path_vars.appdata, 'console.log'))
+
+lobby_info = re.compile(r"(?<!Machines' = '\d''members:num)(C?TSlotsFree|Players)' = '(\d+'?)")
 
 if __name__ == '__main__':
     def main():
