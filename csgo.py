@@ -983,7 +983,6 @@ while running:
             time.sleep(cs.sleep_interval)
     time.sleep(cs.sleep_interval)
 
-
 telnet.close()
 print('')
 if gsi_server.running:

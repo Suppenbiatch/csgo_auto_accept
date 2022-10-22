@@ -15,8 +15,10 @@ class LogInfo:
     steam_ids: List[int]
     caller: int = None
 
-    def to_web_request(self, key: bytes, caller: int):
+    def to_web_request(self, key: Union[bytes, str], caller: int):
         self.caller = int(caller)
+        if isinstance(key, str):
+            key = key.encode()
         obj = pickle.dumps(self, protocol=pickle.HIGHEST_PROTOCOL)
         key = hmac.digest(key, obj, digest='sha256')
         b64_key = base64.urlsafe_b64encode(key).decode('ascii')

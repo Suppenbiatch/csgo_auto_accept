@@ -6,7 +6,7 @@ import logging
 import pickle
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from csgostats.Match.objects.player import MatchPlayer
 from csgostats.Match.objects.rounds import Rounds
@@ -119,7 +119,9 @@ def filter_players(player: MatchPlayer, steam_id: int):
     return player.steam_id != int(steam_id)
 
 
-def match_to_web_response(match_bytes: bytes, secret: bytes):
+def match_to_web_response(match_bytes: bytes, secret: Union[bytes, str]):
+    if isinstance(secret, str):
+        secret = secret.encode()
     key = hmac.digest(secret, match_bytes, 'sha256')
     b64_object = base64.urlsafe_b64encode(match_bytes).decode('ascii')
     b64_key = base64.urlsafe_b64encode(key).decode('ascii')

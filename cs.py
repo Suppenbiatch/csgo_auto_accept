@@ -21,22 +21,22 @@ from pathlib import Path
 from shutil import copyfile
 from typing import List, Union
 
-import playsound
 import requests
 import win32api
 import win32con
 import win32gui
 import win32process
+import winsound
 from PIL import ImageGrab, Image
 from pytz import utc
 
+from ConfigValidator import fix_config
 from ConsoleInteraction import TelNetConsoleReader
 from GSI import server
 from csgostats.Log import LogReader
 from objects.Account import get_accounts_from_cfg
 from utils import *
 from write import *
-from ConfigValidator import fix_config
 
 
 def mute_csgo(lvl: int):
@@ -229,7 +229,7 @@ def get_new_sharecodes(game_id: str, stats=None):
             r = requests.get(steam_url, timeout=2)
             next_code = r.json()['result']['nextcode']
         except (
-        KeyError, requests.exceptions.ConnectionError, requests.exceptions.Timeout, json.decoder.JSONDecodeError) as e:
+                KeyError, requests.exceptions.ConnectionError, requests.exceptions.Timeout, json.decoder.JSONDecodeError) as e:
             write(red(f'STEAM API ERROR! Error: "{e}"'))
             break
         if r.status_code == 200:  # new match has been found
@@ -266,8 +266,8 @@ def get_new_sharecodes(game_id: str, stats=None):
 
             now = datetime.now(tz=utc).timestamp()
             match_data = (
-            sharecodes[-1], int(steam_id), stats['match_time'], stats['wait_time'], stats['afk_time'], stats['mvps'],
-            stats['score'], now)
+                sharecodes[-1], int(steam_id), stats['match_time'], stats['wait_time'], stats['afk_time'], stats['mvps'],
+                stats['score'], now)
             db.execute(
                 """INSERT OR IGNORE INTO matches (sharecode, steam_id, match_time, wait_time, afk_time, mvps, points, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 match_data)
@@ -615,7 +615,8 @@ class SoundPlayer(threading.Thread):
     def run(self) -> None:
         while True:
             path = self.queue.get(block=True, timeout=None)
-            playsound.playsound(sound=path, block=True)
+            flags = winsound.SND_FILENAME | winsound.SND_NODEFAULT | winsound.SND_NOSTOP
+            winsound.PlaySound(path, flags=flags)
 
 
 @dataclass()
@@ -762,7 +763,6 @@ config = configparser.ConfigParser()
 
 
 def get_cfg(recursion: bool = False):
-
     config.read('config.ini')
     data = {}
     try:
@@ -779,8 +779,9 @@ def get_cfg(recursion: bool = False):
 
         data['steam_api_key'] = config.get('csgostats.gg', 'API Key')
         data['auto_retry_interval'] = config.getint('csgostats.gg', 'Auto-Retrying-Interval')
-        data['status_requester'] = config.getboolean('csgostats.gg', 'Status Requester')
         data['secret'] = config.get('csgostats.gg', 'Secret')
+        data['status_requester'] = config.getboolean('csgostats.gg', 'Status Requester')
+
         data['server_ip'] = config.get('csgostats.gg', 'WebServer IP')
         data['server_port'] = config.getint('csgostats.gg', 'WebServer Port')
 
@@ -860,6 +861,10 @@ lobby_info = re.compile(r"(?<!Machines' = '\d''members:num)(C?TSlotsFree|Players
 if __name__ == '__main__':
     def main():
         print('')
+        """time.sleep(5)
+        r = MatchRequest()
+        r.start()
+        r.join()"""
         r = round_wins_since_reset(76561199014843546)
         # r = match_win_list(4000, 76561199014843546)
         print(r)
