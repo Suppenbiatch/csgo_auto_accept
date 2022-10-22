@@ -13,6 +13,7 @@ import subprocess
 import threading
 import time
 import winreg
+import winsound
 from dataclasses import dataclass
 from datetime import datetime
 from datetime import timedelta as td
@@ -26,7 +27,6 @@ import win32api
 import win32con
 import win32gui
 import win32process
-import winsound
 from PIL import ImageGrab, Image
 from pytz import utc
 
