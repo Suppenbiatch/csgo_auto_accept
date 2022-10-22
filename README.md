@@ -57,6 +57,7 @@ After that you'll need to make changes to the config_clean.ini.
     - `afk` -> manually activate anti-afk script
     - `force_minimize` -> `min` or `max` as query parameter to force minimize or maximize the game, query key is ignored
     - `clear_queue` -> clears the queue of matches that are still queued to be processed by csgostats	
+    - `update_sounds` -> updates the web sounds list, downloads any new sounds, and re-shuffles the current sound selection
 	
 
     - example call: `http://{WebHook IP}:{WebHook Port}/{Endpoint}` -> `http://127.0.0.1:8000/minimize`
