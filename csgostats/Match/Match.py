@@ -128,9 +128,11 @@ def match_to_web_response(match_bytes: bytes, secret: Union[bytes, str]):
     return {'object': b64_object, 'key': b64_key, 'status': 'complete'}
 
 
-def match_from_web_request(retrieved_object: str, retrieved_key: str, secret: bytes) -> Optional[Match]:
+def match_from_web_request(retrieved_object: str, retrieved_key: str, secret: Union[bytes, str]) -> Optional[Match]:
     decoded_obj = base64.urlsafe_b64decode(retrieved_object)
     decoded_key = base64.urlsafe_b64decode(retrieved_key)
+    if isinstance(secret, str):
+        secret = secret.encode()
     check_obj = hmac.digest(secret, decoded_obj, 'sha256')
     if hmac.compare_digest(decoded_key, check_obj) is False:
         logger.error('retrieved bytes do not match digest, aborting')
