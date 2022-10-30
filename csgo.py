@@ -892,8 +892,8 @@ while running:
 
         round_wins = cs.round_wins_since_reset(cs.steam_id)
         round_wins += score[team[0]]
-        if round_wins <= 90:
-            write(f'Normal XP:      {round_wins}/90, {round_wins / 90:.0%}, {90 - round_wins} round wins missing', add_time=False)
+        if round_wins <= 89:
+            write(f'Normal XP:      {round_wins}/89, {round_wins / 89:.0%}, {89 - round_wins} round wins missing', add_time=False)
         elif round_wins <= 207:
             write(f'Reduced XP:     {round_wins}/207, {round_wins / 207:.0%}, {207 - round_wins} round wins missing', add_time=False)
 
