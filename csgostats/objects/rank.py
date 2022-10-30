@@ -14,8 +14,6 @@ class Rank:
         if self.change is None:
             self.change = ''
         self.change = re.sub(r'[^+-]', '', self.change)
-        if self.change == '':
-            self.change = None
 
         self.rank = int(self.rank)
         if self.rank > 18:

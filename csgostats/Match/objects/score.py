@@ -10,6 +10,7 @@ class Score:
     outcome: str
 
     def __post_init__(self):
+        self.score = int(self.score)
         self.score_str = f'{self.score:02d}'
 
     def __repr__(self):

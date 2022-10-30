@@ -52,7 +52,7 @@ def parse_last_match_date(datetime_str: str) -> datetime:
         return now - timedelta(days=1)
 
     clean_date = re.sub(r'(\d)(st|nd|rd|th)', r'\1', datetime_str)
-    date_obj = re.search(r'Last Game [\w]+, (.+)', clean_date)
+    date_obj = re.search(r'Last Game \w+, (.+)', clean_date)
     week_obj = re.search(r'Last Game (\d+) days? ago', clean_date)
 
     if date_obj is not None:
@@ -64,8 +64,10 @@ def parse_last_match_date(datetime_str: str) -> datetime:
         else:  # YEAR IS NOT INCLUDED:
             dt = datetime.strptime(f'{date}, {datetime.now().year}', '%d %b, %Y')
             dt = dt.replace(tzinfo=utc)
-    else:
+    elif week_obj is not None:
         dt = now - timedelta(days=int(week_obj.group(1)))
+    else:
+        dt = now
     return dt
 
 
@@ -80,3 +82,20 @@ def uniq(iterable: Iterator, key=lambda x: hash(x)):
 
     srt_enum = sorted(enumerate(iterable), key=lambda item: key(item[1]))
     return [item[1] for item in sorted(reduce(append_unique, srt_enum, [srt_enum[0]]))]
+
+
+def id3_to_id64(raw_id: str) -> int:
+    obj = re.search(r'STEAM_[01]:(\d):(\d+)', raw_id)
+    if obj is None:
+        raise ValueError(f'failed to convert {raw_id}')
+    x, y = obj.groups()
+    return int(y) * 2 + int(x) + 76561197960265728
+
+
+def id64_to_id3(steamid64: int) -> str:
+    """forced to be valid for csgostats"""
+    # If c is odd then x = 1
+    # If c is even then x = 0
+    _, x = divmod(int(steamid64), 2)
+    y = ((int(steamid64) - x) - 76561197960265728) // 2
+    return f'STEAM_1:{x}:{y}'

@@ -1,35 +1,37 @@
 import re
-from dataclasses import dataclass
-import inspect
-from typing import Union
+from dataclasses import dataclass, field
+
+from typing import Union, Any
 import logging
 from csgostats.objects.rank import Rank
+from csgostats.Match.objects.weapons import Weapons
 logger = logging.getLogger(__name__)
 
 __all__ = ['MatchPlayer', 'GeneralStats', 'Utility', 'FirstKill', 'Trades', 'Clutches', 'MultiKills']
 
 
-def dict_generator(cls, stats_lst):
-    params = inspect.signature(cls).parameters
-    stats = dict(zip(params, stats_lst))
-    if len(params) != len(stats_lst):
-        warning_string = f'expected {len(params)} items in {cls.__name__} got {len(stats_lst)}'
-        if len(stats_lst) != 0:
-            # more items then we expected, do we need to change a class?
-            logger.warning(warning_string)
-        else:
-            # stats just not given
-            logger.debug(warning_string)
-        if len(params) > len(stats_lst):
-            for param, _ in list(params.items())[len(stats_lst):]:
-                stats[param] = None
-                logger.debug(f'parameter "{param}" is missing and has been set to "None"')
-    return stats
+def list_check(stats_lst: list, expected_args: int) -> list[int | float | str | None]:
+    if expected_args == len(stats_lst):
+        return stats_lst
+
+    warning_string = f'expected {expected_args} items in got {len(stats_lst)}'
+    if len(stats_lst) != 0:
+        # more items than we expected, do we need to change a class?
+        logger.error(warning_string)
+    else:
+        # stats just not given
+        logger.debug(warning_string)
+
+    if expected_args > len(stats_lst):
+        stats_lst.extend([None] * (expected_args - len(stats_lst)))
+    else:
+        stats_lst = stats_lst[:expected_args]
+    return stats_lst
 
 
-def missing_check(self):
-    params = inspect.signature(self.__class__).parameters
-    return all(getattr(self, param) is None for param in params)
+def missing_check(stat_values: list):
+    stat_values.append(not any(val is not None for val in stat_values))
+    return stat_values
 
 
 @dataclass
@@ -38,17 +40,18 @@ class Utility:
     FA: int     # flash assists
     EBT: float  # enemies flashed time
     UD: int     # utility damage
+    is_missing: bool
 
     @classmethod
-    def from_dict(cls, stats_lst):
-        stats = dict_generator(cls, stats_lst)
-        return cls(**stats)
+    def from_list(cls, stats_lst: list):
+        stats = list_check(stats_lst, 4)
+        stats = missing_check(stats)
+        return cls(*stats)
 
     def __post_init__(self):
         # resolve seconds to float
         if isinstance(self.EBT, str):
             self.EBT = float(re.sub('[^\d.]', '', self.EBT))
-        self.is_missing = missing_check(self)
 
 
 @dataclass
@@ -60,14 +63,13 @@ class FirstKill:
     T_FD: int   # T  first death
     CT_FK: int  # CT first kill
     CT_FD: int  # CT first death
+    is_missing: bool
 
     @classmethod
-    def from_dict(cls, stats_lst):
-        stats = dict_generator(cls, stats_lst)
-        return cls(**stats)
-
-    def __post_init__(self):
-        self.is_missing = missing_check(self)
+    def from_list(cls, stats_lst: list):
+        stats = list_check(stats_lst, 7)
+        stats = missing_check(stats)
+        return cls(*stats)
 
 
 @dataclass
@@ -80,32 +82,31 @@ class Trades:
     T_FD: int   # traded first deaths as T
     CT_FK: int  # traded first kills as CT
     CT_FD: int  # traded first deaths as CT
+    is_missing: bool
+
 
     @classmethod
-    def from_dict(cls, stats_lst):
-        stats = dict_generator(cls, stats_lst)
-        return cls(**stats)
-
-    def __post_init__(self):
-        self.is_missing = missing_check(self)
+    def from_list(cls, stats_lst: list):
+        stats = list_check(stats_lst, 8)
+        stats = missing_check(stats)
+        return cls(*stats)
 
 
 @dataclass
 class Clutches:
     VX: int
-    V1: int
-    V2: int
-    V3: int
-    V4: int
     V5: int
+    V4: int
+    V3: int
+    V2: int
+    V1: int
+    is_missing: bool
 
     @classmethod
-    def from_dict(cls, stats_lst):
-        stats = dict_generator(cls, stats_lst)
-        return cls(**stats)
-
-    def __post_init__(self):
-        self.is_missing = missing_check(self)
+    def from_list(cls, stats_lst: list):
+        stats = list_check(stats_lst, 6)
+        stats = missing_check(stats)
+        return cls(*stats)
 
 
 @dataclass
@@ -116,14 +117,13 @@ class MultiKills:
     K3: int
     K2: int
     K1: int
+    is_missing: bool
 
     @classmethod
-    def from_dict(cls, stats_lst):
-        stats = dict_generator(cls, stats_lst)
-        return cls(**stats)
-
-    def __post_init__(self):
-        self.is_missing = missing_check(self)
+    def from_list(cls, stats_lst: list):
+        stats = list_check(stats_lst, 6)
+        stats = missing_check(stats)
+        return cls(*stats)
 
 
 @dataclass
@@ -140,21 +140,21 @@ class GeneralStats:
     HLTV2: float
 
     @classmethod
-    def from_dict(cls, stats_lst):
-        stats = dict_generator(cls, stats_lst)
-        return cls(**stats)
+    def from_list(cls, stats_lst: list):
+        stats = list_check(stats_lst, 10)
+        return cls(*stats)
 
     def __post_init__(self):
         # resolve percentages
         if isinstance(self.HS, str):
-            self.HS = round(float(re.sub('[^0-9.]', '', self.HS)) / 100, 4)
+            self.HS = round(float(re.sub(r'[^\d.]', '', self.HS)) / 100, 4)
         if isinstance(self.KAST, str):
-            self.KAST = round(float(re.sub('[^0-9.]', '', self.KAST)) / 100, 4)
+            self.KAST = round(float(re.sub(r'[^\d.]', '', self.KAST)) / 100, 4)
 
 
 @dataclass
 class MatchPlayer:
-    steam_id: Union[int, str, None]
+    steam_id: Union[int, None]
     name: str
     rank: Rank
     general: GeneralStats
@@ -163,15 +163,15 @@ class MatchPlayer:
     trades: Trades
     clutches: Clutches
     multi_kills: MultiKills
-    team: int = -1
-    match = None
+    weapons: Weapons = field(init=False, default=None)
+    team: int = field(init=False, default=-1)
+    match: Any = field(init=False)
+    index: int = field(init=False, default=None)
 
     def __post_init__(self):
         if not isinstance(self.steam_id, int):
             if self.steam_id is not None:
                 self.steam_id = int(self.steam_id)
-
-        self.index = None
 
     def profile_url(self):
         if self.steam_id is None:
