@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import List
 
 
 @dataclass()
@@ -376,7 +377,7 @@ class Weapons:
     USP: USP = USP()
     XM1014: XM1014 = XM1014()
 
-    def used_only(self) -> list[Weapon]:
+    def used_only(self) -> List[Weapon]:
         return list(filter(lambda x: x.is_set, vars(self).values()))
 
 

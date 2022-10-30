@@ -1,7 +1,7 @@
 import re
 from dataclasses import dataclass, field
 
-from typing import Union, Any
+from typing import Union, Any, List
 import logging
 from csgostats.objects.rank import Rank
 from csgostats.Match.objects.weapons import Weapons
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 __all__ = ['MatchPlayer', 'GeneralStats', 'Utility', 'FirstKill', 'Trades', 'Clutches', 'MultiKills']
 
 
-def list_check(stats_lst: list, expected_args: int) -> list[int | float | str | None]:
+def list_check(stats_lst: list, expected_args: int) -> List[Union[int, float, str, None]]:
     if expected_args == len(stats_lst):
         return stats_lst
 
