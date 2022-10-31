@@ -96,14 +96,17 @@ class Match:
     def sql_tuple(self, steam_id):
         starting_team = 'T' if steam_id in self.teams[0] else 'CT'
         player = self.get_player_sort(steam_id)
-        return (self.sharecode, self.match_id, self.map,
-                self.score[0].score, self.score[1].score, self.score[0].outcome,
-                starting_team, player.general.K, player.general.A, player.general.D,
+        return (self.match_id, self.map,
+                self.score[0].score, self.score[1].score,
+                self.score[0].outcome,
+                starting_team,
+                player.general.K, player.general.A, player.general.D,
                 player.multi_kills.K5, player.multi_kills.K4, player.multi_kills.K3,
-                player.multi_kills.K2, player.multi_kills.K1, player.general.KD,
+                player.multi_kills.K2, player.multi_kills.K1,
+                player.general.KD,
                 player.general.ADR, player.general.HS, player.general.KAST,
-                player.general.HLTV1, player.general.HLTV2, player.rank.rank, player.name,
-                self.server, int(self.timestamp.timestamp()))
+                player.general.HLTV1, player.general.HLTV2, player.rank.rank, player.rank.change, player.name,
+                self.server, int(self.timestamp.timestamp()), self.sharecode)
 
     def __len__(self):
         return len(self.rounds)
@@ -116,6 +119,8 @@ def filter_players(player: MatchPlayer, steam_id: int):
 
 
 def match_to_web_response(match_bytes: bytes, secret: bytes):
+    if isinstance(secret, str):
+        secret = secret.encode()
     key = hmac.digest(secret, match_bytes, 'sha256')
     b64_object = base64.urlsafe_b64encode(match_bytes).decode('ascii')
     b64_key = base64.urlsafe_b64encode(key).decode('ascii')
@@ -125,6 +130,8 @@ def match_to_web_response(match_bytes: bytes, secret: bytes):
 def match_from_web_request(retrieved_object: str, retrieved_key: str, secret: bytes) -> Optional[Match]:
     decoded_obj = base64.urlsafe_b64decode(retrieved_object)
     decoded_key = base64.urlsafe_b64decode(retrieved_key)
+    if isinstance(secret, str):
+        secret = secret.encode()
     check_obj = hmac.digest(secret, decoded_obj, 'sha256')
     if hmac.compare_digest(decoded_key, check_obj) is False:
         logger.error('retrieved bytes do not match digest, aborting')
