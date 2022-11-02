@@ -3,14 +3,13 @@ import hmac
 import itertools
 import logging
 import pickle
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from csgostats.Match.objects.player import MatchPlayer
 from csgostats.Match.objects.rounds import Rounds
 from csgostats.Match.objects.score import Score
-from csgostats.Match.objects.team import Team
 from csgostats.objects.Errors import PlayerNotFoundError
 from csgostats.objects.rank import Rank
 
@@ -26,31 +25,39 @@ class Match:
     average_rank: Rank
     surrendered: bool
     score: List[Score]
-    teams: List[Team]
+    teams: Tuple[List[MatchPlayer], List[MatchPlayer]]
     rounds: Rounds
     outcome: str = None
     match_id: int = None
     sharecode: str = None
+    player: MatchPlayer = field(init=False, default=None)
+    _all_players: List[MatchPlayer] = field(init=False, default=None)
 
-    def __post_init__(self):
-        for player in self.all_players():
-            player.match = self
+    @property
+    def all_players(self) -> List[MatchPlayer]:
+        if self._all_players is not None:
+            return self._all_players
+        self._all_players = list(itertools.chain.from_iterable(self.teams))
+        return self._all_players
 
     def score_str(self) -> str:
         return f'{self.score[0].score_str}:{self.score[1].score_str}'
 
     def get_player_sort(self, steam_id: int) -> MatchPlayer:
         for i, team in enumerate(self.teams):
-            player = team.player_from_steam_id(int(steam_id))
-            if player is not None:
-                self._sort_for_player(i)
-                return player
+            for ii, player in enumerate(team):
+                if player.steam_id == steam_id:
+                    if ii != 0:
+                        self.teams[i][0], self.teams[i][ii] = self.teams[i][ii], self.teams[i][0]
+                    self._sort_for_player(i)
+                    self.player = player
+                    return player
         else:
             logger.warning(f'did not find {steam_id} in {self.match_id}')
             raise PlayerNotFoundError(steam_id)
 
     def get_player(self, steam_id: int) -> MatchPlayer:
-        for player in self.all_players():
+        for player in self.all_players:
             if player.steam_id == int(steam_id):
                 return player
         raise PlayerNotFoundError(steam_id)
@@ -60,7 +67,7 @@ class Match:
             self.outcome = self.score[0].outcome
         elif player_team_number == 1:
             self.score = list(reversed(self.score))
-            self.teams = list(reversed(self.teams))
+            self.teams = (self.teams[1], self.teams[0])
             self.rounds.reverse_rounds()
             self.outcome = self.score[0].outcome
         else:
@@ -70,17 +77,14 @@ class Match:
             for player in team:
                 player.team = i
 
-    def all_players(self) -> List[MatchPlayer]:
-        return list(itertools.chain.from_iterable(self.teams))
-
     def players_without(self, steam_id: int):
         return list(
             filter(lambda player: filter_players(player, steam_id),
-                   self.all_players())
+                   self.all_players)
         )
 
     def contains_player(self, steam_id: int):
-        for player in self.all_players():
+        for player in self.all_players:
             if player.steam_id == int(steam_id):
                 return True
         return False

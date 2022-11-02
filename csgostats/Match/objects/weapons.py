@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Dict
 
 
 @dataclass()
@@ -377,7 +377,28 @@ class Weapons:
     USP: USP = USP()
     XM1014: XM1014 = XM1014()
 
-    def used_only(self) -> List[Weapon]:
-        return list(filter(lambda x: x.is_set, vars(self).values()))
+    used_only: List[Weapon] = field(init=False, repr=False, default_factory=list)
+    kills_only: List[Weapon] = field(init=False, repr=False, default_factory=list)
+    _as_dict: Dict[str, Weapon] = field(init=False, repr=True, default=None)
 
+    def populate_weapon_lists(self):
+        as_dict = self._as_dict_val()
+        used_only = list(filter(lambda x: x.is_set, as_dict.values()))
+        kills_only = list(filter(lambda x: x.kills > 0, as_dict.values()))
+        self.used_only = used_only
+        self.kills_only = kills_only
 
+    def _as_dict_val(self):
+        _as_dict = vars(self)
+        _as_dict.pop('used_only', None)
+        _as_dict.pop('kills_only', None)
+        _as_dict.pop('_as_dict', None)
+        return _as_dict
+
+    @property
+    def as_dict(self):
+        if self._as_dict is not None:
+            return self._as_dict
+        r = self._as_dict_val()
+        self._as_dict = r
+        return r

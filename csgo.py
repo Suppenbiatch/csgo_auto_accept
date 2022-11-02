@@ -417,6 +417,7 @@ afk = AFK()
 truth = Truth()
 times = Time()
 scoreboard = Scoreboard()
+game_state = GameState()
 
 join_dict = {'t_full': False, 'ct_full': False}
 team = yellow('Unknown')
