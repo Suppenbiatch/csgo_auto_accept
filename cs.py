@@ -222,7 +222,7 @@ def get_old_sharecodes(last_x: int):
 # noinspection PyShadowingNames
 def get_new_sharecodes(game_id: str, stats=None):
     sharecodes = [game_id]
-    stats_error = True
+    stats_error_counter = 0
     while True:
         steam_url = f'https://api.steampowered.com/ICSGOPlayers_730/GetNextMatchSharingCode/v1?key={cfg.steam_api_key}&steamid={steam_id}&steamidkey={account.auth_code}&knowncode={game_id}'
         try:
@@ -238,14 +238,18 @@ def get_new_sharecodes(game_id: str, stats=None):
             time.sleep(0.5)
         elif r.status_code == 202:  # no new match has been found
             if stats is None or len(sharecodes) > 1:
-                if stats_error is False:
+                if stats_error_counter != 0:
                     write(green('got a match code for the given stats'))
                 break
             else:
-                if stats_error is True:
+                if stats_error_counter == 0:
                     write(yellow('new match stats were given, yet steam api gave no new sharecode'))
-                    stats_error = False
+                stats_error_counter += 1
                 time.sleep(2)
+        if stats_error_counter >= 30:
+            # time.sleep(2) asserts this is roughly after 60 seconds
+            write(red(f'aborted looking for new sharecode for given stats'))
+            break
 
     path = path_vars.db
     with sqlite3.connect(path) as db:
@@ -264,7 +268,7 @@ def get_new_sharecodes(game_id: str, stats=None):
                 stats = {'map': None, 'match_time': None, 'wait_time': None, 'afk_time': None, 'mvps': None,
                          'score': None}
 
-            now = datetime.now(tz=utc).timestamp()
+            now = int(datetime.now(tz=utc).timestamp())
             match_data = (
                 sharecodes[-1], int(steam_id), stats['match_time'], stats['wait_time'], stats['afk_time'], stats['mvps'],
                 stats['score'], now)

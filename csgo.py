@@ -893,10 +893,14 @@ while running:
 
         round_wins = cs.round_wins_since_reset(cs.steam_id)
         round_wins += score[team[0]]
-        if round_wins <= 89:
-            write(f'Normal XP:      {round_wins}/89, {round_wins / 89:.0%}, {89 - round_wins} round wins missing', add_time=False)
-        elif round_wins <= 207:
-            write(f'Reduced XP:     {round_wins}/207, {round_wins / 207:.0%}, {207 - round_wins} round wins missing', add_time=False)
+
+        normal_xp = 85
+        reduced_xp = 205
+
+        if round_wins <= normal_xp:
+            write(f'Normal XP:      {round_wins}/{normal_xp}, {round_wins / normal_xp:.0%}, {normal_xp - round_wins} round wins missing', add_time=False)
+        elif round_wins <= reduced_xp:
+            write(f'Reduced XP:     {round_wins}/{reduced_xp}, {round_wins / reduced_xp:.0%}, {reduced_xp - round_wins} round wins missing', add_time=False)
 
         if gsi_server.get_info('map', 'mode') == 'competitive' and game_state.map_phase == 'gameover' and not truth.test_for_warmup and not truth.still_in_warmup:
             if truth.monitoring_since_start:
