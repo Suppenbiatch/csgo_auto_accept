@@ -9,9 +9,16 @@ class Weapon:
     ACC: float = 0.0
     DMG: int = 0
     shots: int = 0
-    is_set: bool = False
+    is_set: bool = field(default=False, repr=False)
     hits: int = field(init=False)
-    name: str = field(init=False)
+    name: str = field(init=False, repr=False)
+
+
+@dataclass()
+class Unknown(Weapon):
+    def __post_init__(self):
+        self.name = 'Unknown'
+        self.hits = round(self.shots * self.ACC)
 
 
 @dataclass
@@ -376,6 +383,7 @@ class Weapons:
     USPS: USPS = USPS()
     USP: USP = USP()
     XM1014: XM1014 = XM1014()
+    Unknown: Unknown = Unknown()
 
     used_only: List[Weapon] = field(init=False, repr=False, default_factory=list)
     kills_only: List[Weapon] = field(init=False, repr=False, default_factory=list)
