@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Optional, Tuple
 
+from csgostats.Match.objects.duels import Duels
 from csgostats.Match.objects.player import MatchPlayer
 from csgostats.Match.objects.rounds import Rounds
 from csgostats.Match.objects.score import Score
@@ -27,6 +28,7 @@ class Match:
     score: List[Score]
     teams: Tuple[List[MatchPlayer], List[MatchPlayer]]
     rounds: Rounds
+    duels: Duels
     outcome: str = None
     match_id: int = None
     sharecode: str = None
@@ -68,6 +70,7 @@ class Match:
         elif player_team_number == 1:
             self.score = list(reversed(self.score))
             self.teams = (self.teams[1], self.teams[0])
+            self.duels.reverse()
             self.rounds.reverse_rounds()
             self.outcome = self.score[0].outcome
         else:
@@ -98,7 +101,13 @@ class Match:
         return pickle.dumps(self, protocol=pickle.HIGHEST_PROTOCOL, fix_imports=False)
 
     def sql_tuple(self, steam_id):
-        starting_team = 'T' if steam_id in self.teams[0] else 'CT'
+        for player in self.teams[0]:
+            if player.steam_id == steam_id:
+                starting_team = 'T'
+                break
+        else:
+            starting_team = 'CT'
+        # starting_team = 'T' if steam_id in self.teams[0] else 'CT'
         player = self.get_player_sort(steam_id)
         return (self.match_id, self.map,
                 self.score[0].score, self.score[1].score,

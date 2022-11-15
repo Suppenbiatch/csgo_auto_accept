@@ -1,4 +1,5 @@
 import re
+import warnings
 from dataclasses import dataclass, field
 
 from typing import Union, Any, List
@@ -155,6 +156,7 @@ class GeneralStats:
 @dataclass
 class MatchPlayer:
     steam_id: Union[int, None]
+    avatar_hash: str
     name: str
     rank: Rank
     general: GeneralStats
@@ -179,4 +181,13 @@ class MatchPlayer:
         return f'https://steamcommunity.com/profiles/{self.steam_id}'
 
     def __hash__(self):
-        return hash(self.steam_id if self.steam_id is not None else self.name)
+        return hash(f'{self.steam_id}-{self.avatar_hash}-{self.name}')
+
+    def __eq__(self, other):
+        """True if player has the same `steam_id`, `avatar` and `name`"""
+        if isinstance(other, int):
+            warnings.warn(f'this method should not be used to assert a match player is equal to a steam id')
+            return self.steam_id
+        if isinstance(other, MatchPlayer):
+            return hash(self) == hash(other)
+        raise TypeError(f'{other.__class__.__name__} is not supported')
