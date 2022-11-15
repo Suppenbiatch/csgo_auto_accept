@@ -35,7 +35,11 @@ class WebHookHandler(http.server.BaseHTTPRequestHandler):
         webhook_parser.queue.put(self.parse_path())
 
     def parse_path(self):
-        path = re.search(r'/([^/?&]+)', self.path).group(1)
+        path = re.search(r'/([^/?&]+)', self.path)
+        if path is None:
+            path = ''
+        else:
+            path = path.group(1)
         items = re.findall(r'[?&]([^=]+)=([^&]+)', self.path)
         if len(items) != 0:
             query = dict(items)
