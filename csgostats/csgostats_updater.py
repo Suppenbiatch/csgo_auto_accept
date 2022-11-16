@@ -149,8 +149,9 @@ class CSGOStatsUpdater:
                     if r.status_code != 200:
                         write(f'failed to request discord message, {repr(r.text)}')
 
-                try:
-                    pyperclip.copy(url)
-                except (pyperclip.PyperclipWindowsException, pyperclip.PyperclipTimeoutException):
-                    write('Failed to load URL in to clipboard', add_time=False)
+                if self.cfg.copy_to_clipboard:
+                    try:
+                        pyperclip.copy(url)
+                    except (pyperclip.PyperclipWindowsException, pyperclip.PyperclipTimeoutException):
+                        write('Failed to load URL in to clipboard', add_time=False)
         return not_completed_games

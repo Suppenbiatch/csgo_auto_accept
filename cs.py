@@ -697,9 +697,17 @@ def get_sounds(get_web_sounds: bool = True):
                         with open(os.path.join(base, s_file), 'wb') as fp:
                             fp.write(r.content)
         files = [os.path.basename(path) for path in glob.glob(os.path.join(base, '*_*.wav'))]
+        for excluded_file in cfg.excluded_sounds:
+            try:
+                idx = files.index(f'{excluded_file}.wav')
+                files.pop(idx)
+            except ValueError:
+                write(f'Excluded file: "{excluded_file}" does not exist')
+                continue
+
         sorted_files = {}
         for file in files:
-            obj = re.search(r'(\d)_\d+\.wav', file)
+            obj = re.search(r'(\d)_[\da-f]+\.wav', file)
             if obj is None:
                 write(f'failed to defer use case from "{file}"')
                 continue
@@ -743,6 +751,7 @@ class ConfigItems:
     telnet_port: int
     anti_afk_delay: float
     afk_reset_delay: float
+    copy_to_clipboard: bool
 
     steam_api_key: str
     auto_retry_interval: int
@@ -755,6 +764,7 @@ class ConfigItems:
 
     web_sounds: bool
     sound_usage: UseSounds
+    excluded_sounds: list[str]
 
     parser: configparser.ConfigParser
 
@@ -780,6 +790,7 @@ def get_cfg(recursion: bool = False):
         data['telnet_port'] = config.getint('Script Settings', 'TelNet Port')
         data['anti_afk_delay'] = config.getfloat('Script Settings', 'Anti-AFK Delay')
         data['afk_reset_delay'] = config.getfloat('Script Settings', 'AFK Reset Delay')
+        data['copy_to_clipboard'] = config.getboolean('Script Settings', 'Copy To Clipboard')
 
         data['steam_api_key'] = config.get('csgostats.gg', 'API Key')
         data['auto_retry_interval'] = config.getint('csgostats.gg', 'Auto-Retrying-Interval')
@@ -792,6 +803,9 @@ def get_cfg(recursion: bool = False):
         data['discord_user_id'] = config.getint('Notifier', 'Discord User ID')
 
         data['web_sounds'] = config.getboolean('Sounds', 'Use Web Sounds')
+        data['excluded_sounds'] = list(map(lambda x: x.lstrip().rstrip(), config.get('Sounds', 'Excluded Sounds').split(',')))
+        if data['excluded_sounds'] == ['']:  # empty string as input (default)
+            data['excluded_sounds'] = []
 
         sound_data = [
             config.getboolean('Sounds', 'Use button_found'),
