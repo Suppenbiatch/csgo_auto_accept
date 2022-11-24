@@ -752,6 +752,7 @@ class ConfigItems:
     anti_afk_delay: float
     afk_reset_delay: float
     copy_to_clipboard: bool
+    autobuy_active: bool
 
     steam_api_key: str
     auto_retry_interval: int
@@ -791,6 +792,7 @@ def get_cfg(recursion: bool = False):
         data['anti_afk_delay'] = config.getfloat('Script Settings', 'Anti-AFK Delay')
         data['afk_reset_delay'] = config.getfloat('Script Settings', 'AFK Reset Delay')
         data['copy_to_clipboard'] = config.getboolean('Script Settings', 'Copy To Clipboard')
+        data['autobuy_active'] = config.getint('Script Settings', 'AutoBuy Active')
 
         data['steam_api_key'] = config.get('csgostats.gg', 'API Key')
         data['auto_retry_interval'] = config.getint('csgostats.gg', 'Auto-Retrying-Interval')

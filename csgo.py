@@ -134,6 +134,12 @@ class ResultParser(Thread):
                     write(yellow('Updating sounds with "Use Web Sounds" set to false will not do anything'))
                     continue
                 cs.sounds = cs.get_sounds()
+            elif item.path == 'toggle_autobuy':
+                truth.autobuy_active = not truth.autobuy_active
+                if truth.autobuy_active:
+                    write(purple(f'AutoBuy enabled'))
+                else:
+                    write(purple(f'AutoBuy disabled'))
 
 
 @dataclass()
@@ -163,6 +169,7 @@ class Truth:
     gsi_first_launch: bool = True
     upload_thread_active: bool = False
     first_autobuy: bool = True
+    autobuy_active: bool = True
 
 
 @dataclass()
@@ -422,6 +429,7 @@ truth = Truth()
 times = Time()
 scoreboard = Scoreboard()
 game_state = GameState()
+truth.autobuy_active = cs.cfg.autobuy_active
 
 join_dict = {'t_full': False, 'ct_full': False}
 team = yellow('Unknown')
@@ -742,12 +750,16 @@ while running:
             best_of = red(f"MR{scoreboard.max_rounds}")
             message = f'Warmup is over! Map: {green(" ".join(gsi_server.get_info("map", "name").split("_")[1:]).title())}, Team: {team}, {best_of}, Took: {cs.timedelta(seconds=times.warmup_seconds)}'
             if time.time() - times.freezetime_started > scoreboard.freeze_time + scoreboard.buy_time - 2:
-                if cs.account.autobuy and truth.first_autobuy:
+                if cs.account.autobuy and truth.first_autobuy and truth.autobuy_active:
                     telnet.send(cs.account.autobuy[-1][1])  # use the lowest defined autobuy, ignoring teams
                     truth.first_autobuy = False
                 if truth.first_autobuy is False:
                     message += f' - {cyan("AutoBuy")}'
             truth.game_minimized_warmup = cs.round_start_msg(message, game_state.round_phase, times.freezetime_started, win32gui.GetWindowPlacement(hwnd)[1] == 2, scoreboard)
+            scoreboard.CT = gsi_server.get_info('map', 'team_ct')['score']
+            scoreboard.T = gsi_server.get_info('map', 'team_t')['score']
+            if scoreboard.CT != 0 or scoreboard.T != 0:
+                truth.game_minimized_warmup = False
         except AttributeError:
             pass
 
@@ -767,7 +779,7 @@ while running:
                     if cs.account.autobuy is not None and truth.first_autobuy and truth.game_minimized_freezetime:
                         if not any(weapon.get('type') in main_weapons for weapon in scoreboard.weapons):
                             for min_money, script, autobuy_team in cs.account.autobuy:
-                                if scoreboard.money >= min_money and scoreboard.raw_team in autobuy_team:
+                                if scoreboard.money >= min_money and scoreboard.raw_team in autobuy_team and truth.autobuy_active:
                                     telnet.send(script)
                                     truth.first_autobuy = False
                                     break
