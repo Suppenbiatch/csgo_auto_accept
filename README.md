@@ -41,18 +41,16 @@ After that you'll need to make changes to the config_clean.ini.
 		- `AutoBuy Active`: `1` (True), activates or deactivates autobuy by default
 	- `Sounds`
 		- `Use Web Sounds`: `0` (False), If `True`, asks the bot for sounds and uses them instead of the default ones
-		
 		- Set any of those to `False` to always use the default sound for that category
-		- `Use button_found`: `1`
-		- `Use activated`: `1`
-		- `Use not_all_accepted`: `1`
-		- `Use ding`: `1`
-		- `Use all_accepted`: `1`
-		- `Use fail`: `1`
-		- `Use accept_failed`: `1`
-		- `Use ready`: `1`
-		- `Use server_found`: `1`
-		
+			- `Use button_found`: `1`
+			- `Use activated`: `1`
+			- `Use not_all_accepted`: `1`
+			- `Use ding`: `1`
+			- `Use all_accepted`: `1`
+			- `Use fail`: `1`
+			- `Use accept_failed`: `1`
+			- `Use ready`: `1`
+			- `Use server_found`: `1`
 		- `Excluded Sounds`: Comma sperated list of file names you want to be excluded from the sound pool
 - Add `-netconport [port]` to the launch options of csgo, `port` needs to be same as set in `TelNet Port`
 - Add multiple accounts by creating a new section called `Account 2` until `Account X` with the same `keys` as `Account 1`
