@@ -547,6 +547,7 @@ class WindowEnumerator(threading.Thread):
                 break
         else:
             self.hwnd = 0
+        self.window_ids = []
         return self.hwnd
 
     def run(self):
