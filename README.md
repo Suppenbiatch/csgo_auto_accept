@@ -30,13 +30,28 @@ After that you'll need to make changes to the config_clean.ini.
 		- `WebHook IP`: `127.0.0.1` -> WebHooks can only be called from local device, `0.0.0.0` -> WebHooks can be called from everywhere
 		- `WebHook Port`: Port to be used for the WebHook Server
 	- `Script Settings`
-		- `TelNet IP`: "127.0.0.1" -> no idea why this is a config param
+		- `TelNet IP`: `127.0.0.1` -> no idea why this is a config param
 		- `TelNet Port`: Choose a free port on your computer
 		- `Interval`: Script sleeps after every loop for this amount of seconds
 		- `Forbidden  Programs`: plays sound if a window title with an exact match is found, can be comma-sepearted list
 		- `Match History Lenght`: Number of match outcomes shown at beginning warmup
 		- `Anti-AFK Delay`: Seconds after being tabbed out until the anti-afk script starts
 		- `AFK Reset Delay`: Seconds after tabbed in until the anti-afk script timer resets
+		- `Copy To Clipboard`: `1` (True), copies the csgostats.gg match url to the clipboard after parsing finished
+		- `AutoBuy Active`: `1` (True), activates or deactivates autobuy by default
+	- `Sounds`
+		- `Use Web Sounds`: `0` (False), If `True`, asks the bot for sounds and uses them instead of the default ones
+		- Set any of those to `False` to always use the default sound for that category
+			- `Use button_found`: `1`
+			- `Use activated`: `1`
+			- `Use not_all_accepted`: `1`
+			- `Use ding`: `1`
+			- `Use all_accepted`: `1`
+			- `Use fail`: `1`
+			- `Use accept_failed`: `1`
+			- `Use ready`: `1`
+			- `Use server_found`: `1`
+		- `Excluded Sounds`: Comma sperated list of file names you want to be excluded from the sound pool
 - Add `-netconport [port]` to the launch options of csgo, `port` needs to be same as set in `TelNet Port`
 - Add multiple accounts by creating a new section called `Account 2` until `Account X` with the same `keys` as `Account 1`
 
@@ -58,6 +73,7 @@ After that you'll need to make changes to the config_clean.ini.
     - `force_minimize` -> `min` or `max` as query parameter to force minimize or maximize the game, query key is ignored
     - `clear_queue` -> clears the queue of matches that are still queued to be processed by csgostats	
     - `update_sounds` -> updates the web sounds list, downloads any new sounds, and re-shuffles the current sound selection
+    - `toggle_autobuy` -> switches the current autobuy status
 	
 
     - example call: `http://{WebHook IP}:{WebHook Port}/{Endpoint}` -> `http://127.0.0.1:8000/minimize`
