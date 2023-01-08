@@ -440,11 +440,6 @@ window_enum = cs.WindowEnumerator('csgo.exe', 'counter-strike', sleep_interval=0
 window_enum.start()
 gsi_server = window_enum.restart_gsi_server(None)
 
-webhook = WebServer(cs.cfg.webhook_ip, cs.cfg.webhook_port)
-webhook_parser = ResultParser()
-webhook_parser.start()
-webhook.start()
-
 afk_sender = SendDiscordMessage(cs.cfg.discord_user_id, cs.cfg.server_ip, cs.cfg.server_port)
 afk_sender.start()
 
@@ -454,13 +449,18 @@ hwnd_old = 0
 window_status = WindowStatus()
 
 updater = CSGOStatsUpdater(cs.cfg, cs.account, cs.path_vars.db)
+retryer = []
 server_online = updater.check_status()
 if server_online:
     write(green('CSGO Discord Bot ONLINE'))
 else:
     write(red('CSGO Discord Bot OFFLINE'))
 
-retryer = []
+webhook = WebServer(cs.cfg.webhook_ip, cs.cfg.webhook_port)
+webhook_parser = ResultParser()
+webhook_parser.start()
+webhook.start()
+
 cs.mute_csgo(0)
 
 write(green('READY'))
@@ -910,7 +910,7 @@ while running:
         round_wins = cs.round_wins_since_reset(cs.steam_id)
         round_wins += score[team[0]]
 
-        normal_xp = 85
+        normal_xp = 90
         reduced_xp = 205
 
         if round_wins <= normal_xp:
