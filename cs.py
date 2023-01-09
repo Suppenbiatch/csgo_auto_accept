@@ -726,6 +726,29 @@ def get_sounds(get_web_sounds: bool = True):
                 setattr(out, use_case.name, os.path.join(base, random_sound))
         return out
 
+def get_fullbuy_from_bot(inventory_data: dict):
+    url = f'http://{cfg.server_ip}:{cfg.server_port}/fullbuy'
+
+    inventory_data['removed'] = cfg.fullbuy.get_removed()
+    r = requests.post(url, json=inventory_data)
+    if r.status_code != 200:
+        return None
+    data = r.json()
+    return '; '.join(data)
+
+@dataclass()
+class FullBuyUnequiped:
+    deagle: str
+    usp: str
+    fiveseven: str
+    mp7: str
+    m4a4: str
+    tec9: str
+
+    def get_removed(self):
+        return {'deagle': self.deagle, 'usp': self.usp,
+                'fiveseven': self.fiveseven, 'mp7': self.mp7,
+                'm4a4': self.m4a4, 'tec9': self.tec9}
 
 @dataclass()
 class UseSounds:
@@ -767,6 +790,8 @@ class ConfigItems:
     web_sounds: bool
     sound_usage: UseSounds
     excluded_sounds: list[str]
+
+    fullbuy: FullBuyUnequiped
 
     parser: configparser.ConfigParser
 
@@ -823,6 +848,15 @@ def get_cfg(recursion: bool = False):
         ]
         data['sound_usage'] = UseSounds(*sound_data)
         data['parser'] = config
+
+        fullbuy_data = [config.get('FullBuy', 'deagle slot'),
+                        config.get('FullBuy', 'usp slot'),
+                        config.get('FullBuy', 'fiveseven slot'),
+                        config.get('FullBuy', 'mp7 slot'),
+                        config.get('FullBuy', 'm4a4 slot'),
+                        config.get('FullBuy', 'tec9 slot')]
+
+        data['fullbuy'] = FullBuyUnequiped(*fullbuy_data)
 
         config_items: ConfigItems = ConfigItems(**data)
         return config_items

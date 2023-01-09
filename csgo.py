@@ -140,6 +140,9 @@ class ResultParser(Thread):
                     write(purple(f'AutoBuy enabled'))
                 else:
                     write(purple(f'AutoBuy disabled'))
+            elif item.path == 'fullbuy':
+                hk_fullbuy()
+
 
 
 @dataclass()
@@ -371,6 +374,24 @@ def hk_autobuy():
             telnet.send(auto_script)
             truth.first_autobuy = False
             break
+
+def hk_fullbuy():
+    global gsi_server
+    p = gsi_server.get_info('player')
+    try:
+        if not p or p['steamid'] != cs.steam_id:
+            return
+    except NameError:
+        # globals bad!
+        return
+    _team = p['team']
+    _inv = list(p['weapons'].values())
+    _state = p['state']
+    data = {'team': _team, 'inventory': _inv, 'state': _state}
+    command = cs.get_fullbuy_from_bot(data)
+    if command is None:
+        return
+    telnet.send(command)
 
 
 def gsi_server_status():
