@@ -378,15 +378,16 @@ def hk_autobuy():
 def hk_fullbuy():
     global gsi_server
     p = gsi_server.get_info('player')
-    try:
-        if not p or p['steamid'] != cs.steam_id:
-            return
-    except NameError:
-        # globals bad!
+    if not p or p['steamid'] != cs.steam_id:
         return
     _team = p['team']
+    if _team is None:
+        return
     _inv = list(p['weapons'].values())
     _state = p['state']
+    if not isinstance(_state, dict):
+        return
+
     data = {'team': _team, 'inventory': _inv, 'state': _state}
     command = cs.get_fullbuy_from_bot(data)
     if command is None:
