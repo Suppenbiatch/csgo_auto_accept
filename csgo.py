@@ -75,74 +75,81 @@ class ResultParser(Thread):
 
     def run(self) -> None:
         while True:
-            item: RequestItem = self.queue.get(block=True)
-            if item.path == 'minimize':
-                hk_minimize_csgo()
-            elif item.path == 'activate':
-                hk_activate()
-            elif item.path == 'pushbullet':
-                cs.activate_afk_message()
-            elif item.path == 'upload':
-                hk_upload_match()
-            elif item.path == 'switch_accounts':
-                hk_switch_accounts()
-            elif item.path == 'mute':
-                cs.mute_csgo(2)
-            elif item.path == 'discord_toggle':
-                hk_discord_toggle()
-            elif item.path == 'end':
-                query = item.query
-                delay = int(query.get('delay', 0))
-                if (time.time() - self.launch) < delay:
-                    write(orange('canceled exit request because of delay parameter'))
+            try:
+                item: RequestItem = self.queue.get(block=True)
+                if item.path == 'minimize':
+                    hk_minimize_csgo()
+                elif item.path == 'activate':
+                    hk_activate()
+                elif item.path == 'pushbullet':
+                    cs.activate_afk_message()
+                elif item.path == 'upload':
+                    hk_upload_match()
+                elif item.path == 'switch_accounts':
+                    hk_switch_accounts()
+                elif item.path == 'mute':
+                    cs.mute_csgo(2)
+                elif item.path == 'discord_toggle':
+                    hk_discord_toggle()
+                elif item.path == 'end':
+                    query = item.query
+                    delay = int(query.get('delay', 0))
+                    if (time.time() - self.launch) < delay:
+                        write(orange('canceled exit request because of delay parameter'))
+                        continue
+                    hk_kill_main_loop()
+                elif item.path == 'fetch_status':
+                    hk_fetch_status()
+                elif item.path == 'devmode':
+                    hk_activate_devmode()
+                elif item.path == 'console':
+                    hk_console(item.query)
+                elif item.path == 'autobuy':
+                    hk_autobuy()
+                elif item.path == 'seek':
+                    new_pos, old_pos = cs.log_reader.re_seek()
+                    write(f're-sought from {old_pos:,} to {new_pos:,}')
+                elif item.path == 'afk':
+                    cs.anti_afk_tel(telnet, is_active=False)  # activate anti afk
+                    afk.anti_afk_active = True
+                elif item.path == 'force_minimize':
+                    query = list(item.query.values())
+                    if len(query) == 0:
+                        continue
+                    if query[0].lower().startswith('min'):
+                        hk_minimize_csgo(force='min')
+                    elif query[0].lower().startswith('max'):
+                        hk_minimize_csgo(force='max')
+                elif item.path == 'clear_queue':
+                    global retryer
+                    if len(retryer) == 0:
+                        continue
+                    elif len(retryer) == 1:
+                        write(orange(f'Removed 1 match from queue'))
+                    else:
+                        write(orange(f'Removed {len(retryer)} matches from queue'))
+                    retryer = []
                     continue
-                hk_kill_main_loop()
-            elif item.path == 'fetch_status':
-                hk_fetch_status()
-            elif item.path == 'devmode':
-                hk_activate_devmode()
-            elif item.path == 'console':
-                hk_console(item.query)
-            elif item.path == 'autobuy':
-                hk_autobuy()
-            elif item.path == 'seek':
-                new_pos, old_pos = cs.log_reader.re_seek()
-                write(f're-sought from {old_pos:,} to {new_pos:,}')
-            elif item.path == 'afk':
-                cs.anti_afk_tel(telnet, is_active=False)  # activate anti afk
-                afk.anti_afk_active = True
-            elif item.path == 'force_minimize':
-                query = list(item.query.values())
-                if len(query) == 0:
-                    continue
-                if query[0].lower().startswith('min'):
-                    hk_minimize_csgo(force='min')
-                elif query[0].lower().startswith('max'):
-                    hk_minimize_csgo(force='max')
-            elif item.path == 'clear_queue':
-                global retryer
-                if len(retryer) == 0:
-                    continue
-                elif len(retryer) == 1:
-                    write(orange(f'Removed 1 match from queue'))
-                else:
-                    write(orange(f'Removed {len(retryer)} matches from queue'))
-                retryer = []
-                continue
-            elif item.path == 'update_sounds':
-                if cs.cfg.web_sounds is False:
-                    write(yellow('Updating sounds with "Use Web Sounds" set to false will not do anything'))
-                    continue
-                cs.sounds = cs.get_sounds()
-            elif item.path == 'toggle_autobuy':
-                truth.autobuy_active = not truth.autobuy_active
-                if truth.autobuy_active:
-                    write(purple(f'AutoBuy enabled'))
-                else:
-                    write(purple(f'AutoBuy disabled'))
-            elif item.path == 'fullbuy':
-                hk_fullbuy()
-
+                elif item.path == 'update_sounds':
+                    if cs.cfg.web_sounds is False:
+                        write(yellow('Updating sounds with "Use Web Sounds" set to false will not do anything'))
+                        continue
+                    cs.sounds = cs.get_sounds()
+                elif item.path == 'toggle_autobuy':
+                    truth.autobuy_active = not truth.autobuy_active
+                    if truth.autobuy_active:
+                        write(purple(f'AutoBuy enabled'))
+                    else:
+                        write(purple(f'AutoBuy disabled'))
+                elif item.path == 'fullbuy':
+                    kevlar = str(item.query.get('kevlar', None))
+                    if kevlar.lower() in ('true', 't', 'y', 'yes', '1'):
+                        prefer_kevlar = True
+                    else:
+                        prefer_kevlar = False
+                    hk_fullbuy(prefer_kevlar=prefer_kevlar)
+            except BaseException as e:
+                write(red(f'Ignoring Exception in ResultParser - {repr(e)}'))
 
 
 @dataclass()
@@ -375,7 +382,7 @@ def hk_autobuy():
             truth.first_autobuy = False
             break
 
-def hk_fullbuy():
+def hk_fullbuy(prefer_kevlar: bool = False):
     global gsi_server
     p = gsi_server.get_info('player')
     if not p or p['steamid'] != cs.steam_id:
@@ -388,7 +395,7 @@ def hk_fullbuy():
     if not isinstance(_state, dict):
         return
 
-    data = {'team': _team, 'inventory': _inv, 'state': _state}
+    data = {'team': _team, 'inventory': _inv, 'state': _state, 'kevlar': prefer_kevlar}
     command = cs.get_fullbuy_from_bot(data)
     if command is None:
         return
