@@ -402,6 +402,19 @@ def hk_fullbuy(prefer_kevlar: bool = False):
     telnet.send(command)
 
 
+def execute_chatcommand(commands: list[str]):
+    for command in commands:
+        if not command.startswith('!'):
+            if command.lower().startswith(('exit', 'disconnect')):
+                write(red(f'Caught {command} - Ignored'))
+                continue
+            telnet.send(command)
+            continue
+        if command.startswith('!delay'):
+            delay = int(re.sub(r'\D', '', command))
+            time.sleep(delay / 1000)
+
+
 def gsi_server_status():
     global gsi_server
     if gsi_server.running:
@@ -554,7 +567,6 @@ while running:
 
     if console.messages:
         for author, msg in console.messages:
-            msg = msg.lower()
             if not msg.startswith('.'):
                 continue
             msg = msg.lstrip('.')
@@ -572,8 +584,12 @@ while running:
                 url = f'http://{cs.cfg.server_ip}:{cs.cfg.server_port}/recv'
                 t = Thread(target=grep_and_send, args=(url,))
                 t.start()
+            elif command.lower().startswith(('exit', 'disconnect')):
+                write(red(f'Skipped {command}'))
             else:
-                telnet.send(command)
+                commands = command.split(';')
+                t = Thread(target=execute_chatcommand, args=(commands,))
+                t.start()
 
 
     if console.update:
