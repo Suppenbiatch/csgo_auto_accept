@@ -562,7 +562,7 @@ while running:
             target = r[1] if len(r) == 2 else ''
             command = r[0].rstrip(' ')
 
-            if not cs.account.name.startswith(target):
+            if not cs.account.name.lower().startswith(target):
                 continue
 
             if command == 'fullbuy':
