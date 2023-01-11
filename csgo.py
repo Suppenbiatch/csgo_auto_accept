@@ -18,6 +18,7 @@ import win32gui
 import cs
 from ConsoleInteraction import TelNetConsoleReader
 from csgostats.csgostats_updater import CSGOStatsUpdater
+from objects.Screenshot import grep_and_send
 from write import *
 
 
@@ -394,7 +395,6 @@ def hk_fullbuy(prefer_kevlar: bool = False):
     _state = p['state']
     if not isinstance(_state, dict):
         return
-
     data = {'team': _team, 'inventory': _inv, 'state': _state, 'kevlar': prefer_kevlar}
     command = cs.get_fullbuy_from_bot(data)
     if command is None:
@@ -551,6 +551,30 @@ while running:
         telnet = TelNetConsoleReader(cs.cfg.telnet_ip, cs.cfg.telnet_port)
 
     console = read_telnet()
+
+    if console.messages:
+        for author, msg in console.messages:
+            msg = msg.lower()
+            if not msg.startswith('.'):
+                continue
+            msg = msg.lstrip('.')
+            r = msg.split('.', maxsplit=1)
+            target = r[1] if len(r) == 2 else ''
+            command = r[0].rstrip(' ')
+
+            if not cs.account.name.startswith(target):
+                continue
+
+            if command == 'fullbuy':
+                t = Thread(target=hk_fullbuy, args=(True,), daemon=True)
+                t.start()
+            elif command == 'grep':
+                url = f'http://{cs.cfg.server_ip}:{cs.cfg.server_port}/recv'
+                t = Thread(target=grep_and_send, args=(url,))
+                t.start()
+            else:
+                telnet.send(command)
+
 
     if console.update:
         if console.update[-1] == '1':

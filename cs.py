@@ -20,7 +20,7 @@ from datetime import timedelta as td
 from enum import Enum
 from pathlib import Path
 from shutil import copyfile
-from typing import List, Union
+from typing import List, Union, Tuple
 
 import requests
 import win32api
@@ -309,11 +309,18 @@ class ConsoleLog:
     server_settings: List[str] = None
     server_found: bool = False
     server_ready: bool = False
+    messages: List[tuple[str, str]] = None
+
+    @staticmethod
+    def chat_eval(match: re.Match) -> Tuple[str, str]:
+        return match.group('name'), match.group('msg')
+
 
     @classmethod
     def from_log(cls, log_str: List[str]):
         replace_items = {}
         bool_items = {}
+        regex_items = {}
 
         replace_checks = [('msg', 'Matchmaking message: '),
                           ('update', 'Matchmaking update: '),
@@ -325,6 +332,8 @@ class ConsoleLog:
 
         bool_checks = [('server_found', 'Matchmaking reservation confirmed: '),
                        ('server_ready', 'ready-up!')]
+
+        regex_checks = [('messages', re.compile(r'(?P<dead>\*DEAD\*)?(?:\((?P<team>(?:Counter-)?Terrorist)\))? ?(?P<name>.+)\u200e(?: @ (?P<location>.+))? : +(?P<msg>.+)'), cls.chat_eval)]
 
         for _str in log_str:
             for key, item in replace_checks:
@@ -345,7 +354,18 @@ class ConsoleLog:
                     bool_items[key] = True
                     break
 
-        return cls(**{**replace_items, **bool_items})
+            for key, pattern, eval_func in regex_checks:
+                res = pattern.search(_str)
+                if res is not None:
+                    data = eval_func(res)
+                    if data:
+                        if key not in regex_items:
+                            regex_items[key] = []
+                        regex_items[key].append(data)
+                        break
+
+
+        return cls(**{**replace_items, **bool_items, **regex_items})
 
 
 def activate_afk_message():
