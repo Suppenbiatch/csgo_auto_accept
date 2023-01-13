@@ -14,6 +14,7 @@ from urllib.parse import unquote_plus
 import win32api
 import win32con
 import win32gui
+import websocket
 
 import cs
 from ConsoleInteraction import TelNetConsoleReader
@@ -151,6 +152,48 @@ class ResultParser(Thread):
                     hk_fullbuy(prefer_kevlar=prefer_kevlar)
             except BaseException as e:
                 write(red(f'Ignoring Exception in ResultParser - {repr(e)}'))
+
+
+def on_ws_message(ws, message):
+    data = json.loads(message)
+    if data['action'] == 'chat_message':
+        msg = data.get('message', '')
+        if not msg.startswith('.'):
+            return
+        msg = msg.lstrip('.')
+        r = msg.split('.', maxsplit=1)
+        target = r[1] if len(r) == 2 else ''
+        command = r[0].rstrip(' ')
+
+        if not cs.account.name.lower().startswith(target):
+            ws.send(json.dumps({'action': 'acknowledge', 'executed': False, 'reason': 'target did not match'}))
+            return
+
+        if command == 'fullbuy':
+            t = Thread(target=hk_fullbuy, args=(True,), daemon=True)
+            t.start()
+        elif command == 'grep':
+            url = f'http://{cs.cfg.server_ip}:{cs.cfg.server_port}/recv'
+            t = Thread(target=grep_and_send, args=(url,))
+            t.start()
+        elif command.lower().startswith(('exit', 'disconnect')):
+            write(red(f'Skipped {command}'))
+        else:
+            commands = command.split(';')
+            t = Thread(target=execute_chatcommand, args=(commands,))
+            t.start()
+        ws.send(json.dumps({'action': 'acknowledge', 'executed': True}))
+
+def on_ws_error(ws, error):
+    write(red('WebSocket Error: ' + repr(error)))
+
+def on_ws_close(ws, close_status_code, close_msg):
+    write(red("WebSocket connection closed"))
+
+def on_ws_open(ws):
+    write(green("WebSocket connection established"))
+    data = {'action': 'set_nick', 'new_name': f'{os.getlogin()}s-Script'}
+    ws.send(json.dumps(data))
 
 
 @dataclass()
@@ -504,6 +547,15 @@ webhook_parser.start()
 webhook.start()
 
 cs.mute_csgo(0)
+
+ws_con = websocket.WebSocketApp(f"ws://{cs.cfg.server_ip}:{cs.cfg.server_port}/chat",
+                              on_open=on_ws_open,
+                              on_message=on_ws_message,
+                              on_error=on_ws_error,
+                              on_close=on_ws_close)
+ws_thread = Thread(target=ws_con.run_forever, kwargs={'reconnect': 5}, daemon=True, name='WebSocketThread')
+ws_thread.start()
+
 
 write(green('READY'))
 running = True
