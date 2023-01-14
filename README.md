@@ -76,6 +76,8 @@ After that you'll need to make changes to the config_clean.ini.
     - `fetch_status` -> manually invokes `status` via console and sends result to discord backend
     - `dev_mode` -> manually set `developer 1` and `sv_max_allowed_developer 1` for the script to work 
     - `console` -> accepts query parameter `ìnput` as dumped json of list of commands e.g. (/console?input="["say hello", "..."]")
+      - might want to use `object/WebHookCreator` for easier formatting
+      - eg: `py WebHookCreator.py "buy vest, buy p250, buy p90"`
     - `autobuy` -> manually trigger autobuy script even if in-game
     - `seek` -> manually seek to the end of the console log file
     - `afk` -> manually activate anti-afk script
