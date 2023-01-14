@@ -447,7 +447,11 @@ def hk_fullbuy(prefer_kevlar: bool = False):
     if not isinstance(_state, dict):
         return
     data = {'team': _team, 'inventory': _inv, 'state': _state, 'kevlar': prefer_kevlar}
-    command = cs.get_fullbuy_from_bot(data)
+    try:
+        command = cs.get_fullbuy_from_bot(data)
+    except BaseException as e:
+        write(red(f'failed to get "fullbuy" options from server - {e.__class__.__name__}'))
+        return
     if command is None:
         return
     telnet.send(command)
