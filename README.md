@@ -52,6 +52,15 @@ After that you'll need to make changes to the config_clean.ini.
 			- `Use ready`: `1`
 			- `Use server_found`: `1`
 		- `Excluded Sounds`: Comma sperated list of file names you want to be excluded from the sound pool
+	- `FullBuy`
+        - Set `Weapon` that is not equipped in inventory 
+          - `deagle slot`: `revolver` or `deagle`
+          - `usp slot`: `hkp2000` or `usp_silencer`
+          - `fiveseven slot`: `fiveseven` or `cz75a` 
+          - `mp7 slot`: `mp7` or `mp5sd`
+          - `m4a4 slot`: `m4a1_silencer` or `m4a4`
+          - `tec9 slot`: `tec9` or `cz75a`
+
 - Add `-netconport [port]` to the launch options of csgo, `port` needs to be same as set in `TelNet Port`
 - Add multiple accounts by creating a new section called `Account 2` until `Account X` with the same `keys` as `Account 1`
 
@@ -61,7 +70,7 @@ After that you'll need to make changes to the config_clean.ini.
     - `pushbullet` -> activates afk messages send via discord
     - `upload` -> manually starts upload thread to look for new matches and requests them via the discord bot backend
     - `switch_accounts` -> if the script is already running and the user switches account use this to switch between accounts from config
-    - `mute` -> uses the windows audio mixer to mute csgo
+    - `mute` -> uses the Windows audio mixer to mute csgo
     - `discord_toggle` -> Disables/Enables discord output if a match is parsed by the discord bot
     - `end` -> exits the script, `delay` query param ignores call if `startup - now < delay`
     - `fetch_status` -> manually invokes `status` via console and sends result to discord backend
@@ -74,7 +83,23 @@ After that you'll need to make changes to the config_clean.ini.
     - `clear_queue` -> clears the queue of matches that are still queued to be processed by csgostats	
     - `update_sounds` -> updates the web sounds list, downloads any new sounds, and re-shuffles the current sound selection
     - `toggle_autobuy` -> switches the current autobuy status
-	
+    - `fullbuy` -> `kevlar=1` as query parameter to fullbuy with or without prefered kevlar
+
 
     - example call: `http://{WebHook IP}:{WebHook Port}/{Endpoint}` -> `http://127.0.0.1:8000/minimize`
     - example query call: `http://127.0.0.1:8000/end?delay=120`
+
+- `WebSocket Endpoints`:
+  - The Script tries to connect to a WebSocket provided by the discord bot backend
+  - If the connection was not successful or was aborted it will retry every 5seconds
+  - Messages retrieved with `{action: chat_message}` will execute `{message: "message"}`
+  
+    and answer with a `{action: 'acknowlege', success: true | false}` whether the script tried to send the command via `TelNet` to csgo
+  - commands are formatted as following: ``.command.namefilter?`` where `command` can be a csgo console command or a script defined command like `fullbuy`
+  	- `.slot1` would execute for everyone
+    - `.slot1.f` would execute for everyone who's ingame name starts with `f`
+    - `.slot1;!delay100;drop` would switch to `slot1`, `wait 100ms` and `drop` for everyone
+    - `!delay[ms]` is an exception as its done by the script 
+    - commands like `disconnect` and `exit` are ignored by default
+    - commands that change key or similar are executed
+	
