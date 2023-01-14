@@ -178,6 +178,8 @@ def on_ws_message(ws, message):
             t.start()
         elif command.lower().startswith(('exit', 'disconnect')):
             write(red(f'Skipped {command}'))
+            ws.send(json.dumps({'action': 'acknowledge', 'executed': False, 'reason': 'Command ignored'}))
+            return
         else:
             commands = command.split(';')
             t = Thread(target=execute_chatcommand, args=(commands,))
@@ -631,10 +633,6 @@ while running:
 
             if command == 'fullbuy':
                 t = Thread(target=hk_fullbuy, args=(True,), daemon=True)
-                t.start()
-            elif command == 'grep':
-                url = f'http://{cs.cfg.server_ip}:{cs.cfg.server_port}/recv'
-                t = Thread(target=grep_and_send, args=(url,))
                 t.start()
             elif command.lower().startswith(('exit', 'disconnect')):
                 write(red(f'Skipped {command}'))
