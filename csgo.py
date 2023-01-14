@@ -186,16 +186,21 @@ def on_ws_message(ws, message):
             t.start()
         ws.send(json.dumps({'action': 'acknowledge', 'executed': True}))
 
+
 def on_ws_error(ws, error):
     write(red('WebSocket Error: ' + repr(error)))
+
 
 def on_ws_close(ws, close_status_code, close_msg):
     write(red("WebSocket connection closed"))
 
+
 def on_ws_open(ws):
-    write(green("WebSocket connection established"))
-    data = {'action': 'set_nick', 'new_name': f'{os.getlogin()}s-Script'}
+    name = f'{os.getlogin()}@{os.environ["COMPUTERNAME"]}'
+    name = name.encode(encoding='utf-8').decode(encoding='ascii', errors='ignore').lower()
+    data = {'action': 'set_nick', 'new_name': f'{name}_script'}
     ws.send(json.dumps(data))
+    write(green(f'WebSocket connection established as "{name}"'))
 
 
 @dataclass()
@@ -428,6 +433,7 @@ def hk_autobuy():
             truth.first_autobuy = False
             break
 
+
 def hk_fullbuy(prefer_kevlar: bool = False):
     global gsi_server
     p = gsi_server.get_info('player')
@@ -551,13 +557,12 @@ webhook.start()
 cs.mute_csgo(0)
 
 ws_con = websocket.WebSocketApp(f"ws://{cs.cfg.server_ip}:{cs.cfg.server_port}/chat",
-                              on_open=on_ws_open,
-                              on_message=on_ws_message,
-                              on_error=on_ws_error,
-                              on_close=on_ws_close)
+                                on_open=on_ws_open,
+                                on_message=on_ws_message,
+                                on_error=on_ws_error,
+                                on_close=on_ws_close)
 ws_thread = Thread(target=ws_con.run_forever, kwargs={'reconnect': 5}, daemon=True, name='WebSocketThread')
 ws_thread.start()
-
 
 write(green('READY'))
 running = True
@@ -640,7 +645,6 @@ while running:
                 commands = command.split(';')
                 t = Thread(target=execute_chatcommand, args=(commands,))
                 t.start()
-
 
     if console.update:
         if console.update[-1] == '1':
@@ -1006,7 +1010,9 @@ while running:
         truth.game_minimized_freezetime = False
         time.sleep(2)
         team = str(gsi_server.get_info('player', 'team')), 'CT' if gsi_server.get_info('player', 'team') == 'T' else 'T'
-        score = {'CT': gsi_server.get_info('map', 'team_ct')['score'], 'T': gsi_server.get_info('map', 'team_t')['score'], 'map': ' '.join(gsi_server.get_info('map', 'name').split('_')[1:]).title()}
+        score = {'CT': gsi_server.get_info('map', 'team_ct')['score'],
+                 'T': gsi_server.get_info('map', 'team_t')['score'],
+                 'map': ' '.join(gsi_server.get_info('map', 'name').split('_')[1:]).title()}
 
         if gsi_server.get_info('player', 'steamid') == cs.steam_id:
             player_stats = gsi_server.get_info('player', 'match_stats')
@@ -1016,7 +1022,9 @@ while running:
             afk_round = statistics.mean(afk.round_values)
         except statistics.StatisticsError:
             afk_round = 0.0
-        timings = {'match': time.time() - times.match_started, 'search': times.match_accepted - times.search_started, 'afk': sum(afk.round_values), 'afk_round': afk_round}
+        timings = {'match': time.time() - times.match_started,
+                   'search': times.match_accepted - times.search_started,
+                   'afk': sum(afk.round_values), 'afk_round': afk_round}
 
         write(red(f'The match is over! - {score[team[0]]:02d}:{score[team[1]]:02d}'))
 
