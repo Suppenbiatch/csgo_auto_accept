@@ -257,11 +257,14 @@ class WebSocketSender(Thread):
             send_data = {**default_data, **data}
             if data_hash is not None:
                 send_data['hash'] = data_hash
-            self.websocket_connection.send(json.dumps(send_data))
-            if self.later:
-                for item in self.later:
-                    self.queue.put(item)
-                self.later = []
+            try:
+                self.websocket_connection.send(json.dumps(send_data))
+                if self.later:
+                    for item in self.later:
+                        self.queue.put(item)
+                    self.later = []
+            except websocket.WebSocketConnectionClosedException:
+                self.later.append(data)
 
 
 @dataclass()
@@ -1012,6 +1015,10 @@ while running:
                         scoreboard.round_message = message
         else:
             truth.game_minimized_freezetime = False
+            ws_data = {'afk_per_round': afk.per_round,
+                       'afk_total': sum(afk.round_values),
+                       'minimized': window_status.in_game == 2}
+            ws_send({'action': 'player_status', 'data': ws_data})
 
     if game_state.round_phase == 'freezetime' and truth.c4_round_first:
         scoreboard.current_weapons = list(gsi_server.get_info('player', 'weapons').values())
