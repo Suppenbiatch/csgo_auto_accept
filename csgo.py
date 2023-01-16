@@ -7,20 +7,23 @@ import socketserver
 import statistics
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from threading import Thread
-from typing import List
+from typing import List, Union
 from urllib.parse import unquote_plus
 
 import win32api
 import win32con
 import win32gui
 import websocket
+from pytz import utc
 
 import cs
 from ConsoleInteraction import TelNetConsoleReader
 from csgostats.csgostats_updater import CSGOStatsUpdater
 from objects.Screenshot import grep_and_send
 from write import *
+from utils import wait_until
 
 
 class WebHookHandler(http.server.BaseHTTPRequestHandler):
@@ -166,7 +169,7 @@ def on_ws_message(ws, message):
         command = r[0].rstrip(' ')
 
         if not cs.account.name.lower().startswith(target):
-            ws.send(json.dumps({'action': 'acknowledge', 'executed': False, 'reason': 'target did not match'}))
+            ws_send({'action': 'acknowledge', 'executed': False, 'reason': 'target did not match'})
             return
 
         if command == 'fullbuy':
@@ -176,15 +179,18 @@ def on_ws_message(ws, message):
             url = f'http://{cs.cfg.server_ip}:{cs.cfg.server_port}/recv'
             t = Thread(target=grep_and_send, args=(url,))
             t.start()
+        elif command == 'afk':
+            cs.anti_afk_tel(telnet, is_active=False)  # activate anti afk
+            afk.anti_afk_active = True
         elif command.lower().startswith(('exit', 'disconnect')):
             write(red(f'Skipped {command}'))
-            ws.send(json.dumps({'action': 'acknowledge', 'executed': False, 'reason': 'Command ignored'}))
+            ws_send({'action': 'acknowledge', 'executed': False, 'reason': 'Command ignored'})
             return
         else:
             commands = command.split(';')
             t = Thread(target=execute_chatcommand, args=(commands,))
             t.start()
-        ws.send(json.dumps({'action': 'acknowledge', 'executed': True}))
+        ws_send({'action': 'acknowledge', 'executed': True})
 
 
 def on_ws_error(ws, error):
@@ -192,6 +198,7 @@ def on_ws_error(ws, error):
 
 
 def on_ws_close(ws, close_status_code, close_msg):
+    ws_sender_thread.is_ready = False
     write(red("WebSocket connection closed"))
 
 
@@ -199,8 +206,62 @@ def on_ws_open(ws):
     name = f'{os.getlogin()}@{os.environ["COMPUTERNAME"]}'
     name = name.encode(encoding='utf-8').decode(encoding='ascii', errors='ignore').lower()
     data = {'action': 'set_nick', 'new_name': f'{name}_script'}
-    ws.send(json.dumps(data))
     write(green(f'WebSocket connection established as "{name}"'))
+    ws_sender_thread.websocket_connection = ws
+    ws_sender_thread.is_ready = True
+    ws_send(data)
+
+
+ws_con = websocket.WebSocketApp(f"ws://{cs.cfg.server_ip}:{cs.cfg.server_port}/chat",
+                                on_open=on_ws_open,
+                                on_message=on_ws_message,
+                                on_error=on_ws_error,
+                                on_close=on_ws_close)
+
+class WebSocketSender(Thread):
+    def __init__(self, ws: websocket.WebSocketApp):
+        self.websocket_connection: websocket.WebSocketApp = ws
+        super().__init__()
+        self.daemon = True
+        self.name = 'WebSocketSender'
+        self.queue = queue.Queue()
+        self.is_ready = False
+        self.later = []
+
+    def status(self):
+        return self.is_ready
+
+    def send(self, data: Union[str, dict]):
+        if isinstance(data, str):
+            data = {'message': data}
+        elif not isinstance(data, dict):
+            return
+        if self.is_ready is False:
+            ts = round(datetime.now(tz=utc).timestamp() * 1000)
+            data['script_ts'] = ts
+            self.later.append(data)
+            return
+        self.queue.put(data)
+
+    def run(self) -> None:
+        while True:
+            while not self.is_ready:
+                time.sleep(0.2)
+            data = self.queue.get(block=True, timeout=None)
+            if data.get('action') == 'player_status':
+                data_hash = hash(json.dumps(data['data'], ensure_ascii=True, sort_keys=True))
+            else:
+                data_hash = None
+            ts = round(datetime.now(tz=utc).timestamp() * 1000)
+            default_data = {'action': 'script_action', 'script_ts': ts, 'steam_id': cs.steam_id, 'player': cs.account.name}
+            send_data = {**default_data, **data}
+            if data_hash is not None:
+                send_data['hash'] = data_hash
+            self.websocket_connection.send(json.dumps(send_data))
+            if self.later:
+                for item in self.later:
+                    self.queue.put(item)
+                self.later = []
 
 
 @dataclass()
@@ -560,13 +621,16 @@ webhook.start()
 
 cs.mute_csgo(0)
 
-ws_con = websocket.WebSocketApp(f"ws://{cs.cfg.server_ip}:{cs.cfg.server_port}/chat",
-                                on_open=on_ws_open,
-                                on_message=on_ws_message,
-                                on_error=on_ws_error,
-                                on_close=on_ws_close)
 ws_thread = Thread(target=ws_con.run_forever, kwargs={'reconnect': 5}, daemon=True, name='WebSocketThread')
 ws_thread.start()
+
+ws_sender_thread = WebSocketSender(ws_con)
+ws_sender_thread.start()
+ws_send = ws_sender_thread.send
+
+if not wait_until(ws_sender_thread.status, 5.0):
+    write(red('WebSocket did not respond within 5 seconds!'))
+
 
 write(green('READY'))
 running = True
@@ -580,6 +644,7 @@ while running:
     hwnd = window_enum.hwnd
 
     if hwnd != 0 and hwnd_old != hwnd:
+
         truth.test_for_server = False
         hwnd_old = hwnd
         cs.steam_id = cs.get_current_steam_user()
@@ -592,6 +657,7 @@ while running:
             exit('Update config.ini!')
         updater.new_account(cs.account)
         write(f'Current account is: {cs.account.name}', add_time=False, overwrite='9')
+        ws_send(f'Game launched')
 
         if cs.check_for_forbidden_programs(window_enum.window_ids):
             write('A forbidden program is still running...', add_time=False)
@@ -602,6 +668,7 @@ while running:
 
     if truth.gsi_first_launch and gsi_server.running:
         write(green('GSI Server running'), overwrite='8')
+        ws_send('GSI Server running')
         truth.gsi_first_launch = False
 
     if not gsi_server.running:
@@ -613,6 +680,7 @@ while running:
         while True:
             if telnet.closed is False:
                 write(green('TelNet connection established'))
+                ws_send('TelNet connection established')
                 telnet.send('sv_max_allowed_developer 1')
                 telnet.send('developer 1')
                 break
@@ -623,6 +691,7 @@ while running:
             time.sleep(0.2)
     elif telnet.closed is True:
         write(red('TelNet connection closed, assuming game closed'))
+        ws_send('TelNet connection closed')
         gsi_server = window_enum.restart_gsi_server(gsi_server)
         telnet = TelNetConsoleReader(cs.cfg.telnet_ip, cs.cfg.telnet_port)
 
@@ -639,7 +708,6 @@ while running:
 
             if not cs.account.name.lower().startswith(target):
                 continue
-
             if command == 'fullbuy':
                 t = Thread(target=hk_fullbuy, args=(True,), daemon=True)
                 t.start()
@@ -656,6 +724,7 @@ while running:
                 truth.test_for_server = True
                 times.search_started = time.time()
                 write(magenta(f'Looking for match: {truth.test_for_server}'), overwrite='1')
+                ws_send(f'Looking for match: {truth.test_for_server}')
             cs.sound_player.play(cs.sounds.activated, block=False)
             cs.mute_csgo(1)
         elif console.update[-1] == '0' and truth.test_for_server:
@@ -664,6 +733,7 @@ while running:
     if truth.test_for_server:
         if console.server_found:
             cs.sound_player.play(cs.sounds.server_found, block=False)
+            ws_send('Server found')
             truth.test_for_success = True
         if console.server_ready:
             truth.test_for_accept_button = True
@@ -689,11 +759,13 @@ while running:
                 cs.set_mouse_position(current_cursor_position)
 
             cs.sound_player.play(cs.sounds.button_found, block=False)
+            ws_send('Accept Button found and clicked')
 
     if truth.test_for_accept_button or truth.test_for_success:
         if console.msg is not None:
             if 'Match confirmed' in console.msg:
                 write(green(f'All Players accepted - Match has started - Took {cs.timedelta(times.search_started)} since start'), add_time=False, overwrite='11')
+                ws_send('All Player accepted')
                 truth.test_for_warmup = True
                 truth.first_game_over = True
                 truth.game_over = False
@@ -725,11 +797,13 @@ while running:
                     write(msg, overwrite='11')
                     if cs.afk_message is True:
                         afk_sender.queue.put(msg)
+                    ws_send('Players failed to accept')
                     cs.sound_player.play(cs.sounds.not_all_accepted, block=False)
                     cs.mute_csgo(1)
                 elif 'Failed to ready up' in console.msg:
                     msg = red('You or a group member failed to accept! Restart searching!')
                     write(msg, overwrite='11')
+                    ws_send(decolor(msg))
                     if cs.afk_message is True:
                         afk_sender.queue.put(msg)
                     cs.sound_player.play(cs.sounds.accept_failed)
@@ -771,6 +845,7 @@ while running:
         if list((msg for msg in console.server_abandon if 'Disconnect' in msg)):
             if not truth.game_over:
                 write(red('Server disconnected'))
+                ws_send('Server disconnected')
                 cs.sound_player.play(cs.sounds.fail, block=False)
             gsi_server = window_enum.restart_gsi_server(gsi_server)
 
@@ -922,6 +997,11 @@ while running:
                     alive = f' - {green(f"{health}HP")}'
                 message += alive
 
+                ws_data = {'state': scoreboard.player['state'], 'match_stats': scoreboard.player['match_stats'],
+                           'weapons': tuple(scoreboard.weapons), 'afk_per_round': afk.per_round,
+                           'afk_total': sum(afk.round_values), 'minimized': window_status.in_game == 2}
+                ws_send({'action': 'player_status', 'data': ws_data})
+
                 if truth.game_minimized_freezetime is True:
                     truth.game_minimized_freezetime = cs.round_start_msg(message, game_state.round_phase, times.freezetime_started, win32gui.GetWindowPlacement(hwnd)[1] == 2, scoreboard)
                     # returns true if in freezetime or not tabbed in
@@ -1037,6 +1117,8 @@ while running:
         write(f'AFK-time:       {cs.time_output(timings["afk"], average["afk_time"][0])}', add_time=False)
         write(f'AFK per Round:  {cs.time_output(timings["afk_round"], average["afk_time"][2])}', add_time=False)
         write(f'                {(timings["afk"] / timings["match"]):.1%} of match duration', add_time=False)
+
+        ws_send({'action': 'gameover', 'message': 'Match is Over'})
 
         round_wins = cs.round_wins_since_reset(cs.steam_id)
         round_wins += score[team[0]]
