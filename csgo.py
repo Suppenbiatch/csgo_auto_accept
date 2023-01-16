@@ -1002,7 +1002,7 @@ while running:
 
                 ws_data = {'state': scoreboard.player['state'], 'match_stats': scoreboard.player['match_stats'],
                            'weapons': tuple(scoreboard.weapons), 'afk_per_round': afk.per_round,
-                           'afk_total': sum(afk.round_values), 'minimized': window_status.in_game == 2}
+                           'afk_total': sum(afk.round_values) + afk.seconds_afk, 'minimized': window_status.in_game == 2}
                 ws_send({'action': 'player_status', 'data': ws_data})
 
                 if truth.game_minimized_freezetime is True:
@@ -1016,7 +1016,7 @@ while running:
         else:
             truth.game_minimized_freezetime = False
             ws_data = {'afk_per_round': afk.per_round,
-                       'afk_total': sum(afk.round_values),
+                       'afk_total': sum(afk.round_values) + afk.seconds_afk,
                        'minimized': window_status.in_game == 2}
             ws_send({'action': 'player_status', 'data': ws_data})
 
