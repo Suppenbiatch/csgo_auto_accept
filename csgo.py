@@ -6,10 +6,10 @@ import re
 import socketserver
 import statistics
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from threading import Thread
-from typing import List, Union
+from typing import List, Union, Optional
 from urllib.parse import unquote_plus
 
 import win32api
@@ -22,6 +22,7 @@ import cs
 from ConsoleInteraction import TelNetConsoleReader
 from csgostats.csgostats_updater import CSGOStatsUpdater
 from objects.Screenshot import grep_and_send
+from objects.GSIDataClasses import MapInfo, PlayerInfo, RoundInfo
 from write import *
 from utils import wait_until
 
@@ -153,6 +154,8 @@ class ResultParser(Thread):
                     else:
                         prefer_kevlar = False
                     hk_fullbuy(prefer_kevlar=prefer_kevlar)
+                elif item.path == 'debug':
+                    truth.still_in_warmup = True
             except BaseException as e:
                 write(red(f'Ignoring Exception in ResultParser - {repr(e)}'))
 
@@ -339,32 +342,19 @@ class GameState:
 
 @dataclass()
 class Scoreboard:
-    CT: int = 0
-    T: int = 0
-    last_round_info: dict = None
-    last_round_winner: str = ''
-    last_round_key: str = '0'
     last_round_text: str = ''
     extra_round_info: str = ''
     max_rounds: int = 30
     buy_time: int = 20
     freeze_time: int = 15
-    player: dict = None
-    weapons: List[dict] = None
-    c4: str = ''
-    total_score: int = 0
-    raw_team: str = ''
-    raw_opposing_team = ''
-    team: str = ''
-    opposing_team: str = ''
-    current_weapons: List[dict] = None  # same as weapons, will update until player has c4 or freeze time is over
     has_c4: bool = False
-    money: int = 0
     round_message: str = ''
+    team: str = ''  # colored string
+    opposing_team: str = ''  # colored string
 
 
 def hk_activate():
-    if game_state.map_phase not in ['live', 'warmup']:
+    if map_info.phase not in ['live', 'warmup']:
         truth.test_for_server = not truth.test_for_server
         write(magenta(f'Looking for match: {truth.test_for_server}'), overwrite='1')
         if truth.test_for_server:
@@ -471,46 +461,30 @@ def hk_console(query: dict):
 
 
 def hk_autobuy():
-    global gsi_server, scoreboard
+    global gsi_server
     if cs.account.autobuy is None:
         return
-    p = gsi_server.get_info('player')
     try:
-        if p and p['steamid'] == cs.steam_id:
-            scoreboard.player = p
-        else:
+        if player_info.steamid != cs.steam_id:
             return
     except NameError:
         # globlus bad
         return
-    try:
-        scoreboard.weapons = list(scoreboard.player['weapons'].values())
-        scoreboard.money = scoreboard.player['state']['money']
-        scoreboard.raw_team = scoreboard.player['team']
-    except TypeError:
-        return
-    if any(weapon.get('type') in main_weapons for weapon in scoreboard.weapons):
+    if any(weapon.type in main_weapons for weapon in player_info.weapons):
         return
     for player_money, auto_script, target_team in cs.account.autobuy:
-        if scoreboard.money >= player_money and scoreboard.raw_team in target_team:
+        if player_info.state.money >= player_money and player_info.team in target_team:
             telnet.send(auto_script)
             truth.first_autobuy = False
             break
 
 
 def hk_fullbuy(prefer_kevlar: bool = False):
-    global gsi_server
-    p = gsi_server.get_info('player')
-    if not p or p['steamid'] != cs.steam_id:
+    if player_info.steamid != cs.steam_id:
         return
-    _team = p['team']
-    if _team is None:
-        return
-    _inv = list(p['weapons'].values())
-    _state = p['state']
-    if not isinstance(_state, dict):
-        return
-    data = {'team': _team, 'inventory': _inv, 'state': _state, 'kevlar': prefer_kevlar}
+
+    _inv = list(asdict(weapon) for weapon in player_info.weapons)
+    data = {'team': player_info.team, 'inventory': _inv, 'state': asdict(player_info.state), 'kevlar': prefer_kevlar}
     try:
         command = cs.get_fullbuy_from_bot(data)
     except BaseException as e:
@@ -589,13 +563,11 @@ afk = AFK()
 truth = Truth()
 times = Time()
 scoreboard = Scoreboard()
-game_state = GameState()
 truth.autobuy_active = cs.cfg.autobuy_active
+player_info: Optional[PlayerInfo] = None
 
 join_dict = {'t_full': False, 'ct_full': False}
-team = yellow('Unknown')
 main_weapons = ['Machine Gun', 'Rifle', 'Shotgun', 'SniperRifle', 'Submachine Gun']
-player_stats = {}
 
 window_enum = cs.WindowEnumerator('csgo.exe', 'counter-strike', sleep_interval=0.75)
 window_enum.start()
@@ -700,27 +672,7 @@ while running:
 
     console = read_telnet()
 
-    if console.messages:
-        for author, msg in console.messages:
-            if not msg.startswith('.'):
-                continue
-            msg = msg.lstrip('.')
-            r = msg.split('.', maxsplit=1)
-            target = r[1] if len(r) == 2 else ''
-            command = r[0].rstrip(' ')
-
-            if not cs.account.name.lower().startswith(target):
-                continue
-            if command == 'fullbuy':
-                t = Thread(target=hk_fullbuy, args=(True,), daemon=True)
-                t.start()
-            elif command.lower().startswith(('exit', 'disconnect')):
-                write(red(f'Skipped {command}'))
-            else:
-                commands = command.split(';')
-                t = Thread(target=execute_chatcommand, args=(commands,))
-                t.start()
-
+    # READ CONSOLE FOR UPDATES ON SERVER SEARCH
     if console.update:
         if console.update[-1] == '1':
             if not truth.test_for_server:
@@ -764,11 +716,13 @@ while running:
             cs.sound_player.play(cs.sounds.button_found, block=False)
             ws_send('Accept Button found and clicked')
 
+    # TEST FOR SUCCESS AFTER PRESSING ACCEPT
     if truth.test_for_accept_button or truth.test_for_success:
         if console.msg is not None:
             if 'Match confirmed' in console.msg:
                 write(green(f'All Players accepted - Match has started - Took {cs.timedelta(times.search_started)} since start'), add_time=False, overwrite='11')
                 ws_send('All Player accepted')
+                truth.connected_to_server = True
                 truth.test_for_warmup = True
                 truth.first_game_over = True
                 truth.game_over = False
@@ -818,8 +772,8 @@ while running:
                 players_accepted = str(int(i[1]) - int(i[0]))
                 write(f'{players_accepted} Players of {i[1]} already accepted.', add_time=False, overwrite='11')
 
+    # PRINT NUMBER OF PLAYERS CONNECTED (needs 'developer 1')
     if truth.players_still_connecting:
-        # not working without developer 1
         if console.lobby_data is not None:
             lobby_data = '\n'.join(console.lobby_data)
             lobby_info = cs.lobby_info.findall(lobby_data)
@@ -844,12 +798,17 @@ while running:
                     join_dict['t_full'], join_dict['ct_full'] = False, False
                     break
 
+    # SERVER DISCONNECT ('GAMEOVER', 'KICKED' or 'MANUAL DISCONNECT')
     if console.server_abandon is not None:
         if list((msg for msg in console.server_abandon if 'Disconnect' in msg)):
             if not truth.game_over:
                 write(red('Server disconnected'))
-                ws_send('Server disconnected')
+                msg = 'Server disconnected'
                 cs.sound_player.play(cs.sounds.fail, block=False)
+            else:
+                msg = 'Match is Over'
+            ws_send({'action': 'gameover', 'message': msg})
+
             gsi_server = window_enum.restart_gsi_server(gsi_server)
 
             truth.disconnected_form_last = True
@@ -860,139 +819,153 @@ while running:
             afk.time = time.time()
             hk_activate_devmode()
 
-    game_state = GameState(gsi_server.get_info('map', 'phase'), gsi_server.get_info('round', 'phase'))
+        # CHAT COMMANDS
+    if console.messages:
+        for author, msg in console.messages:
+            if not msg.startswith('.'):
+                continue
+            msg = msg.lstrip('.')
+            r = msg.split('.', maxsplit=1)
+            target = r[1] if len(r) == 2 else ''
+            command = r[0].rstrip(' ')
 
+            if not cs.account.name.lower().startswith(target):
+                continue
+            if command == 'fullbuy':
+                t = Thread(target=hk_fullbuy, args=(True,), daemon=True)
+                t.start()
+            elif command.lower().startswith(('exit', 'disconnect')):
+                write(red(f'Skipped {command}'))
+            else:
+                commands = command.split(';')
+                t = Thread(target=execute_chatcommand, args=(commands,))
+                t.start()
+
+        # READ CONSOLE TO GET BUY-TIME, FREEZE-TIME and MAX-ROUNDS
     if console.server_settings is not None:
-        try:
-            scoreboard.max_rounds = [int(re.sub(r'\D', '', line)) for line in console.server_settings if 'maxrounds' in line][0]
-        except IndexError:
-            pass
-        try:
-            scoreboard.buy_time = [int(re.sub(r'\D', '', line)) for line in console.server_settings if 'buytime' in line][0]
-        except IndexError:
-            pass
-        try:
-            scoreboard.freeze_time = [int(re.sub(r'\D', '', line)) for line in console.server_settings if 'freezetime' in line][0]
-        except IndexError:
-            pass
+        for line in console.server_settings:
+            if 'maxrounds' in line:
+                scoreboard.max_rounds = int(re.sub(r'\D', '', line))
+                continue
+            elif 'buytime' in line:
+                scoreboard.buy_time = int(re.sub('\D', '', line))
+                continue
+            elif 'freezetime' in line:
+                scoreboard.freeze_time = int(re.sub('\D', '', line))
+                continue
+
+    map_info = MapInfo(**gsi_server.get_info('map'))
+    round_info = RoundInfo(**gsi_server.get_info('round'))
+    new_player_info = PlayerInfo(**gsi_server.get_info('player'))
+    if new_player_info.steamid == cs.steam_id:
+        player_info = new_player_info
+    if player_info is None:
+        time.sleep(cs.sleep_interval)
+        continue
 
     if truth.first_freezetime:
-        if game_state.map_phase == 'live' and game_state.round_phase == 'freezetime':
+        if map_info.phase == 'live' and round_info.phase == 'freezetime':
 
             truth.first_game_over = True
             truth.game_over = False
             truth.disconnected_form_last = False
             truth.first_autobuy = True
             truth.first_freezetime = False
+            truth.first_stats = True
 
             times.freezetime_started = time.time()
-            scoreboard.CT = gsi_server.get_info('map', 'team_ct')['score']
-            scoreboard.T = gsi_server.get_info('map', 'team_t')['score']
-            scoreboard.last_round_info = gsi_server.get_info('map', 'round_wins')
-            scoreboard.player = gsi_server.get_info('player')
 
-            scoreboard.money = scoreboard.player['state']['money']
-            money = f'{scoreboard.money:,}$'
-
-            scoreboard.weapons = list(scoreboard.player['weapons'].values())
-            scoreboard.c4 = ' - Bomb Carrier' if 'weapon_c4' in [weapon['name'] for weapon in scoreboard.weapons] else ''
-            scoreboard.total_score = scoreboard.CT + scoreboard.T
-
-            scoreboard.raw_team = scoreboard.player['team']
-            scoreboard.raw_opposing_team = 'CT' if scoreboard.raw_team == 'T' else 'T'
-
-            scoreboard.team = red('T') if scoreboard.raw_team == 'T' else cyan('CT')
-            scoreboard.opposing_team = cyan('CT') if scoreboard.raw_team == 'T' else red('T')
+            scoreboard.team = red('T') if player_info.team == 'T' else cyan('CT')
+            scoreboard.opposing_team = cyan('CT') if player_info.team == 'T' else red('T')
 
             afk.round_values.append(round(afk.seconds_afk, 3))
-
             try:
                 afk.per_round = statistics.mean(afk.round_values)
             except statistics.StatisticsError:
                 afk.per_round = 0.0
             afk.seconds_afk = 0.0
 
-            try:
-                scoreboard.last_round_key = list(scoreboard.last_round_info.keys())[-1]
-                scoreboard.last_round_winner = scoreboard.last_round_info[scoreboard.last_round_key].split('_')[0].upper()
-                if int(scoreboard.last_round_key) == scoreboard.max_rounds / 2:
-                    scoreboard.last_round_winner = 'T' if scoreboard.last_round_winner == 'CT' else 'CT'
-                scoreboard.last_round_text = f'{scoreboard.team} {green("won")} the last round' \
-                    if scoreboard.raw_team == scoreboard.last_round_winner \
-                    else f'{scoreboard.team} {yellow("lost")} the last round'
-
-            except AttributeError:
-                scoreboard.last_round_text = f'You {scoreboard.team}, no info on the last round'
-
-            if scoreboard.total_score == scoreboard.max_rounds / 2 - 1:
-                scoreboard.extra_round_info = f' - {yellow("Half-Time")}'
-                cs.sound_player.play(cs.sounds.ding, block=True)
-            elif scoreboard.CT == scoreboard.max_rounds / 2 or scoreboard.T == scoreboard.max_rounds / 2:
-                scoreboard.extra_round_info = f' - {yellow("Match Point")}'
-
+            if map_info.round != 0 and player_info.team:
+                last_round_winner: str = map_info.round_wins[str(map_info.round)].split('_')[0].upper()
+                if int(map_info.round) == scoreboard.max_rounds / 2:
+                    last_round_winner = 'T' if last_round_winner == 'CT' else 'CT'
+                if player_info.team == last_round_winner:
+                    last_round_text = f'{scoreboard.team} {green("won")} the last round'
+                else:
+                    last_round_text = f'{scoreboard.team} {yellow("lost")} the last round'
             else:
-                scoreboard.extra_round_info = ''
+                last_round_text = f'You {scoreboard.team}, no info on the last round'
+            scoreboard.last_round_text = last_round_text
 
-            write(f'Freeze Time - {scoreboard.last_round_text} - {getattr(scoreboard, scoreboard.raw_team):02d}:{getattr(scoreboard, scoreboard.raw_opposing_team):02d}'
-                  f'{scoreboard.extra_round_info}{scoreboard.c4} - AFK: {cs.timedelta(seconds=afk.per_round)} - {purple(money)}',
+            if map_info.round == scoreboard.max_rounds / 2 - 1:
+                extra_round_info = f' - {yellow("Half-Time")}'
+                cs.sound_player.play(cs.sounds.ding, block=True)
+            elif map_info.team_ct.score == scoreboard.max_rounds / 2 or map_info.team_t == scoreboard.max_rounds / 2:
+                extra_round_info = f' - {yellow("Match Point")}'
+            else:
+                extra_round_info = ''
+            scoreboard.extra_round_info = extra_round_info
+
+            team_score = getattr(map_info, f'team_{player_info.team.lower()}').score
+            enemy_score = getattr(map_info, f'team_{player_info.opposing_team.lower()}').score
+            c4 = ' - Bomb Carrier' if 'weapon_c4' in [weapon.name for weapon in player_info.weapons] else ''
+            money = f'{player_info.state.money:,}$'
+
+            write(f'Freeze Time - {last_round_text} - {team_score:02d}:{enemy_score:02d}'
+                  f'{extra_round_info}{c4} - AFK: {cs.timedelta(seconds=afk.per_round)} - {purple(money)}',
                   overwrite='7')
 
             if win32gui.GetWindowPlacement(hwnd)[1] == 2:
+                # Freeze Time just started and game is minimized
                 truth.game_minimized_freezetime = True
                 cs.sound_player.play(cs.sounds.ready, block=True)
 
-        elif game_state.map_phase == 'live' and gsi_server.get_info('player', 'steamid') == cs.steam_id:
-            player_stats = gsi_server.get_info('player', 'match_stats')
-
-    elif game_state.map_phase == 'live' and game_state.round_phase != 'freezetime':
+    elif map_info.phase == 'live' and round_info.phase != 'freezetime':
+        # FreezeTime is just over and a round has begun
         truth.first_freezetime = True
         truth.c4_round_first = True
         if time.time() - times.freezetime_started >= 20 and win32gui.GetWindowPlacement(hwnd)[1] == 2:
+            # play sound if time between beginning of freezetime and now is greate then 20secs (Timeout)
             cs.sound_player.play(cs.sounds.ready, block=False)
 
-    if truth.game_minimized_warmup:
-        try:
-            best_of = red(f"MR{scoreboard.max_rounds}")
-            message = f'Warmup is over! Map: {green(" ".join(gsi_server.get_info("map", "name").split("_")[1:]).title())}, Team: {team}, {best_of}, Took: {cs.timedelta(seconds=times.warmup_seconds)}'
-            if time.time() - times.freezetime_started > scoreboard.freeze_time + scoreboard.buy_time - 2:
-                if cs.account.autobuy and truth.first_autobuy and truth.autobuy_active:
-                    telnet.send(cs.account.autobuy[-1][1])  # use the lowest defined autobuy, ignoring teams
-                    truth.first_autobuy = False
-                if truth.first_autobuy is False:
-                    message += f' - {cyan("AutoBuy")}'
-            truth.game_minimized_warmup = cs.round_start_msg(message, game_state.round_phase, times.freezetime_started, win32gui.GetWindowPlacement(hwnd)[1] == 2, scoreboard)
-            scoreboard.CT = gsi_server.get_info('map', 'team_ct')['score']
-            scoreboard.T = gsi_server.get_info('map', 'team_t')['score']
-            if scoreboard.CT != 0 or scoreboard.T != 0:
-                truth.game_minimized_warmup = False
-        except AttributeError:
-            pass
+    if map_info.phase == 'live' and not truth.game_minimized_warmup:
+        # print round info after first FreezeTime check until death
+        if player_info.steamid == cs.steam_id:
+            if map_info.round != 0 and scoreboard.team:
+                team_score = getattr(map_info, f'team_{player_info.team.lower()}').score
+                enemy_score = getattr(map_info, f'team_{player_info.opposing_team.lower()}').score
+                c4 = ' - Bomb Carrier' if 'weapon_c4' in [weapon.name for weapon in player_info.weapons] else ''
+                money = f'{player_info.state.money:,}$'
 
-    elif game_state.map_phase == 'live':
-        scoreboard.player = gsi_server.get_info('player')
-        if scoreboard.player['steamid'] == cs.steam_id:
-            scoreboard.weapons = list(scoreboard.player['weapons'].values())
-            scoreboard.money = scoreboard.player['state']['money']
-            # not getting team as `last_round_text` and `score` is also missing
+                if scoreboard.last_round_text == '':
+                    if map_info.round != 0:
+                        last_round_winner: str = map_info.round_wins[str(map_info.round)].split('_')[0].upper()
+                        if int(map_info.round) == scoreboard.max_rounds / 2:
+                            last_round_winner = 'T' if last_round_winner == 'CT' else 'CT'
+                        if player_info.team == last_round_winner:
+                            last_round_text = f'{scoreboard.team} {green("won")} the last round'
+                        else:
+                            last_round_text = f'{scoreboard.team} {yellow("lost")} the last round'
+                    else:
+                        last_round_text = f'You {scoreboard.team}, no info on the last round'
+                    scoreboard.last_round_text = last_round_text
 
-            if scoreboard.raw_team and scoreboard.raw_opposing_team:
-                money = f'{scoreboard.money:,}$'
-                message = f'Freeze Time - {scoreboard.last_round_text} - {getattr(scoreboard, scoreboard.raw_team):02d}:{getattr(scoreboard, scoreboard.raw_opposing_team):02d}' \
-                          f'{scoreboard.extra_round_info}{scoreboard.c4} - AFK: {cs.timedelta(seconds=afk.per_round)} - {purple(money)}'
+                message = f'Freeze Time - {scoreboard.last_round_text} - {team_score:02d}:{enemy_score:02d}' \
+                          f'{scoreboard.extra_round_info}{c4} - AFK: {cs.timedelta(seconds=afk.per_round)} - {purple(money)}'
 
                 if time.time() - times.freezetime_started > scoreboard.freeze_time + scoreboard.buy_time - 2:
                     if cs.account.autobuy is not None and truth.first_autobuy and truth.game_minimized_freezetime:
-                        if not any(weapon.get('type') in main_weapons for weapon in scoreboard.weapons):
+                        if not any(weapon.type in main_weapons for weapon in player_info.weapons):
                             for min_money, script, autobuy_team in cs.account.autobuy:
-                                if scoreboard.money >= min_money and scoreboard.raw_team in autobuy_team and truth.autobuy_active:
+                                if player_info.state.money >= min_money and player_info.team in autobuy_team and truth.autobuy_active:
                                     telnet.send(script)
                                     truth.first_autobuy = False
                                     break
                 if truth.first_autobuy is False:
                     message += f' - {cyan("AutoBuy")}'
 
-                health: int = scoreboard.player['state']['health']
-                if scoreboard.player['steamid'] != cs.steam_id:
+                health: int = player_info.state.health
+                if player_info.steamid != cs.steam_id:
                     alive = f' - {red("0HP")}'
                 elif health == 0:
                     alive = f' - {red("0HP")}'
@@ -1000,13 +973,13 @@ while running:
                     alive = f' - {green(f"{health}HP")}'
                 message += alive
 
-                ws_data = {'state': scoreboard.player['state'], 'match_stats': scoreboard.player['match_stats'],
-                           'weapons': tuple(scoreboard.weapons), 'afk_per_round': afk.per_round,
+                ws_data = {'state': asdict(player_info.state), 'match_stats': asdict(player_info.match_stats),
+                           'weapons': list(map(asdict, player_info.weapons)), 'afk_per_round': afk.per_round,
                            'afk_total': sum(afk.round_values) + afk.seconds_afk, 'minimized': window_status.in_game == 2}
                 ws_send({'action': 'player_status', 'data': ws_data})
 
                 if truth.game_minimized_freezetime is True:
-                    truth.game_minimized_freezetime = cs.round_start_msg(message, game_state.round_phase, times.freezetime_started, win32gui.GetWindowPlacement(hwnd)[1] == 2, scoreboard)
+                    truth.game_minimized_freezetime = cs.round_start_msg(message, round_info.phase, times.freezetime_started, win32gui.GetWindowPlacement(hwnd)[1] == 2, scoreboard)
                     # returns true if in freezetime or not tabbed in
                 if truth.game_minimized_freezetime is False:
                     # remove timer after player tabbed in-game, keep health up-to-date
@@ -1020,25 +993,24 @@ while running:
                        'minimized': window_status.in_game == 2}
             ws_send({'action': 'player_status', 'data': ws_data})
 
-    if game_state.round_phase == 'freezetime' and truth.c4_round_first:
-        scoreboard.current_weapons = list(gsi_server.get_info('player', 'weapons').values())
-        scoreboard.has_c4 = True if 'weapon_c4' in [weapon['name'] for weapon in scoreboard.current_weapons] else False
-        if scoreboard.has_c4:
-            cs.sound_player.play(cs.sounds.ding, block=False)
-            truth.c4_round_first = False
-
     if truth.still_in_warmup:
-        if game_state.map_phase == 'live':
+        if map_info.phase == 'live':
             truth.still_in_warmup = False
             truth.players_still_connecting = False
-            team = red('T') if gsi_server.get_info('player', 'team') == 'T' else cyan('CT')
+
             times.warmup_seconds = int(time.time() - times.warmup_started)
-            msg = 'Warmup is over! Map: {map}, Team: {team}, Took: {time}'.format(team=team,
-                                                                                  map=green(' '.join(gsi_server.get_info('map', 'name').split('_')[1:]).title()),
-                                                                                  time=cs.timedelta(seconds=times.warmup_seconds))
+            scoreboard.team = red('T') if player_info.team == 'T' else cyan('CT')
+            map_name = green(' '.join(map_info.name.split('_')[1:]).title())
+
+            msg = f'Warmup is over! Map: {map_name}, Team: {scoreboard.team}, Took: {cs.timedelta(seconds=times.warmup_seconds)}'
             write(msg, overwrite='7')
             if cs.afk_message is True:
                 afk_sender.queue.put(msg)
+
+            ws_data = {'state': asdict(player_info.state), 'match_stats': asdict(player_info.match_stats),
+                       'weapons': list(map(asdict, player_info.weapons)), 'afk_per_round': afk.per_round,
+                       'afk_total': sum(afk.round_values) + afk.seconds_afk, 'minimized': window_status.in_game == 2}
+            ws_send({'action': 'player_status', 'data': ws_data})
 
             times.match_started = time.time()
             times.freezetime_started = time.time()
@@ -1049,14 +1021,49 @@ while running:
             afk.seconds_afk = 0.0
             afk.round_values = []
 
-        if game_state.map_phase is None:
+        elif map_info.phase is None:
             truth.still_in_warmup = False
             msg = red('Match did not start')
             write(msg, overwrite='1')
             if cs.afk_message is True:
                 afk_sender.queue.put(msg)
 
-    if game_state.map_phase in ['live', 'warmup'] and not truth.game_over and not truth.disconnected_form_last:
+    if truth.game_minimized_warmup:
+        try:
+            best_of = red(f"MR{scoreboard.max_rounds}")
+            map_name = green(" ".join(map_info.name.split("_")[1:]).title())
+            message = f'Warmup is over! Map: {map_name}, Team: {scoreboard.team}, {best_of}, Took: {cs.timedelta(seconds=times.warmup_seconds)}'
+            if time.time() - times.freezetime_started > scoreboard.freeze_time + scoreboard.buy_time - 2:
+                if cs.account.autobuy and truth.first_autobuy and truth.autobuy_active:
+                    telnet.send(cs.account.autobuy[-1][1])  # use the lowest defined autobuy, ignoring teams
+                    truth.first_autobuy = False
+                if truth.first_autobuy is False:
+                    message += f' - {cyan("AutoBuy")}'
+            truth.game_minimized_warmup = cs.round_start_msg(message, round_info.phase, times.freezetime_started, win32gui.GetWindowPlacement(hwnd)[1] == 2, scoreboard)
+
+            if player_info.steamid == cs.steam_id:
+                ws_data = {'state': asdict(player_info.state), 'match_stats': asdict(player_info.match_stats),
+                           'weapons': list(map(asdict, player_info.weapons)), 'afk_per_round': afk.per_round,
+                           'afk_total': sum(afk.round_values) + afk.seconds_afk, 'minimized': window_status.in_game == 2}
+                ws_send({'action': 'player_status', 'data': ws_data})
+
+            scoreboard.CT = gsi_server.get_info('map', 'team_ct')['score']
+            scoreboard.T = gsi_server.get_info('map', 'team_t')['score']
+            if scoreboard.CT != 0 or scoreboard.T != 0:
+                truth.game_minimized_warmup = False
+        except AttributeError:
+            pass
+
+    # C4 DING WHILE IN FREEZETIME
+    if round_info.phase == 'freezetime' and truth.c4_round_first:
+        scoreboard.current_weapons = list(gsi_server.get_info('player', 'weapons').values())
+        scoreboard.has_c4 = True if 'weapon_c4' in [weapon['name'] for weapon in scoreboard.current_weapons] else False
+        if scoreboard.has_c4:
+            cs.sound_player.play(cs.sounds.ding, block=False)
+            truth.c4_round_first = False
+
+    # AFK TIME EVAL
+    if map_info.phase in ['live', 'warmup'] and not truth.game_over and not truth.disconnected_form_last:
         try:
             window_status.in_game = win32gui.GetWindowPlacement(hwnd)[1]
         except BaseException as e:
@@ -1089,24 +1096,26 @@ while running:
         if window_status.in_game != 2:
             afk.start_time = current_time
 
-        if game_state.map_phase == 'live' and window_status.in_game == 2:
+        if map_info.phase == 'live' and window_status.in_game == 2:
             afk.seconds_afk += current_time - afk.start_time
             afk.start_time = current_time
 
-    if game_state.map_phase == 'gameover':
+    if map_info.phase == 'gameover':
         truth.game_over = True
 
+    # GAMEOVER SCREEN
     if truth.game_over and truth.first_game_over:
         truth.game_minimized_warmup = False
         truth.game_minimized_freezetime = False
-        time.sleep(2)
-        team = str(gsi_server.get_info('player', 'team')), 'CT' if gsi_server.get_info('player', 'team') == 'T' else 'T'
-        score = {'CT': gsi_server.get_info('map', 'team_ct')['score'],
-                 'T': gsi_server.get_info('map', 'team_t')['score'],
-                 'map': ' '.join(gsi_server.get_info('map', 'name').split('_')[1:]).title()}
 
-        if gsi_server.get_info('player', 'steamid') == cs.steam_id:
-            player_stats = gsi_server.get_info('player', 'match_stats')
+        # sleeping an re-fetching map info to wait for last round update
+        time.sleep(2)
+        map_info = MapInfo(**gsi_server.get_info('map'))
+
+        team = player_info.team, player_info.opposing_team
+        score = {'CT': map_info.team_ct.score,
+                 'T': map_info.team_t.score,
+                 'map': ' '.join(map_info.name.split('_')[1:]).title()}
 
         average = cs.get_avg_match_time(cs.steam_id)
         try:
@@ -1125,8 +1134,6 @@ while running:
         write(f'AFK per Round:  {cs.time_output(timings["afk_round"], average["afk_time"][2])}', add_time=False)
         write(f'                {(timings["afk"] / timings["match"]):.1%} of match duration', add_time=False)
 
-        ws_send({'action': 'gameover', 'message': 'Match is Over'})
-
         round_wins = cs.round_wins_since_reset(cs.steam_id)
         round_wins += score[team[0]]
 
@@ -1138,11 +1145,11 @@ while running:
         elif round_wins <= reduced_xp:
             write(f'Reduced XP:     {round_wins}/{reduced_xp}, {round_wins / reduced_xp:.0%}, {reduced_xp - round_wins} round wins missing', add_time=False)
 
-        if gsi_server.get_info('map', 'mode') == 'competitive' and game_state.map_phase == 'gameover' and not truth.test_for_warmup and not truth.still_in_warmup:
+        if gsi_server.get_info('map', 'mode') == 'competitive' and map_info.phase == 'gameover' and not truth.test_for_warmup and not truth.still_in_warmup:
             if truth.monitoring_since_start:
-                match_time = timings['match']
-                search_time = timings['search']
-                afk_time = timings['afk']
+                match_time = round(float(timings['match']))
+                search_time = round(float(timings['search']))
+                afk_time = round(float(timings['afk']))
             else:
                 match_time, search_time, afk_time = None, None, None
 
@@ -1152,22 +1159,11 @@ while running:
             for time_str in total_time:
                 write(time_str, add_time=False)
 
+            player_stats = asdict(player_info.match_stats)
             player_stats['map'] = score['map']
-
-            try:
-                player_stats['match_time'] = round(float(match_time))
-            except TypeError:
-                player_stats['match_time'] = None
-
-            try:
-                player_stats['wait_time'] = round(float(search_time))
-            except TypeError:
-                player_stats['wait_time'] = None
-
-            try:
-                player_stats['afk_time'] = round(float(afk_time))
-            except TypeError:
-                player_stats['afk_time'] = None
+            player_stats['match_time'] = match_time
+            player_stats['wait_time'] = search_time
+            player_stats['afk_time'] = afk_time
 
             t = Thread(target=upload_matches, args=(True, player_stats), name='UploadThread')
             t.start()
@@ -1180,6 +1176,7 @@ while running:
         afk.time = time.time()
         afk.round_values = []
 
+    # MATCH DETECTION
     if truth.test_for_warmup:
         times.warmup_started = time.time()
         if console.map is not None:
