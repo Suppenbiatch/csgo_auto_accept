@@ -160,11 +160,8 @@ class ResultParser(Thread):
 def on_ws_message(ws, message):
     data = json.loads(message)
     if data['action'] == 'command':
-        msg = data['message']
-        msg = msg.lstrip('.')
-        r = msg.split('.', maxsplit=1)
-        target = r[1] if len(r) == 2 else ''
-        command = r[0].rstrip(' ')
+        command = data['message']
+        target = data.get('target', '')
 
         if not target in cs.steam_id:
             ws_send({'action': 'acknowledge', 'executed': False, 'reason': 'target did not match'})
