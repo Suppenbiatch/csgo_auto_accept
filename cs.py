@@ -752,6 +752,7 @@ def get_fullbuy_from_bot(inventory_data: dict):
     inventory_data['removed'] = cfg.fullbuy.get_removed()
     r = requests.post(url, json=inventory_data)
     if r.status_code != 200:
+        write(orange(r.text))
         return None
     data = r.json()
     return '; '.join(data)
