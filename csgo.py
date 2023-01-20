@@ -166,13 +166,15 @@ def on_ws_message(ws, message):
         target = r[1] if len(r) == 2 else ''
         command = r[0].rstrip(' ')
 
-        if not cs.account.name.lower().startswith(target):
+        if not target in cs.steam_id:
             ws_send({'action': 'acknowledge', 'executed': False, 'reason': 'target did not match'})
             return
 
         if command == 'fullbuy':
+            # add those as config entries?
             kevlar = data.get('kevlar', 2)
             main = data.get('main', 1)
+
             t = Thread(target=hk_fullbuy, args=(kevlar, main), daemon=True)
             t.start()
         elif command == 'grep':
@@ -503,7 +505,14 @@ def execute_chatcommand(commands: list[str]):
         if command.startswith('!delay'):
             delay = int(re.sub(r'\D', '', command))
             time.sleep(delay / 1000)
-
+        elif command.startswith('!check_slot'):
+            slot = int(re.sub(r'\D', '', command))
+            if slot == 1:
+                if not any(weapon.type in main_weapons for weapon in player_info.weapons):
+                    return
+            elif slot == 5:
+                if not any(weapon.type == 'C4' for weapon in player_info.weapons):
+                    return
 
 def gsi_server_status():
     global gsi_server
