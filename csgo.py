@@ -148,12 +148,9 @@ class ResultParser(Thread):
                     else:
                         write(purple(f'AutoBuy disabled'))
                 elif item.path == 'fullbuy':
-                    kevlar = str(item.query.get('kevlar', None))
-                    if kevlar.lower() in ('true', 't', 'y', 'yes', '1'):
-                        prefer_kevlar = True
-                    else:
-                        prefer_kevlar = False
-                    hk_fullbuy(prefer_kevlar=prefer_kevlar)
+                    kevlar = int(item.query.get('kevlar', 0))
+                    main_weapon = int(item.query.get('main', 0))
+                    hk_fullbuy(prefer_kevlar=kevlar, prefer_main=main_weapon)
                 elif item.path == 'debug':
                     truth.still_in_warmup = True
             except BaseException as e:
@@ -162,10 +159,8 @@ class ResultParser(Thread):
 
 def on_ws_message(ws, message):
     data = json.loads(message)
-    if data['action'] == 'chat_message':
-        msg = data.get('message', '')
-        if not msg.startswith('.'):
-            return
+    if data['action'] == 'command':
+        msg = data['message']
         msg = msg.lstrip('.')
         r = msg.split('.', maxsplit=1)
         target = r[1] if len(r) == 2 else ''
@@ -176,7 +171,9 @@ def on_ws_message(ws, message):
             return
 
         if command == 'fullbuy':
-            t = Thread(target=hk_fullbuy, args=(True,), daemon=True)
+            kevlar = data.get('kevlar', 2)
+            main = data.get('main', 1)
+            t = Thread(target=hk_fullbuy, args=(kevlar, main), daemon=True)
             t.start()
         elif command == 'grep':
             url = f'http://{cs.cfg.server_ip}:{cs.cfg.server_port}/recv'
@@ -256,7 +253,7 @@ class WebSocketSender(Thread):
             else:
                 data_hash = None
             ts = round(datetime.now(tz=utc).timestamp() * 1000)
-            default_data = {'action': 'script_action', 'script_ts': ts, 'steam_id': cs.steam_id, 'player': cs.account.name}
+            default_data = {'action': 'script_action', 'script_ts': ts, 'steam_id': cs.steam_id, 'player': cs.account.name, 'color': f'#{cs.account.color:X}'}
             send_data = {**default_data, **data}
             if data_hash is not None:
                 send_data['hash'] = data_hash
@@ -479,16 +476,16 @@ def hk_autobuy():
             break
 
 
-def hk_fullbuy(prefer_kevlar: bool = False):
-    if player_info.steamid != cs.steam_id:
+def hk_fullbuy(prefer_kevlar: int = 0, prefer_main: int = 0):
+    if not player_info or player_info.steamid != cs.steam_id:
         return
 
     _inv = list(asdict(weapon) for weapon in player_info.weapons)
-    data = {'team': player_info.team, 'inventory': _inv, 'state': asdict(player_info.state), 'kevlar': prefer_kevlar}
+    data = {'team': player_info.team, 'inventory': _inv, 'state': asdict(player_info.state), 'kevlar': prefer_kevlar, 'main': prefer_main}
     try:
         command = cs.get_fullbuy_from_bot(data)
     except BaseException as e:
-        write(red(f'failed to get "fullbuy" options from server - {e.__class__.__name__}'))
+        write(red(f'failed to get "fullbuy" options from server - {repr(e)}'))
         return
     if command is None:
         return
@@ -832,7 +829,7 @@ while running:
             if not cs.account.name.lower().startswith(target):
                 continue
             if command == 'fullbuy':
-                t = Thread(target=hk_fullbuy, args=(True,), daemon=True)
+                t = Thread(target=hk_fullbuy, args=(1, 1), daemon=True)
                 t.start()
             elif command.lower().startswith(('exit', 'disconnect')):
                 write(red(f'Skipped {command}'))
