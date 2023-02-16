@@ -22,6 +22,7 @@ from pathlib import Path
 from shutil import copyfile
 from typing import List, Union, Tuple
 
+
 import requests
 import win32api
 import win32con
@@ -35,6 +36,7 @@ from ConsoleInteraction import TelNetConsoleReader
 from GSI import server
 from csgostats.Log import LogReader
 from objects.Account import get_accounts_from_cfg
+from objects.ChatExtractor import extract_chat
 from utils import *
 from write import *
 
@@ -757,6 +759,39 @@ def get_fullbuy_from_bot(inventory_data: dict):
     data = r.json()
     return '; '.join(data)
 
+def get_translated_messages(msgs_to_translate):
+    path = os.path.join(path_vars.appdata, 'console.log')
+    messages = extract_chat(path)
+    messages.reverse()
+    for i, msg in enumerate(messages):
+        if msg.message.lower().startswith('.trans'):
+            is_team = msg.team is not None
+            break
+    else:
+        write(f'failed to find invoke message for translator')
+        return None
+    translate_messages = messages[i + 1: i + 1 + msgs_to_translate]
+    content = []
+    for msg in translate_messages:
+        text = msg.message.strip()
+        content.append(text)
+    data = {'text': content, 'target': 'EN'}
+    url = f'http://{cfg.server_ip}:{cfg.server_port}/translate'
+    r = requests.post(url, json=data)
+    if r.status_code != 200:
+        write(orange(r.text))
+        return None
+    translated = r.json()
+    items: list[str] = translated['text']
+    lang: tuple[str, str] = translated['lang']
+
+    outputs = []
+    for i, text in enumerate(items):
+        org = translate_messages[i]
+        output = f'{org.sender[:8]}: "{text}" [{lang[1]}]'
+        outputs.append(output)
+    return outputs, is_team
+
 @dataclass()
 class FullBuyUnequiped:
     deagle: str
@@ -798,6 +833,7 @@ class ConfigItems:
     afk_reset_delay: float
     copy_to_clipboard: bool
     autobuy_active: bool
+    translator: bool
 
     steam_api_key: str
     auto_retry_interval: int
@@ -840,6 +876,7 @@ def get_cfg(recursion: bool = False):
         data['afk_reset_delay'] = config.getfloat('Script Settings', 'AFK Reset Delay')
         data['copy_to_clipboard'] = config.getboolean('Script Settings', 'Copy To Clipboard')
         data['autobuy_active'] = config.getint('Script Settings', 'AutoBuy Active')
+        data['translator'] = config.getboolean('Script Settings', 'Translator')
 
         data['steam_api_key'] = config.get('csgostats.gg', 'API Key')
         data['auto_retry_interval'] = config.getint('csgostats.gg', 'Auto-Retrying-Interval')

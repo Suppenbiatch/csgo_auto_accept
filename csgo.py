@@ -491,6 +491,23 @@ def hk_fullbuy(prefer_kevlar: int = 0, prefer_main: int = 0):
     telnet.send(command)
 
 
+def hk_translate(msgs_to_translate: int = 1):
+    start = time.time()
+    data = cs.get_translated_messages(msgs_to_translate)
+    if data is None:
+        return
+    messages, is_team = data
+    max_message_length = 127
+    sleep_per_msg = 750
+    time.sleep(max(0.0, 1.0 - time.time() - start))
+    for msg in messages:
+        if is_team:
+            telnet.send(f'say_team {msg[:max_message_length]}')
+        else:
+            telnet.send(f'say {msg[:max_message_length]}')
+        time.sleep(sleep_per_msg / 1000)
+
+
 def execute_chatcommand(commands: list[str]):
     for command in commands:
         if not command.startswith('!'):
@@ -682,7 +699,7 @@ while running:
                 truth.test_for_server = True
                 times.search_started = time.time()
                 write(magenta(f'Looking for match: {truth.test_for_server}'), overwrite='1')
-                ws_send(f'Looking for match: {truth.test_for_server}')
+            ws_send(f'Looking for match: {truth.test_for_server}')
             cs.sound_player.play(cs.sounds.activated, block=False)
             cs.mute_csgo(1)
         elif console.update[-1] == '0' and truth.test_for_server:
@@ -839,6 +856,15 @@ while running:
                 t.start()
             elif command.lower().startswith(('exit', 'disconnect')):
                 write(red(f'Skipped {command}'))
+            elif command.lower().startswith('trans'):
+                if cs.cfg.translator is False:
+                    continue
+                try:
+                    msgs = int(re.sub(r'\D', '', command))
+                except ValueError:
+                    msgs = 1
+                t = Thread(target=hk_translate, args=(msgs, ))
+                t.start()
             else:
                 commands = command.split(';')
                 t = Thread(target=execute_chatcommand, args=(commands,))
@@ -961,7 +987,18 @@ while running:
                         if not any(weapon.type in main_weapons for weapon in player_info.weapons):
                             for min_money, script, autobuy_team in cs.account.autobuy:
                                 if player_info.state.money >= min_money and player_info.team in autobuy_team and truth.autobuy_active:
-                                    telnet.send(script)
+                                    if script.startswith('fullbuy'):
+                                        opts = re.search(r'fullbuy([0-2])([0-2])', script)
+                                        if opts is not None:
+                                            prefer_kevlar = int(opts.group(1))
+                                            prefer_main = int(opts.group(2))
+                                        else:
+                                            prefer_kevlar = 0
+                                            prefer_main = 0
+                                        t = Thread(target=hk_fullbuy, args=(prefer_kevlar, prefer_main))
+                                        t.start()
+                                    else:
+                                        telnet.send(script)
                                     truth.first_autobuy = False
                                     break
                 if truth.first_autobuy is False:

@@ -4,7 +4,7 @@ import time
 
 from typing import Optional
 
-__all__ = ['create_table']
+__all__ = ['create_table', 'wait_until']
 
 
 def wait_until(somepredicate, timeout: float, period: float = 0.25, *args, **kwargs):
