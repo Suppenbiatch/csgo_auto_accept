@@ -786,14 +786,15 @@ def get_translated_messages(msgs_to_translate: int):
         write(orange(r.text))
         return None
     translated = r.json()
-    items: list[str] = translated['text']
-    lang: tuple[str, str] = translated['lang']
 
     outputs = []
-    for i, text in enumerate(items):
+    for i, data in enumerate(translated):
+        text = data['text']
+        lang = data['lang']
         org = translate_messages[i]
         output = f'{org.sender[:8]}: "{text}" [{lang[1]}]'
         outputs.append(output)
+    outputs.reverse()
     return outputs, is_team
 
 @dataclass()
