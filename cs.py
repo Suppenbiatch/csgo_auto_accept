@@ -759,7 +759,7 @@ def get_fullbuy_from_bot(inventory_data: dict):
     data = r.json()
     return '; '.join(data)
 
-def get_translated_messages(msgs_to_translate):
+def get_translated_messages(msgs_to_translate: int):
     path = os.path.join(path_vars.appdata, 'console.log')
     messages = extract_chat(path)
     messages.reverse()
@@ -770,11 +770,15 @@ def get_translated_messages(msgs_to_translate):
     else:
         write(f'failed to find invoke message for translator')
         return None
-    translate_messages = messages[i + 1: i + 1 + msgs_to_translate]
+
+    translate_messages = messages[i + 1: i + 1 + min(5, msgs_to_translate)]
     content = []
     for msg in translate_messages:
         text = msg.message.strip()
         content.append(text)
+    if not content:
+        write(f'no message found to translate')
+        return None
     data = {'text': content, 'target': 'EN'}
     url = f'http://{cfg.server_ip}:{cfg.server_port}/translate'
     r = requests.post(url, json=data)
