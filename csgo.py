@@ -262,7 +262,10 @@ class WebSocketSender(Thread):
                     for item in self.later:
                         self.queue.put(item)
                     self.later = []
-            except websocket.WebSocketConnectionClosedException:
+            except (websocket.WebSocketConnectionClosedException, ConnectionResetError):
+                self.later.append(data)
+            except BaseException as e:
+                write(orange(f'Unexpected Error {repr(e)} in SenderThread'))
                 self.later.append(data)
 
 
