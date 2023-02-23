@@ -779,7 +779,7 @@ def get_translated_messages(msgs_to_translate: int):
     if not content:
         write(f'no message found to translate')
         return None
-    data = {'text': content, 'target': 'EN'}
+    data = {'text': content, 'target': 'EN-US'}
     url = f'http://{cfg.server_ip}:{cfg.server_port}/translate'
     r = requests.post(url, json=data)
     if r.status_code != 200:
