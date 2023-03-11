@@ -558,6 +558,7 @@ class WindowEnumerator(threading.Thread):
         data = list(csv.DictReader(procs))
         if len(data) <= 0:
             self.hwnd = 0
+            self.window_ids = []
             return self.hwnd
 
         pid = int(data[0]["PID"])
