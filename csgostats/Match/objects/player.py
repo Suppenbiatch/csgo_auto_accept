@@ -165,9 +165,10 @@ class MatchPlayer:
     trades: Trades
     clutches: Clutches
     multi_kills: MultiKills
+    crosshair: Union[str, None]
     weapons: Weapons = field(init=False, default=None)
     team: int = field(init=False, default=-1)
-    match: Any = field(init=False)
+    match: Any = field(init=False, repr=False)
     index: int = field(init=False, default=None)
 
     def __post_init__(self):
