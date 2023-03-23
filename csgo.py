@@ -152,7 +152,7 @@ class ResultParser(Thread):
                     main_weapon = int(item.query.get('main', 0))
                     hk_fullbuy(prefer_kevlar=kevlar, prefer_main=main_weapon)
                 elif item.path == 'debug':
-                    truth.still_in_warmup = True
+                    pass
             except BaseException as e:
                 write(red(f'Ignoring Exception in ResultParser - {repr(e)}'))
 
@@ -501,7 +501,7 @@ def hk_translate(msgs_to_translate: int = 1):
         return
     messages, is_team = data
     max_message_length = 127
-    sleep_per_msg = 750
+    sleep_per_msg = 1000
     time.sleep(max(0.0, 1.0 - time.time() - start))
     for msg in messages:
         if is_team:
@@ -571,6 +571,7 @@ def upload_matches(look_for_new: bool = True, stats=None):
 
 
 def read_telnet():
+    global telnet
     console_strs = []
     while not telnet.received.empty():
         console_strs.append(telnet.received.get_nowait())
