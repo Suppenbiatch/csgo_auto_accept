@@ -10,6 +10,9 @@ class Message:
     sender: str
     message: str
 
+    def __repr__(self):
+        return f'Msg(content={self.message}, author={self.sender})'
+
 def extract_chat(filepath):
     chat = re.compile('(?P<dead>\*DEAD\*)?(?:\((?P<team>(?:Counter-)?Terrorist)\))? ?(?P<name>.+)\u200e(?: @ (?P<location>.+))? : +(?P<msg>.+)')
     messages = []
