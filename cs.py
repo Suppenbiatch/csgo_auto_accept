@@ -766,12 +766,11 @@ def get_translated_messages(msgs_to_translate: int):
     messages.reverse()
     for i, msg in enumerate(messages):
         if msg.message.lower().startswith('.trans'):
-            is_team = msg.team is not None
+            is_team: bool = msg.team is not None
             break
     else:
         write(f'failed to find invoke message for translator')
         return None
-
     translate_messages = messages[i + 1: i + 1 + min(5, msgs_to_translate)]
     content = []
     for msg in translate_messages:
