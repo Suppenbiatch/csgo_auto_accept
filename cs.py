@@ -29,7 +29,7 @@ import win32con
 import win32gui
 import win32process
 from PIL import ImageGrab, Image
-from pytz import utc
+from pytz import utc, timezone
 
 from ConfigValidator import fix_config
 from ConsoleInteraction import TelNetConsoleReader
@@ -286,6 +286,21 @@ def get_new_sharecodes(game_id: str, stats=None):
         sharecodes = cur.fetchall()
 
     return [{'sharecode': code, 'queue_pos': None} for code, in sharecodes]
+
+
+def reset_error_on_latest():
+    path = path_vars.db
+    with sqlite3.connect(path) as db:
+        cur = db.execute("""SELECT sharecode, timestamp FROM matches WHERE error = 1 ORDER BY timestamp DESC""")
+        item = cur.fetchone()
+        if item is None:
+            write(orange(f'no errored match found'))
+            return
+        sharecode, ts = item
+        dt = timezone('Europe/Berlin').localize(datetime.fromtimestamp(int(ts)))
+        db.execute("""UPDATE matches SET error = ? WHERE sharecode = ? AND timestamp = ?""", (0, sharecode, ts))
+    write(f'reset error for {sharecode} played at {dt:%H:%M %d/%m/%y}')
+    return
 
 
 def check_for_forbidden_programs(process_list):

@@ -85,7 +85,12 @@ After that you'll need to make changes to the config_clean.ini.
     - `clear_queue` -> clears the queue of matches that are still queued to be processed by csgostats	
     - `update_sounds` -> updates the web sounds list, downloads any new sounds, and re-shuffles the current sound selection
     - `toggle_autobuy` -> switches the current autobuy status
-    - `fullbuy` -> `kevlar=1` as query parameter to fullbuy with or without prefered kevlar
+    - `reset_match_error` -> resets the latest "error" in the match database, forces the match to be requested again
+    - `fullbuy` -> `kevlar=(1|2)`, `main=(1|2)` as query params; 
+      - `main=2&kevlar=1` -> buy main, buy kevlar, buy rest, buy only main if not enough money for both
+      - `main=1&kevlar=2` -> buy kevlar, buy main, buy rest but only kevlar if not enough money for both
+      - `kevlar=1` -> buy kevlar, buy rest at random
+      - `main=1` -> buy main, buy rest at random
 
 
     - example call: `http://{WebHook IP}:{WebHook Port}/{Endpoint}` -> `http://127.0.0.1:8000/minimize`

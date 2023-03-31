@@ -151,6 +151,8 @@ class ResultParser(Thread):
                     kevlar = int(item.query.get('kevlar', 0))
                     main_weapon = int(item.query.get('main', 0))
                     hk_fullbuy(prefer_kevlar=kevlar, prefer_main=main_weapon)
+                elif item.path == 'reset_match_error':
+                    cs.reset_error_on_latest()
                 elif item.path == 'debug':
                     pass
             except BaseException as e:
