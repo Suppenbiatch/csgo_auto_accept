@@ -20,7 +20,8 @@ from datetime import timedelta as td
 from enum import Enum
 from pathlib import Path
 from shutil import copyfile
-from typing import List, Union
+from typing import List, Union, Tuple
+
 
 import requests
 import win32api
@@ -28,13 +29,14 @@ import win32con
 import win32gui
 import win32process
 from PIL import ImageGrab, Image
-from pytz import utc
+from pytz import utc, timezone
 
 from ConfigValidator import fix_config
 from ConsoleInteraction import TelNetConsoleReader
 from GSI import server
 from csgostats.Log import LogReader
 from objects.Account import get_accounts_from_cfg
+from objects.ChatExtractor import extract_chat
 from utils import *
 from write import *
 
@@ -286,6 +288,21 @@ def get_new_sharecodes(game_id: str, stats=None):
     return [{'sharecode': code, 'queue_pos': None} for code, in sharecodes]
 
 
+def reset_error_on_latest():
+    path = path_vars.db
+    with sqlite3.connect(path) as db:
+        cur = db.execute("""SELECT sharecode, timestamp FROM matches WHERE error = 1 ORDER BY timestamp DESC""")
+        item = cur.fetchone()
+        if item is None:
+            write(orange(f'no errored match found'))
+            return
+        sharecode, ts = item
+        dt = timezone('Europe/Berlin').localize(datetime.fromtimestamp(int(ts)))
+        db.execute("""UPDATE matches SET error = ? WHERE sharecode = ? AND timestamp = ?""", (0, sharecode, ts))
+    write(f'reset error for {sharecode} played at {dt:%H:%M %d/%m/%y}')
+    return
+
+
 def check_for_forbidden_programs(process_list):
     if cfg.forbidden_programs == 'None':
         return False
@@ -309,11 +326,18 @@ class ConsoleLog:
     server_settings: List[str] = None
     server_found: bool = False
     server_ready: bool = False
+    messages: List[tuple[str, str]] = None
+
+    @staticmethod
+    def chat_eval(match: re.Match) -> Tuple[str, str]:
+        return match.group('name'), match.group('msg')
+
 
     @classmethod
     def from_log(cls, log_str: List[str]):
         replace_items = {}
         bool_items = {}
+        regex_items = {}
 
         replace_checks = [('msg', 'Matchmaking message: '),
                           ('update', 'Matchmaking update: '),
@@ -325,6 +349,8 @@ class ConsoleLog:
 
         bool_checks = [('server_found', 'Matchmaking reservation confirmed: '),
                        ('server_ready', 'ready-up!')]
+
+        regex_checks = [('messages', re.compile(r'(?P<dead>\*DEAD\*)?(?:\((?P<team>(?:Counter-)?Terrorist)\))? ?(?P<name>.+)\u200e(?: @ (?P<location>.+))? : +(?P<msg>.+)'), cls.chat_eval)]
 
         for _str in log_str:
             for key, item in replace_checks:
@@ -345,7 +371,18 @@ class ConsoleLog:
                     bool_items[key] = True
                     break
 
-        return cls(**{**replace_items, **bool_items})
+            for key, pattern, eval_func in regex_checks:
+                res = pattern.search(_str)
+                if res is not None:
+                    data = eval_func(res)
+                    if data:
+                        if key not in regex_items:
+                            regex_items[key] = []
+                        regex_items[key].append(data)
+                        break
+
+
+        return cls(**{**replace_items, **bool_items, **regex_items})
 
 
 def activate_afk_message():
@@ -536,6 +573,7 @@ class WindowEnumerator(threading.Thread):
         data = list(csv.DictReader(procs))
         if len(data) <= 0:
             self.hwnd = 0
+            self.window_ids = []
             return self.hwnd
 
         pid = int(data[0]["PID"])
@@ -666,8 +704,8 @@ def get_sounds(get_web_sounds: bool = True):
             r = requests.get(url, timeout=0.5)
             if r.status_code != 200:
                 return get_sounds(False)
-        except (requests.ConnectionError, requests.ConnectTimeout):
-            write(yellow('Loading default sounds since server is not responding'))
+        except (requests.ConnectionError, requests.ConnectTimeout, requests.ReadTimeout):
+            write(red('Loading default sounds since server is not responding'))
             return get_sounds(False)
         info = r.json()
         if file_hash != info['hash']:
@@ -732,9 +770,47 @@ def get_fullbuy_from_bot(inventory_data: dict):
     inventory_data['removed'] = cfg.fullbuy.get_removed()
     r = requests.post(url, json=inventory_data)
     if r.status_code != 200:
+        write(orange(r.text))
         return None
     data = r.json()
     return '; '.join(data)
+
+def get_translated_messages(msgs_to_translate: int):
+    path = os.path.join(path_vars.appdata, 'console.log')
+    messages = extract_chat(path)
+    messages.reverse()
+    for i, msg in enumerate(messages):
+        if msg.message.lower().startswith('.trans'):
+            is_team: bool = msg.team is not None
+            break
+    else:
+        write(f'failed to find invoke message for translator')
+        return None
+    translate_messages = messages[i + 1: i + 1 + min(5, msgs_to_translate)]
+    content = []
+    for msg in translate_messages:
+        text = msg.message.strip()
+        content.append(text)
+    if not content:
+        write(f'no message found to translate')
+        return None
+    data = {'text': content, 'target': 'EN-US'}
+    url = f'http://{cfg.server_ip}:{cfg.server_port}/translate'
+    r = requests.post(url, json=data)
+    if r.status_code != 200:
+        write(orange(r.text))
+        return None
+    translated = r.json()
+
+    outputs = []
+    for i, data in enumerate(translated):
+        text = data['text']
+        lang = data['lang']
+        org = translate_messages[i]
+        output = f'{org.sender[:8]}: "{text}" [{lang[1]}]'
+        outputs.append(output)
+    outputs.reverse()
+    return outputs, is_team
 
 @dataclass()
 class FullBuyUnequiped:
@@ -777,6 +853,7 @@ class ConfigItems:
     afk_reset_delay: float
     copy_to_clipboard: bool
     autobuy_active: bool
+    translator: bool
 
     steam_api_key: str
     auto_retry_interval: int
@@ -819,6 +896,7 @@ def get_cfg(recursion: bool = False):
         data['afk_reset_delay'] = config.getfloat('Script Settings', 'AFK Reset Delay')
         data['copy_to_clipboard'] = config.getboolean('Script Settings', 'Copy To Clipboard')
         data['autobuy_active'] = config.getint('Script Settings', 'AutoBuy Active')
+        data['translator'] = config.getboolean('Script Settings', 'Translator')
 
         data['steam_api_key'] = config.get('csgostats.gg', 'API Key')
         data['auto_retry_interval'] = config.getint('csgostats.gg', 'Auto-Retrying-Interval')

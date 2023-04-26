@@ -1,9 +1,18 @@
 import os.path
 import sqlite3
+import time
 
 from typing import Optional
 
-__all__ = ['create_table']
+__all__ = ['create_table', 'wait_until']
+
+
+def wait_until(somepredicate, timeout: float, period: float = 0.25, *args, **kwargs):
+  must_end = time.time() + timeout
+  while time.time() < must_end:
+    if somepredicate(*args, **kwargs): return True
+    time.sleep(period)
+  return False
 
 
 def create_table(db_path, first_sharecode: Optional[str], steam_id: Optional[int]):
