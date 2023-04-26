@@ -704,8 +704,8 @@ def get_sounds(get_web_sounds: bool = True):
             r = requests.get(url, timeout=0.5)
             if r.status_code != 200:
                 return get_sounds(False)
-        except (requests.ConnectionError, requests.ConnectTimeout):
-            write(yellow('Loading default sounds since server is not responding'))
+        except (requests.ConnectionError, requests.ConnectTimeout, requests.ReadTimeout):
+            write(red('Loading default sounds since server is not responding'))
             return get_sounds(False)
         info = r.json()
         if file_hash != info['hash']:
