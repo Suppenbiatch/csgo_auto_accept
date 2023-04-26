@@ -455,6 +455,7 @@ def hk_console(query: dict):
     if commands is None:
         return
     if not isinstance(commands, list):
+        write(orange(repr(commands)))
         raise TypeError(f'Expected list of commands got {type(commands)}')
     for command in commands:
         telnet.send(command)
@@ -504,7 +505,7 @@ def hk_translate(msgs_to_translate: int = 1):
     messages, is_team = data
     max_message_length = 127
     sleep_per_msg = 1000
-    time.sleep(max(0.0, 1.0 - time.time() - start))
+    time.sleep(max(0.0, 1.5 - (time.time() - start)))
     for msg in messages:
         if is_team:
             telnet.send(f'say_team {msg[:max_message_length]}')
@@ -733,6 +734,7 @@ while running:
             for _ in range(5):
                 win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
                 cs.click((int(win32api.GetSystemMetrics(0) / 2), int(win32api.GetSystemMetrics(1) / 2.4)))
+                time.sleep(0.01)
             if window_status.server_found == 2:  # was minimized when a server was found
                 time.sleep(0.075)
                 cs.minimize_csgo(hwnd)
