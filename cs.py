@@ -496,6 +496,9 @@ def round_wins_since_reset(_steam_id: int) -> int:
 
 
 def match_win_list(number_of_matches: int, _steam_id, time_difference: int = 7_200, replace_chars: bool = False):
+    if not os.path.isfile(path_vars.db):
+        write(orange('failed to find matches table'))
+        return ''
     with sqlite3.connect(path_vars.db) as db:
         cur = db.execute(
             """SELECT outcome, timestamp, team_score, enemy_score FROM matches WHERE steam_id = ? ORDER BY timestamp DESC LIMIT ?""",
