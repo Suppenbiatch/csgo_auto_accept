@@ -969,10 +969,16 @@ while running:
         # print round info after first FreezeTime check until death
         if player_info.steamid == cs.steam_id:
             if map_info.round != 0 and scoreboard.team:
-                team_score = getattr(map_info, f'team_{player_info.team.lower()}').score
-                enemy_score = getattr(map_info, f'team_{player_info.opposing_team.lower()}').score
-                c4 = ' - Bomb Carrier' if 'weapon_c4' in [weapon.name for weapon in player_info.weapons] else ''
-                money = f'{player_info.state.money:,}$'
+                try:
+                    team_score = getattr(map_info, f'team_{player_info.team.lower()}').score
+                    enemy_score = getattr(map_info, f'team_{player_info.opposing_team.lower()}').score
+                    c4 = ' - Bomb Carrier' if 'weapon_c4' in [weapon.name for weapon in player_info.weapons] else ''
+                    money = f'{player_info.state.money:,}$'
+                except AttributeError:
+                    team_score = '--'
+                    enemy_score = '--'
+                    c4 = ''
+                    money = '--$'
 
                 if scoreboard.last_round_text == '':
                     if map_info.round != 0:
@@ -1087,7 +1093,11 @@ while running:
                     truth.first_autobuy = False
                 if truth.first_autobuy is False:
                     message += f' - {cyan("AutoBuy")}'
-            truth.game_minimized_warmup = cs.round_start_msg(message, round_info.phase, times.freezetime_started, win32gui.GetWindowPlacement(hwnd)[1] == 2, scoreboard)
+            try:
+                is_minimized = win32gui.GetWindowPlacement(hwnd)[1] == 2
+            except BaseException as e:
+                is_minimized = True
+            truth.game_minimized_warmup = cs.round_start_msg(message, round_info.phase, times.freezetime_started, is_minimized, scoreboard)
 
             if player_info.steamid == cs.steam_id:
                 ws_data = {'state': asdict(player_info.state), 'match_stats': asdict(player_info.match_stats),
