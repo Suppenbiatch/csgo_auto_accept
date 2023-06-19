@@ -426,10 +426,13 @@ def round_start_msg(msg: str, round_phase: str, freezetime_start: float, current
 
 def time_output(current: Union[float, int], average: Union[float, int]):
     difference = abs(current - average)
+    percentage = f'{current / average:.1%}'
     if current <= average:
-        return f'{timedelta(seconds=current)}, {timedelta(seconds=difference)} {green("shorter")} than average of {timedelta(seconds=average)}'
+        return f'{timedelta(seconds=current)}, {green(percentage)} of average of {timedelta(seconds=average)}'
+        # return f'{timedelta(seconds=current)}, {timedelta(seconds=difference)} {green("shorter")} than average of {timedelta(seconds=average)}'
     else:
-        return f'{timedelta(seconds=current)}, {timedelta(seconds=difference)} {red("longer")}  than average of {timedelta(seconds=average)}'
+        return f'{timedelta(seconds=current)}, {red(percentage)} of average of {timedelta(seconds=average)}'
+        # return f'{timedelta(seconds=current)}, {timedelta(seconds=difference)} {red("longer")}  than average of {timedelta(seconds=average)}'
 
 
 def is_program_alive(exe_name: str = 'csgo.exe'):
