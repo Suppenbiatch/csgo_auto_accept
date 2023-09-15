@@ -32,3 +32,31 @@ class Rank:
         if isinstance(other, Rank):
             return self.rank < other.rank
         return self.rank < other
+
+
+@dataclass
+class CS2Rank:
+    rank: int | None = None
+    change: int | None = None
+
+    def __post_init__(self):
+        if self.rank is not None:
+            self.rank = int(self.rank)
+        if self.change is not None:
+            self.change = int(self.change)
+
+    def __repr__(self):
+        if self.rank is None:
+            return f'Rank(unranked)'
+        if self.change is None or self.change == 0:
+            return f'Rank({self.rank})'
+        elif self.change > 0:
+            return f'Rank({self.rank}+{self.change})'
+        else:
+            return f'Rank({self.rank}{self.change})'
+
+
+    def __lt__(self, other):
+        if isinstance(other, Rank):
+            return self.rank < other.rank
+        return self.rank < other
