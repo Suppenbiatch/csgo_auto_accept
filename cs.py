@@ -80,6 +80,7 @@ def minimize_csgo(window_id: int):
     try:
         win32gui.PostMessage(window_id, win32con.WM_SYSKEYDOWN, 0x1B, 0)
         win32gui.PostMessage(window_id, win32con.WM_SYSKEYUP, 0x1B, 0)
+        # win32gui.ShowWindow(window_id, win32con.SW_MINIMIZE)
     except BaseException as e:
         if e.args[0] == 1400:
             pass
