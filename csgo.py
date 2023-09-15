@@ -596,6 +596,7 @@ player_info: Optional[PlayerInfo] = None
 join_dict = {'t_full': False, 'ct_full': False}
 main_weapons = ['Machine Gun', 'Rifle', 'Shotgun', 'SniperRifle', 'Submachine Gun']
 
+# window_enum = cs.WindowEnumerator('cs2.exe', 'counter-strike', sleep_interval=0.75)
 window_enum = cs.WindowEnumerator('csgo.exe', 'counter-strike', sleep_interval=0.75)
 window_enum.start()
 gsi_server = window_enum.restart_gsi_server(None)
@@ -689,7 +690,7 @@ while running:
             elif telnet.closed is True:
                 write(red(f'Failed to connect to the csgo client, make sure -netconport {cs.cfg.telnet_port} is set as a launch option'))
                 cs.sound_player.play(cs.sounds.fail)
-                exit('Check launch options')
+                # exit('Check launch options')
             time.sleep(0.2)
     elif telnet.closed is True:
         write(red('TelNet connection closed, assuming game closed'))
@@ -698,6 +699,7 @@ while running:
         telnet = TelNetConsoleReader(cs.cfg.telnet_ip, cs.cfg.telnet_port)
 
     console = read_telnet()
+    # console = cs.ConsoleLog()
 
     # READ CONSOLE FOR UPDATES ON SERVER SEARCH
     if console.update:
