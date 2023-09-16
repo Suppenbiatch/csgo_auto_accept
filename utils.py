@@ -53,6 +53,7 @@ def create_table(db_path, first_sharecode: Optional[str], steam_id: Optional[int
     server      TEXT,
     steam_id    INTEGER NOT NULL,
     timestamp   REAL    NOT NULL,
+    cs2         BOOLEAN,
     error       BOOLEAN DEFAULT (0) 
 );
 """)

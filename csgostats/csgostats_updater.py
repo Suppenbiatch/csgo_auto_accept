@@ -125,7 +125,8 @@ class CSGOStatsUpdater:
                                                         rank_change = ?,
                                                         name = ?,
                                                         server = ?,
-                                                        timestamp = ?
+                                                        timestamp = ?,
+                                                        cs2 = ?
                                                     WHERE sharecode = ?'''
                     except PlayerNotFoundError:
                         sql_str = '''UPDATE matches SET id = ?,

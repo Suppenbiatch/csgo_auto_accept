@@ -29,6 +29,7 @@ class Match:
     teams: Tuple[List[MatchPlayer], List[MatchPlayer]]
     rounds: Rounds
     duels: Duels
+    cs2: bool
     outcome: str = None
     match_id: int = None
     sharecode: str = None
@@ -109,6 +110,8 @@ class Match:
             starting_team = 'CT'
         # starting_team = 'T' if steam_id in self.teams[0] else 'CT'
         player = self.get_player_sort(steam_id)
+        cs2 = int(self.cs2)
+
         return (self.match_id, self.map,
                 self.score[0].score, self.score[1].score,
                 self.score[0].outcome,
@@ -119,7 +122,7 @@ class Match:
                 player.general.KD,
                 player.general.ADR, player.general.HS, player.general.KAST,
                 player.general.HLTV1, player.general.HLTV2, player.rank.rank, player.rank.change, player.name,
-                self.server, int(self.timestamp.timestamp()), self.sharecode)
+                self.server, int(self.timestamp.timestamp()), cs2, self.sharecode)
 
     def __len__(self):
         return len(self.rounds)
