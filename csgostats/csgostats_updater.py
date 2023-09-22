@@ -106,6 +106,7 @@ class CSGOStatsUpdater:
                                                         team_score = ?,
                                                         enemy_score = ?,
                                                         outcome = ?,
+                                                        surrendered = ?,
                                                         start_team = ?,
                                                         kills = ?,
                                                         assists = ?,

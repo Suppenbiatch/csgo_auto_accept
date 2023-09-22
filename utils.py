@@ -26,6 +26,7 @@ def create_table(db_path, first_sharecode: Optional[str], steam_id: Optional[int
     map         TEXT,
     team_score  INTEGER,
     enemy_score INTEGER,
+    surrendered BOOLEAN,
     match_time  INTEGER,
     wait_time   INTEGER,
     afk_time    INTEGER,

@@ -505,12 +505,12 @@ def match_win_list(number_of_matches: int, _steam_id, time_difference: int = 7_2
         return ''
     with sqlite3.connect(path_vars.db) as db:
         cur = db.execute(
-            """SELECT outcome, timestamp, team_score, enemy_score FROM matches WHERE steam_id = ? ORDER BY timestamp DESC LIMIT ?""",
+            """SELECT outcome, timestamp, team_score, enemy_score, surrendered FROM matches WHERE steam_id = ? ORDER BY timestamp DESC LIMIT ?""",
             (_steam_id, abs(number_of_matches)))
         items = cur.fetchall()
     outcome_lst = []
     short_match_intro = datetime(year=2021, month=9, day=21, hour=1, tzinfo=utc).timestamp()
-    for outcome, timestamp, score_1, score_2 in items:
+    for outcome, timestamp, score_1, score_2, surrender in items:
         if not outcome:
             outcome = 'U'
         if not timestamp:
@@ -520,16 +520,19 @@ def match_win_list(number_of_matches: int, _steam_id, time_difference: int = 7_2
             char = ''
         elif score_1 is None or score_2 is None:
             char = '\u2588'  # unknown
-        elif score_1 == 16 or score_2 == 16:
+        elif (score_1 > 9 or score_2 > 9) and surrender == 0:
             char = '\u2588'  # long match win
-        elif score_1 + score_2 == 30:
-            char = '\u2588'  # long match draw
-        elif timestamp < short_match_intro and (score_1 != 16 and score_2 != 16):
+        elif timestamp < short_match_intro and surrender == 1:
             char = '\u2593'  # long match surrender
-        elif score_1 == 9 or score_2 == 9:
+        elif (score_1 > 9 or score_2 > 9) and surrender == 1:
+            char = '\u2593'  # long match surrender
+        elif (score_1 == 9 or score_2 == 9) and surrender == 0:
             char = '\u2584'  # short match win (might be surrender)
-        elif score_1 == 8 and score_2 == 8 and outcome == 'D':
+        elif score_1 == 8 and score_2 == 8 and surrender == 0:
             char = '\u2584'  # short match draw
+        elif surrender == 0:
+            write(f'Unknown match condition: {score_1=}, {score_2=}, {surrender=}, {outcome=}')
+            char = '\u2588'
         else:
             char = '\u2593'  # surrender
 
@@ -608,14 +611,14 @@ class WindowEnumerator(threading.Thread):
 
     def restart_gsi_server(self, gsi_server: server.GSIServer = None):
         if gsi_server is None:
-            gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
+            gsi_server = server.GSIServer(('127.0.0.1', 4040), "IDONTUSEATOKEN")
         elif gsi_server.running:
             gsi_server.shutdown()
             if self.get_hwnd() != 0:
-                gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
+                gsi_server = server.GSIServer(('127.0.0.1', 4040), "IDONTUSEATOKEN")
                 gsi_server.start_server()
             else:
-                gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
+                gsi_server = server.GSIServer(('127.0.0.1', 4040), "IDONTUSEATOKEN")
         else:
             gsi_server.start_server()
         return gsi_server
