@@ -1,7 +1,7 @@
-Pillow>=8.4.0
-pyperclip>=1.8.2
-pywin32>=302
-requests>=2.26.0
-color-it>=2.1.3
-pytz>=2021.3
-websocket-client>=1.4.2
+Pillow
+pyperclip
+pywin32
+requests
+color-it
+pytz
+websocket-client
