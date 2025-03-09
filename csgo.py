@@ -294,7 +294,7 @@ class Truth:
     steam_error: bool = False
     game_minimized_freezetime: bool = False
     game_minimized_warmup: bool = False
-    discord_output: bool = True
+    discord_output: bool = False
     gsi_first_launch: bool = True
     upload_thread_active: bool = False
     first_autobuy: bool = True
@@ -345,7 +345,7 @@ class GameState:
 class Scoreboard:
     last_round_text: str = ''
     extra_round_info: str = ''
-    max_rounds: int = 30
+    max_rounds: int = 24
     buy_time: int = 20
     freeze_time: int = 15
     has_c4: bool = False
@@ -543,7 +543,7 @@ def gsi_server_status():
     return gsi_server.running
 
 
-def upload_matches(look_for_new: bool = True, stats=None):
+def upload_matches(look_for_new: bool = True, stats=None, wait_till_request: float = 0.0):
     global retryer
     if truth.upload_thread_active:
         write(magenta('Another Upload-Thread is still active'))
@@ -567,7 +567,7 @@ def upload_matches(look_for_new: bool = True, stats=None):
         write(yellow('no new sharecodes found, aborting'))
         truth.upload_thread_active = False
         return
-    retryer = updater.update_csgo_stats(retryer, discord_output=truth.discord_output)
+    retryer = updater.update_csgo_stats(retryer, discord_output=truth.discord_output, wait_till_request=wait_till_request)
     times.csgostats_retry = time.time()
     truth.upload_thread_active = False
     return
@@ -585,7 +585,6 @@ def read_telnet():
 
     return cs.ConsoleLog.from_log(console_strs)
 
-
 afk = AFK()
 truth = Truth()
 times = Time()
@@ -596,8 +595,8 @@ player_info: Optional[PlayerInfo] = None
 join_dict = {'t_full': False, 'ct_full': False}
 main_weapons = ['Machine Gun', 'Rifle', 'Shotgun', 'SniperRifle', 'Submachine Gun']
 
-# window_enum = cs.WindowEnumerator('cs2.exe', 'counter-strike', sleep_interval=0.75)
-window_enum = cs.WindowEnumerator('csgo.exe', 'counter-strike', sleep_interval=0.75)
+window_enum = cs.WindowEnumerator('cs2.exe', 'counter-strike', sleep_interval=0.75)
+# window_enum = cs.WindowEnumerator('csgo.exe', 'counter-strike', sleep_interval=0.75)
 window_enum.start()
 gsi_server = window_enum.restart_gsi_server(None)
 
@@ -678,7 +677,7 @@ while running:
         time.sleep(cs.sleep_interval)
         continue
 
-    if telnet.closed is None:
+    """if telnet.closed is None:
         telnet.start()
         while True:
             if telnet.closed is False:
@@ -689,17 +688,18 @@ while running:
                 break
             elif telnet.closed is True:
                 write(red(f'Failed to connect to the csgo client, make sure -netconport {cs.cfg.telnet_port} is set as a launch option'))
-                cs.sound_player.play(cs.sounds.fail)
+                break
+                # cs.sound_player.play(cs.sounds.fail)
                 # exit('Check launch options')
             time.sleep(0.2)
     elif telnet.closed is True:
         write(red('TelNet connection closed, assuming game closed'))
         ws_send('TelNet connection closed')
         gsi_server = window_enum.restart_gsi_server(gsi_server)
-        telnet = TelNetConsoleReader(cs.cfg.telnet_ip, cs.cfg.telnet_port)
+        telnet = TelNetConsoleReader(cs.cfg.telnet_ip, cs.cfg.telnet_port)"""
 
-    console = read_telnet()
-    # console = cs.ConsoleLog()
+    # console = read_telnet()
+    console = cs.ConsoleLog()
 
     # READ CONSOLE FOR UPDATES ON SERVER SEARCH
     if console.update:
@@ -887,10 +887,10 @@ while running:
                 scoreboard.max_rounds = int(re.sub(r'\D', '', line))
                 continue
             elif 'buytime' in line:
-                scoreboard.buy_time = int(re.sub('\D', '', line))
+                scoreboard.buy_time = int(re.sub(r'\D', '', line))
                 continue
             elif 'freezetime' in line:
-                scoreboard.freeze_time = int(re.sub('\D', '', line))
+                scoreboard.freeze_time = int(re.sub(r'\D', '', line))
                 continue
 
     map_info = MapInfo(**gsi_server.get_info('map'))
@@ -925,6 +925,9 @@ while running:
             afk.seconds_afk = 0.0
 
             if map_info.round != 0 and player_info.team:
+                if map_info.round > scoreboard.max_rounds:
+                    map_info.round -= scoreboard.max_rounds
+
                 last_round_winner: str = map_info.round_wins[str(map_info.round)].split('_')[0].upper()
                 if int(map_info.round) == scoreboard.max_rounds / 2:
                     last_round_winner = 'T' if last_round_winner == 'CT' else 'CT'
@@ -1205,6 +1208,13 @@ while running:
         elif round_wins <= reduced_xp:
             write(f'Reduced XP:     {round_wins}/{reduced_xp}, {round_wins / reduced_xp:.0%}, {reduced_xp - round_wins} round wins missing', add_time=False)
 
+        season_standings = cs.match_wins_for_season(cs.steam_id)
+        offset = 0
+        if score[team[0]] > score[team[1]]:
+            # count game as won, might not be true if surrendered
+            offset = 1
+        write(f'Season Wins:    {season_standings["wins"] + offset} wins in {season_standings["days_since_season_start"]} days - {season_standings["wins_missing"] - offset} wins in the next {season_standings["days_till_season_end"]} days')
+
         if gsi_server.get_info('map', 'mode') == 'competitive' and map_info.phase == 'gameover' and not truth.test_for_warmup and not truth.still_in_warmup:
             if truth.monitoring_since_start:
                 match_time = round(float(timings['match']))
@@ -1225,7 +1235,7 @@ while running:
             player_stats['wait_time'] = search_time
             player_stats['afk_time'] = afk_time
 
-            t = Thread(target=upload_matches, args=(True, player_stats), name='UploadThread')
+            t = Thread(target=upload_matches, args=(True, player_stats, 20.0), name='UploadThread')
             t.start()
 
         truth.game_over = False
