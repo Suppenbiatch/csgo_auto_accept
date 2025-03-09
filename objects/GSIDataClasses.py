@@ -103,6 +103,7 @@ class PlayerInfo:
     match_stats: MatchStats
     weapons: list[Weapon]
     opposing_team: Optional[str] = None
+    xpoverload: int = None
     
     def __post_init__(self):
         if isinstance(self.state, dict):
