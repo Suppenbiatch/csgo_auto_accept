@@ -30,6 +30,7 @@ class Match:
     rounds: Rounds
     duels: Duels
     cs2: bool
+    gamemode: str
     outcome: str = None
     match_id: int = None
     sharecode: str = None
@@ -120,7 +121,7 @@ class Match:
                 player.multi_kills.K2, player.multi_kills.K1,
                 player.general.KD,
                 player.general.ADR, player.general.HS, player.general.KAST,
-                player.general.HLTV1, player.general.HLTV2, player.rank.rank, player.rank.change, player.name,
+                player.general.HLTV1, player.general.HLTV2, player.rank.rank, player.rank.change, self.gamemode, player.name,
                 self.server, int(self.timestamp.timestamp()), int(self.cs2), self.sharecode)
 
     def __len__(self):
