@@ -30,9 +30,10 @@ class CSGOStatsUpdater:
         except requests.ConnectionError:
             return False
 
-    def update_csgo_stats(self, new_codes: List[dict], discord_output: bool = False):
+    def update_csgo_stats(self, new_codes: List[dict], discord_output: bool = False, wait_till_request: float = 0.0):
         sharecodes = [match_dict['sharecode'] for match_dict in new_codes]
         try:
+            time.sleep(wait_till_request)
             r = requests.post(f'http://{self.cfg.server_ip}:{self.cfg.server_port}/matches', json={'sharecodes': sharecodes})
             if r.status_code != 200:
                 write(red(f'ERROR: {r.status_code}, {r.text}'))
@@ -124,18 +125,20 @@ class CSGOStatsUpdater:
                                                         HLTV2 = ?,
                                                         rank = ?,
                                                         rank_change = ?,
+                                                        gamemode = ?,
                                                         name = ?,
                                                         server = ?,
                                                         timestamp = ?,
                                                         cs2 = ?
                                                     WHERE sharecode = ?'''
                     except PlayerNotFoundError:
+                        write(red(f'Player {self.account.steam_id} has not been found {self.account} in match'))
                         sql_str = '''UPDATE matches SET id = ?,
                                                         map = ?,
                                                         server = ?,
                                                         timestamp = ?
                                                     WHERE sharecode = ?'''
-                        sql_data = (match.match_id, match.map, match.server, match.timestamp, match.sharecode)
+                        sql_data = (match.match_id, match.map, match.server, int(match.timestamp.timestamp()), match.sharecode)
                     db.execute(sql_str, sql_data)
                 db.commit()
 
