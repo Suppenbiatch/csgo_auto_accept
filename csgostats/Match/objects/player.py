@@ -52,7 +52,7 @@ class Utility:
     def __post_init__(self):
         # resolve seconds to float
         if isinstance(self.EBT, str):
-            self.EBT = float(re.sub('[^\d.]', '', self.EBT))
+            self.EBT = float(re.sub(r'[^\d.]', '', self.EBT))
 
 
 @dataclass
