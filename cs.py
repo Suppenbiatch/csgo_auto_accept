@@ -223,19 +223,22 @@ def get_old_sharecodes(last_x: int):
 
 
 # noinspection PyShadowingNames
-def get_new_sharecodes(game_id: str, stats=None):
+def get_new_sharecodes(game_id: str, stats=None, *, recursion: bool = False):
+    # game_id = 'CSGO-2jEbX-4xrq8-BjaK3-aUhV4-Sf78F'
+    # on first match in cs2 player has to manual set first sharecode
     sharecodes = [game_id]
     stats_error_counter = 0
     while True:
         steam_url = f'https://api.steampowered.com/ICSGOPlayers_730/GetNextMatchSharingCode/v1?key={cfg.steam_api_key}&steamid={steam_id}&steamidkey={account.auth_code}&knowncode={game_id}'
         try:
             r = requests.get(steam_url, timeout=2)
-            next_code = r.json()['result']['nextcode']
         except (
                 KeyError, requests.exceptions.ConnectionError, requests.exceptions.Timeout, json.decoder.JSONDecodeError) as e:
             write(red(f'STEAM API ERROR! Error: "{e}"'))
             break
         if r.status_code == 200:  # new match has been found
+            data = r.json()
+            next_code = data['result']['nextcode']
             sharecodes.append(next_code)
             game_id = next_code
             time.sleep(0.5)
@@ -249,6 +252,11 @@ def get_new_sharecodes(game_id: str, stats=None):
                     write(yellow('new match stats were given, yet steam api gave no new sharecode'))
                 stats_error_counter += 1
                 time.sleep(2)
+        elif r.status_code == 412:
+            if recursion is True:
+                raise ValueError('failed on config code')
+            write(red('Precondition Failed - testing config codes'))
+            return get_new_sharecodes(account.match_token, recursion=True)
         if stats_error_counter >= 30:
             # time.sleep(2) asserts this is roughly after 60 seconds
             write(red(f'aborted looking for new sharecode for given stats'))
@@ -285,6 +293,14 @@ def get_new_sharecodes(game_id: str, stats=None):
             """SELECT sharecode FROM matches WHERE map IS NULL AND error = 0 and steam_id = ? ORDER BY timestamp ASC""",
             (int(steam_id),))
         sharecodes = cur.fetchall()
+
+        # Check if supplied match id is in table, only when first cs2 match
+        cur = db.execute("""SELECT 1 FROM matches WHERE sharecode = ? AND steam_id = ?;""", (game_id, int(steam_id)))
+        is_in_db = cur.fetchone()
+        if is_in_db is None:
+            db.execute("""INSERT INTO matches (sharecode, steam_id, timestamp) VALUES (?, ?, ?)""",
+                           (game_id, int(steam_id), 0.0))
+            sharecodes.append((game_id,))
 
     return [{'sharecode': code, 'queue_pos': None} for code, in sharecodes]
 
@@ -427,7 +443,10 @@ def round_start_msg(msg: str, round_phase: str, freezetime_start: float, current
 
 def time_output(current: Union[float, int], average: Union[float, int]):
     difference = abs(current - average)
-    percentage = f'{current / average:.1%}'
+    if average != 0:
+        percentage = f'{current / average:.1%}'
+    else:
+        percentage = 'inf%'
     if current <= average:
         return f'{timedelta(seconds=current)}, {green(percentage)} of average of {timedelta(seconds=average)}'
         # return f'{timedelta(seconds=current)}, {timedelta(seconds=difference)} {green("shorter")} than average of {timedelta(seconds=average)}'
@@ -497,6 +516,31 @@ def round_wins_since_reset(_steam_id: int) -> int:
                          (_steam_id, int(last_wednesday.timestamp())))
     r, = cur.fetchone()
     return r or 0
+
+def match_wins_for_season(_steam_id: int) -> dict[str, int]:
+    tz = timezone('Europe/Berlin')
+
+    season_start = tz.localize(datetime(2025, 1, 29, 0, 0))
+    season_end = tz.localize(datetime(2025, 6, 3, 0, 0))
+    wins_for_season = 125
+    season = 'Premier - Season 2'
+
+    now = tz.localize(datetime.now())
+    days_since_season_start = (now - season_start).days
+    days_till_season_end = (season_end - now).days
+
+    with sqlite3.connect(path_vars.db) as db:
+        cur = db.execute("""SELECT COUNT(*) FROM matches WHERE outcome = 'W' AND gamemode = ? AND timestamp BETWEEN ? AND ?""", (season, int(season_start.timestamp()), int(season_end.timestamp())))
+        wins_this_season, = cur.fetchone()
+    wins_missing = max(0, wins_for_season - wins_this_season)
+    season_duration = (season_end - season_start).days
+
+    return {'wins': wins_this_season,
+            'days_since_season_start': days_since_season_start,
+            'wins_missing': wins_missing,
+            'days_till_season_end': days_till_season_end
+            }
+
 
 
 def match_win_list(number_of_matches: int, _steam_id, time_difference: int = 7_200, replace_chars: bool = False):
@@ -611,14 +655,14 @@ class WindowEnumerator(threading.Thread):
 
     def restart_gsi_server(self, gsi_server: server.GSIServer = None):
         if gsi_server is None:
-            gsi_server = server.GSIServer(('127.0.0.1', 4040), "IDONTUSEATOKEN")
+            gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
         elif gsi_server.running:
             gsi_server.shutdown()
             if self.get_hwnd() != 0:
-                gsi_server = server.GSIServer(('127.0.0.1', 4040), "IDONTUSEATOKEN")
+                gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
                 gsi_server.start_server()
             else:
-                gsi_server = server.GSIServer(('127.0.0.1', 4040), "IDONTUSEATOKEN")
+                gsi_server = server.GSIServer(('127.0.0.1', 3000), "IDONTUSEATOKEN")
         else:
             gsi_server.start_server()
         return gsi_server
@@ -1003,6 +1047,9 @@ lobby_info = re.compile(r"(?<!Machines' = '\d''members:num)(C?TSlotsFree|Players
 
 if __name__ == '__main__':
     def main():
+        season_standings = match_wins_for_season(76561199014843546)
+        _str = f'Season Wins:     {season_standings["wins"]} wins in {season_standings["days_since_season_start"]} days - {season_standings["wins_missing"]} wins in the next {season_standings["days_till_season_end"]}'
+        print(_str)
         r = match_win_list(16, 76561199014843546)
         print(r)
 
