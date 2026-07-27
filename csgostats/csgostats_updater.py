@@ -25,7 +25,7 @@ class CSGOStatsUpdater:
 
     def check_status(self):
         try:
-            r = requests.get(f'http://{self.cfg.server_ip}:{self.cfg.server_port}/', timeout=0.5)
+            r = requests.get(f'{self.cfg.server_addr}/status', timeout=2)
             return r.status_code == 200
         except requests.ConnectionError:
             return False
@@ -34,7 +34,7 @@ class CSGOStatsUpdater:
         sharecodes = [match_dict['sharecode'] for match_dict in new_codes]
         try:
             time.sleep(wait_till_request)
-            r = requests.post(f'http://{self.cfg.server_ip}:{self.cfg.server_port}/matches', json={'sharecodes': sharecodes})
+            r = requests.post(f'{self.cfg.server_addr}/matches', json={'sharecodes': sharecodes})
             if r.status_code != 200:
                 write(red(f'ERROR: {r.status_code}, {r.text}'))
                 return new_codes
@@ -150,7 +150,7 @@ class CSGOStatsUpdater:
                         sql_match = dict(cur.fetchone())
                         sql_match['steam_id'] = int(self.account.steam_id)
                         discord_matches.append(sql_match)
-                    r = requests.post(f'http://{self.cfg.server_ip}:{self.cfg.server_port}/discord_msg', json=discord_matches)
+                    r = requests.post(f'{self.cfg.server_addr}/discord_msg', json=discord_matches)
                     if r.status_code != 200:
                         write(f'failed to request discord message, {repr(r.text)}')
 

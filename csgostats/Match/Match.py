@@ -2,7 +2,9 @@ import base64
 import hmac
 import itertools
 import logging
+import os.path
 import pickle
+from compression import zstd
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Optional, Tuple
@@ -16,6 +18,8 @@ from csgostats.objects.rank import Rank
 
 logger = logging.getLogger(__name__)
 __all__ = ['Match', 'match_from_web_request', 'match_to_web_response']
+
+ZSTD_DICT = None
 
 
 @dataclass
@@ -97,7 +101,7 @@ class Match:
     def match_url(self):
         if self.match_id is None:
             raise ValueError(f'missing Match ID')
-        return f'https://www.csgostats.gg/match/{self.match_id}'
+        return f'https://www.csstats.gg/match/{self.match_id}'
 
     def _pickle_me(self):
         return pickle.dumps(self, protocol=pickle.HIGHEST_PROTOCOL, fix_imports=False)
@@ -134,6 +138,19 @@ def filter_players(player: MatchPlayer, steam_id: int):
     return player.steam_id != int(steam_id)
 
 
+def load_zstd_dictionary(zstd_dictionary_path: str = 'ZstdMatchDictionary.bin'):
+    global ZSTD_DICT
+    if ZSTD_DICT is not None:
+        return ZSTD_DICT
+    logger.debug('reading zstd compression dictionary')
+    if not os.path.isfile(zstd_dictionary_path):
+        raise RuntimeError('failed to find zstd dictionary')
+    with open(zstd_dictionary_path, 'rb') as fp:
+        zstd_dict = zstd.ZstdDict(fp.read(), is_raw=False)
+    ZSTD_DICT = zstd_dict
+    return zstd_dict
+
+
 def match_to_web_response(match_bytes: bytes, secret: bytes):
     if isinstance(secret, str):
         secret = secret.encode()
@@ -149,10 +166,12 @@ def match_from_web_request(retrieved_object: str, retrieved_key: str, secret: by
     if isinstance(secret, str):
         secret = secret.encode()
     check_obj = hmac.digest(secret, decoded_obj, 'sha256')
-    if hmac.compare_digest(decoded_key, check_obj) is False:
+    if not hmac.compare_digest(decoded_key, check_obj):
         logger.error('retrieved bytes do not match digest, aborting')
         return None
-    return pickle.loads(decoded_obj)
+    zstd_dict = load_zstd_dictionary()
+    decompressed_obj = zstd.decompress(decoded_obj, zstd_dict=zstd_dict.as_digested_dict)
+    return pickle.loads(decompressed_obj)
 
 
 if __name__ == '__main__':

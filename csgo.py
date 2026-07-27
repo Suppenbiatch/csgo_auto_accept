@@ -19,7 +19,7 @@ import websocket
 from pytz import utc
 
 import cs
-from ConsoleInteraction import TelNetConsoleReader
+# from ConsoleInteraction import TelNetConsoleReader
 from csgostats.csgostats_updater import CSGOStatsUpdater
 from objects.Screenshot import grep_and_send
 from objects.GSIDataClasses import MapInfo, PlayerInfo, RoundInfo
@@ -177,7 +177,7 @@ def on_ws_message(ws, message):
             t = Thread(target=hk_fullbuy, args=(kevlar, main), daemon=True)
             t.start()
         elif command == 'grep':
-            url = f'http://{cs.cfg.server_ip}:{cs.cfg.server_port}/recv'
+            url = f'{cs.cfg.server_addr}/recv'
             t = Thread(target=grep_and_send, args=(url,))
             t.start()
         elif command == 'afk':
@@ -213,11 +213,12 @@ def on_ws_open(ws):
     ws_send(data)
 
 
-ws_con = websocket.WebSocketApp(f"ws://{cs.cfg.server_ip}:{cs.cfg.server_port}/chat",
+ws_con = websocket.WebSocketApp(f"{cs.cfg.websocket_addr}/chat",
                                 on_open=on_ws_open,
                                 on_message=on_ws_message,
                                 on_error=on_ws_error,
-                                on_close=on_ws_close)
+                                on_close=on_ws_close,
+                                header={'User-Agent': 'CSAutoAcceptScript'})
 
 class WebSocketSender(Thread):
     def __init__(self, ws: websocket.WebSocketApp):
@@ -380,7 +381,7 @@ def hk_switch_accounts():
         cs.current_steam_account = 0
     cs.account = cs.accounts[cs.current_steam_account]
     cs.steam_id = cs.account.steam_id
-    cs.check_userdata_autoexec(cs.account.steam_id_3)
+    # cs.check_userdata_autoexec(cs.account.steam_id_3)
     updater.new_account(cs.account)
     write(f'current account is: {cs.account.name}', add_time=False, overwrite='3')
 
@@ -557,7 +558,11 @@ def upload_matches(look_for_new: bool = True, stats=None, wait_till_request: flo
             truth.upload_thread_active = False
             return
 
-        new_sharecodes = cs.get_new_sharecodes(latest_sharecode[0], stats=stats)
+        try:
+            new_sharecodes = cs.get_new_sharecodes(latest_sharecode[0], stats=stats)
+        except ValueError:
+            truth.upload_thread_active = False
+            return
 
         for new_code in new_sharecodes:
             retryer.append(new_code) if new_code['sharecode'] not in [old_code['sharecode'] for old_code in retryer] else retryer
@@ -600,10 +605,10 @@ window_enum = cs.WindowEnumerator('cs2.exe', 'counter-strike', sleep_interval=0.
 window_enum.start()
 gsi_server = window_enum.restart_gsi_server(None)
 
-afk_sender = SendDiscordMessage(cs.cfg.discord_user_id, cs.cfg.server_ip, cs.cfg.server_port)
+afk_sender = SendDiscordMessage(cs.cfg.discord_user_id, cs.cfg.server_addr)
 afk_sender.start()
 
-telnet = TelNetConsoleReader(cs.cfg.telnet_ip, cs.cfg.telnet_port)  # start thread when game is running
+# telnet = TelNetConsoleReader(cs.cfg.telnet_ip, cs.cfg.telnet_port)  # start thread when game is running
 
 hwnd_old = 0
 window_status = WindowStatus()
@@ -652,7 +657,7 @@ while running:
         cs.steam_id = cs.get_current_steam_user()
         try:
             cs.account = [account for account in cs.accounts if cs.steam_id == account.steam_id][0]
-            cs.check_userdata_autoexec(cs.account.steam_id_3)
+            # cs.check_userdata_autoexec(cs.account.steam_id_3)
         except IndexError:
             write('Account is not in the config.ini!\nScript will not work properly!', add_time=False, overwrite='9')
             cs.sound_player.play(cs.sounds.fail, block=False)
@@ -1200,13 +1205,19 @@ while running:
         round_wins = cs.round_wins_since_reset(cs.steam_id)
         round_wins += score[team[0]]
 
+        quadruple_xp = 39
+        double_xp = 51
         normal_xp = 90
-        reduced_xp = 205
+        reduced_xp = 206
 
-        if round_wins <= normal_xp:
+        if round_wins <= quadruple_xp:
+            write(f'Quadruple XP:   {round_wins}/{quadruple_xp}, {round_wins / quadruple_xp:.0%}, {quadruple_xp - round_wins} round wins missing', add_time=False)
+        elif round_wins <= double_xp:
+            write(f'Double XP:      {round_wins}/{double_xp}, {round_wins / double_xp:.0%}, {double_xp - round_wins} round wins missing', add_time=False)
+        elif round_wins <= normal_xp:
             write(f'Normal XP:      {round_wins}/{normal_xp}, {round_wins / normal_xp:.0%}, {normal_xp - round_wins} round wins missing', add_time=False)
         elif round_wins <= reduced_xp:
-            write(f'Reduced XP:     {round_wins}/{reduced_xp}, {round_wins / reduced_xp:.0%}, {reduced_xp - round_wins} round wins missing', add_time=False)
+            write(f'Reduced XP:     {round_wins}/{reduced_xp}, {round_wins / reduced_xp:.0%}, {reduced_xp - round_wins} ({(reduced_xp - round_wins) * 30:,}XP) round wins missing', add_time=False)
 
         season_standings = cs.match_wins_for_season(cs.steam_id)
         offset = 0

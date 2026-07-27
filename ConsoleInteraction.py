@@ -1,5 +1,5 @@
 import random
-import telnetlib
+import telnetlib3.client
 import threading
 import time
 import queue
@@ -33,8 +33,11 @@ class TelNetConsoleReader(threading.Thread):
         self.send_queue.put(message)
 
     def run(self) -> None:
+        self.closed = True
+        return
         try:
-            self.tl = telnetlib.Telnet(self.ip, self.port)
+             pass
+             # self.tl, self.tl_writer = await telnetlib3.client.open_connection(self.ip, self.port)
         except ConnectionRefusedError:
             self.closed = True
             return

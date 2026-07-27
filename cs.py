@@ -32,7 +32,7 @@ from PIL import ImageGrab, Image
 from pytz import utc, timezone
 
 from ConfigValidator import fix_config
-from ConsoleInteraction import TelNetConsoleReader
+# from ConsoleInteraction import TelNetConsoleReader
 from GSI import server
 from csgostats.Log import LogReader
 from objects.Account import get_accounts_from_cfg
@@ -88,13 +88,13 @@ def minimize_csgo(window_id: int):
             raise e
 
 
-def anti_afk_tel(tl: TelNetConsoleReader, is_active: bool):
+"""def anti_afk_tel(tl: TelNetConsoleReader, is_active: bool):
     if is_active:
         tl.send('-right')
         tl.send('-forward')
     else:
         tl.send('+right')
-        tl.send('+forward')
+        tl.send('+forward')"""
 
 
 # noinspection PyShadowingNames
@@ -132,6 +132,7 @@ def get_screenshot(window_id: int, area: tuple = (0, 0, 0, 0)):
 
 # noinspection PyShadowingNames
 def get_current_steam_user():
+    # return '76561199014843546'
     try:
         steam_reg_key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\Valve\Steam\ActiveProcess')
         current_user = winreg.QueryValueEx(steam_reg_key, 'ActiveUser')[0]
@@ -495,12 +496,12 @@ class MatchRequest(threading.Thread):
                 return
             time.sleep(0.5)
         data = match_log.to_web_request(cfg.secret, steam_id)
-        url = f"http://{cfg.server_ip}:{cfg.server_port}/check"
+        url = f"{cfg.server_addr}/check"
         try:
             r = requests.post(url, json=data)
             if r.status_code != 200:
                 write(
-                    f'failed to send check match message to {repr(cfg.server_ip)} with status {r.status_code} - {r.text}')
+                    f'failed to send check match message to {repr(cfg.server_addr)} with status {r.status_code} - {r.text}')
         except requests.ConnectionError:
             write(red('CSGO Discord Bot OFFLINE'))
         return
@@ -517,23 +518,66 @@ def round_wins_since_reset(_steam_id: int) -> int:
     r, = cur.fetchone()
     return r or 0
 
+@dataclass()
+class SeasonStats:
+    start: datetime
+    end: datetime
+    wins: int
+    name: str
+
 def match_wins_for_season(_steam_id: int) -> dict[str, int]:
     tz = timezone('Europe/Berlin')
 
-    season_start = tz.localize(datetime(2025, 1, 29, 0, 0))
-    season_end = tz.localize(datetime(2025, 6, 3, 0, 0))
-    wins_for_season = 125
-    season = 'Premier - Season 2'
+    season_1 = SeasonStats(
+        tz.localize(datetime(2023, 11, 9, 0, 0)), # our first premier match
+        tz.localize(datetime(2025, 1, 28, 23, 59)),
+        125,
+        'Premier Matchmaking'
+    )
+
+    season_2 = SeasonStats(
+        tz.localize(datetime(2025, 1, 29, 0, 0)),
+        tz.localize(datetime(2025, 7, 15, 2, 0)),
+        125,
+        'Premier - Season 2'
+    )
+
+    season_3 = SeasonStats(
+        tz.localize(datetime(2025, 7, 15, 2, 1)),
+        tz.localize(datetime(2026, 1, 19, 1, 0)),
+        125,
+        'Premier - Season 3'
+    )
+
+    season_4 = SeasonStats(
+        tz.localize(datetime(2026, 1, 21, 12, 0)),
+        tz.localize(datetime(2026, 7, 6, 2, 0)),
+        125,
+        'Premier - Season 4'
+    )
+    season_5 = SeasonStats(
+        tz.localize(datetime(2026, 7, 7, 2, 0)),
+        tz.localize(datetime(2027, 1, 19, 2, 0)),
+        125,
+        'Premier - Season 5'
+    )
 
     now = tz.localize(datetime.now())
-    days_since_season_start = (now - season_start).days
-    days_till_season_end = (season_end - now).days
+    for season in (season_1, season_2, season_3, season_4, season_5):
+        if season.start < now < season.end:
+            break
+    else:
+        raise ValueError('current season not found')
+
+    now = tz.localize(datetime.now())
+    days_since_season_start = (now - season.start).days
+    days_till_season_end = (season.end - now).days
 
     with sqlite3.connect(path_vars.db) as db:
-        cur = db.execute("""SELECT COUNT(*) FROM matches WHERE outcome = 'W' AND gamemode = ? AND timestamp BETWEEN ? AND ?""", (season, int(season_start.timestamp()), int(season_end.timestamp())))
+        cur = db.execute("""SELECT COUNT(*) FROM matches WHERE outcome = 'W' AND gamemode = ? AND timestamp BETWEEN ? AND ?""", (season.name, int(season.start.timestamp()), int(season.end.timestamp())))
         wins_this_season, = cur.fetchone()
-    wins_missing = max(0, wins_for_season - wins_this_season)
-    season_duration = (season_end - season_start).days
+    wins_missing = max(0, season.wins - wins_this_season)
+    season_duration = (season.end - season.start).days
 
     return {'wins': wins_this_season,
             'days_since_season_start': days_since_season_start,
@@ -688,7 +732,7 @@ class PathVars:
 
         for library in libraries:
             if os.path.exists(os.path.join(library, 'appmanifest_730.acf')):
-                csgo_path = os.path.join(library, 'common', 'Counter-Strike Global Offensive', 'csgo')
+                csgo_path = os.path.join(library, 'common', 'Counter-Strike Global Offensive', 'game', 'csgo')
                 break
         else:
             write(red('DID NOT FIND CSGO PATH'), add_time=False)
@@ -752,10 +796,10 @@ def get_sounds(get_web_sounds: bool = True):
         files = [os.path.basename(path) for path in glob.glob(os.path.join(base, '*_*.wav'))]
         file_hash = hashlib.sha256('#'.join(files).encode()).hexdigest()
 
-        url = f'http://{cfg.server_ip}:{cfg.server_port}/sound_hash'
-        base_url = f'http://{cfg.server_ip}:{cfg.server_port}/sounds/'
+        url = f'{cfg.server_addr}/sound_hash'
+        base_url = f'{cfg.server_addr}/sounds/'
         try:
-            r = requests.get(url, timeout=0.5)
+            r = requests.get(url, timeout=2)
             if r.status_code != 200:
                 return get_sounds(False)
         except (requests.ConnectionError, requests.ConnectTimeout, requests.ReadTimeout):
@@ -819,7 +863,7 @@ def get_sounds(get_web_sounds: bool = True):
         return out
 
 def get_fullbuy_from_bot(inventory_data: dict):
-    url = f'http://{cfg.server_ip}:{cfg.server_port}/fullbuy'
+    url = f'{cfg.server_addr}/fullbuy'
 
     inventory_data['removed'] = cfg.fullbuy.get_removed()
     r = requests.post(url, json=inventory_data)
@@ -849,7 +893,7 @@ def get_translated_messages(msgs_to_translate: int):
         write(f'no message found to translate')
         return None
     data = {'text': content, 'target': 'EN-US'}
-    url = f'http://{cfg.server_ip}:{cfg.server_port}/translate'
+    url = f'{cfg.server_addr}/translate'
     r = requests.post(url, json=data)
     if r.status_code != 200:
         write(orange(r.text))
@@ -913,8 +957,10 @@ class ConfigItems:
     auto_retry_interval: int
     status_requester: str
     secret: bytes
-    server_ip: str
-    server_port: int
+    server_addr: str
+    websocket_addr: str
+    # server_ip: str
+    # server_port: int
 
     discord_user_id: int
 
@@ -957,8 +1003,8 @@ def get_cfg(recursion: bool = False):
         data['secret'] = config.get('csgostats.gg', 'Secret')
         data['status_requester'] = config.getboolean('csgostats.gg', 'Status Requester')
 
-        data['server_ip'] = config.get('csgostats.gg', 'WebServer IP')
-        data['server_port'] = config.getint('csgostats.gg', 'WebServer Port')
+        data['server_addr'] = config.get('csgostats.gg', 'WebServer Address').removesuffix('/')
+        data['websocket_addr'] = config.get('csgostats.gg', 'WebSocket Address').removesuffix('/')
 
         data['discord_user_id'] = config.getint('Notifier', 'Discord User ID')
 

@@ -118,8 +118,8 @@ else:
 
 
 class SendDiscordMessage(Thread):
-    def __init__(self, user_id: int, bot_ip: str, bot_port: int):
-        self.url = f'http://{bot_ip}:{bot_port}/afk_message'
+    def __init__(self, user_id: int, bot_address):
+        self.url = f'{bot_address}/afk_message'
         super().__init__(name='DiscordMessageRequester', daemon=True)
         self.user_id = user_id
         self.queue = queue.Queue()
